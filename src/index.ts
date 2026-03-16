@@ -39,6 +39,9 @@ export {
   createDefaultConfig,
   ConfigValidationError,
   ConfigAlreadyExistsError,
+  getNestedValue,
+  setNestedValue,
+  parseConfigValue,
 } from './config/index.js';
 
 // Database

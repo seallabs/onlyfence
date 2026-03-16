@@ -30,9 +30,7 @@ export function serializeToToml(obj: Record<string, unknown>, header?: readonly 
   try {
     parse(toml);
   } catch (err) {
-    throw new Error(
-      `Generated TOML failed round-trip validation: ${toErrorMessage(err)}`,
-    );
+    throw new Error(`Generated TOML failed round-trip validation: ${toErrorMessage(err)}`);
   }
 
   return toml;

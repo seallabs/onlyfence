@@ -44,6 +44,14 @@ export function createProgram(): Command {
   registerConfigCommand(program);
   registerWalletCommand(program, getComponents);
 
+  // Default action: launch interactive TUI when no subcommand is given.
+  // If bootstrap fails (first run), the TUI shows a setup wizard.
+  program.action(async () => {
+    const { launchTui, tryBootstrap } = await import('../tui/index.js');
+    const components = tryBootstrap();
+    await launchTui(components);
+  });
+
   return program;
 }
 
