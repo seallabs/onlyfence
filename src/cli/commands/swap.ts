@@ -54,8 +54,10 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           return;
         }
 
-        const { db, config, oracle, policyRegistry, chainAdapterFactory, tradeLog } = components;
+        const { db, config, oracle, policyRegistry, chainAdapterFactory, tradeLog, logger } =
+          components;
         const chain = options.chain;
+        const log = logger.child({ command: 'swap' });
 
         try {
           // Validate chain config exists
@@ -77,6 +79,8 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
               `No primary wallet found for chain "${chain}". Run "fence setup" first.`,
             );
           }
+
+          log.info({ fromToken, toToken, amount: amountStr, chain }, 'Swap command invoked');
 
           // Build TradeIntent
           const intent: TradeIntent = {
@@ -115,6 +119,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           const policyResult: CheckResult = await policyRegistry.evaluateAll(intent, policyCtx);
 
           if (policyResult.status === 'reject') {
+            log.info({ reason: policyResult.reason }, 'Trade rejected by policy');
             // Log rejection
             tradeLog.logTrade({
               chain: intent.chain,
@@ -214,8 +219,11 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             route: quote.route,
           };
 
+          log.info({ txDigest: txResult.txDigest }, 'Swap executed successfully');
+
           printJsonOutput(successOutput);
         } catch (err: unknown) {
+          log.error({ err: toErrorMessage(err) }, 'Swap failed');
           const errorOutput: ErrorResponse = {
             status: 'error',
             message: toErrorMessage(err),

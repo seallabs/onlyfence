@@ -1,15 +1,19 @@
 import type Database from 'better-sqlite3';
+import type { Logger } from 'pino';
 import type { AppConfig } from '../types/config.js';
 import type { OracleClient } from '../oracle/client.js';
 import { openDatabase, DB_PATH } from '../db/connection.js';
 import { loadConfig, CONFIG_PATH } from '../config/loader.js';
 import { CoinGeckoOracle } from '../oracle/coingecko.js';
 import { TradeLog } from '../db/trade-log.js';
+import { CliEventLog } from '../db/cli-events.js';
 import { PolicyCheckRegistry } from '../policy/registry.js';
 import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
 import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { ChainAdapterFactory } from '../chain/factory.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
+import { getLogger } from '../logger/index.js';
+import { initSentry } from '../telemetry/sentry.js';
 
 /**
  * All initialized application components returned by bootstrap.
@@ -19,8 +23,10 @@ export interface AppComponents {
   readonly config: AppConfig;
   readonly oracle: OracleClient;
   readonly tradeLog: TradeLog;
+  readonly cliEventLog: CliEventLog;
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
+  readonly logger: Logger;
 }
 
 /**
@@ -29,9 +35,11 @@ export interface AppComponents {
  * Steps:
  * 1. Open/create SQLite DB and run migrations
  * 2. Load config from TOML
- * 3. Create oracle client
- * 4. Create policy registry and register checks based on config sections
- * 5. Create chain adapter factory and register adapters
+ * 3. Initialize Sentry if telemetry is enabled
+ * 4. Create oracle client
+ * 5. Create trade log and CLI event log
+ * 6. Create policy registry and register checks based on config sections
+ * 7. Create chain adapter factory and register adapters
  *
  * @param options - Optional overrides for paths
  * @returns Fully initialized AppComponents
@@ -40,12 +48,22 @@ export interface AppComponents {
 export function bootstrap(options?: { dbPath?: string; configPath?: string }): AppComponents {
   const db = openDatabase(options?.dbPath ?? DB_PATH);
   const config = loadConfig(options?.configPath ?? CONFIG_PATH);
+  const logger = getLogger();
+
+  // Initialize Sentry if telemetry is configured and enabled
+  if (config.telemetry !== undefined) {
+    initSentry(config.telemetry);
+  }
+
   const oracle = new CoinGeckoOracle();
   const tradeLog = new TradeLog(db);
+  const cliEventLog = new CliEventLog(db);
   const policyRegistry = buildPolicyRegistry(config);
   const chainAdapterFactory = buildChainAdapterFactory();
 
-  return { db, config, oracle, tradeLog, policyRegistry, chainAdapterFactory };
+  logger.info('Bootstrap complete');
+
+  return { db, config, oracle, tradeLog, cliEventLog, policyRegistry, chainAdapterFactory, logger };
 }
 
 /**

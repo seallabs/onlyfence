@@ -4,6 +4,7 @@ import type {
   AllowlistConfig,
   LimitsConfig,
   GlobalConfig,
+  TelemetryConfig,
 } from '../types/config.js';
 
 /**
@@ -99,9 +100,15 @@ export function validateConfig(raw: unknown): AppConfig {
     throw new ConfigValidationError('"global" must be an object if present', 'global');
   }
 
+  const telemetry = raw['telemetry'];
+  if (telemetry !== undefined && !isRecord(telemetry)) {
+    throw new ConfigValidationError('"telemetry" must be an object if present', 'telemetry');
+  }
+
   return {
     chain: validatedChains,
     ...(global !== undefined ? { global: validateGlobalConfig(global) } : {}),
+    ...(telemetry !== undefined ? { telemetry: validateTelemetryConfig(telemetry) } : {}),
   };
 }
 
@@ -156,6 +163,23 @@ function validateGlobalConfig(raw: Record<string, unknown>): GlobalConfig {
 
   return {
     ...(vol !== undefined ? { max_24h_volume_all_chains: vol } : {}),
+  };
+}
+
+function validateTelemetryConfig(raw: Record<string, unknown>): TelemetryConfig {
+  const enabled = raw['enabled'];
+  if (typeof enabled !== 'boolean') {
+    throw new ConfigValidationError('"enabled" must be a boolean', 'telemetry.enabled');
+  }
+
+  const dsn = raw['dsn'];
+  if (dsn !== undefined && typeof dsn !== 'string') {
+    throw new ConfigValidationError('"dsn" must be a string if present', 'telemetry.dsn');
+  }
+
+  return {
+    enabled,
+    ...(typeof dsn === 'string' ? { dsn } : {}),
   };
 }
 

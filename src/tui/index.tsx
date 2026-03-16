@@ -1,42 +1,78 @@
 import { render } from 'ink';
 import { bootstrap } from '../cli/bootstrap.js';
 import type { AppComponents } from '../cli/bootstrap.js';
+import { loadConfig } from '../config/loader.js';
+import { initSentry } from '../telemetry/sentry.js';
 import { toErrorMessage } from '../utils/index.js';
 import { App } from './App.js';
 import { SetupApp } from './SetupApp.js';
+import { TelemetryPrompt } from './screens/TelemetryPrompt.js';
+
+const ENTER_ALT_SCREEN = '\x1b[?1049h';
+const EXIT_ALT_SCREEN = '\x1b[?1049l';
+const CLEAR_SCREEN = '\x1b[H\x1b[2J';
 
 /**
  * Launch the interactive TUI.
  *
  * If bootstrap succeeds, launches the main app directly.
  * If bootstrap fails (no config/DB), shows the setup wizard first,
- * then re-bootstraps and enters the main app.
+ * then the telemetry consent prompt, then re-bootstraps and enters the main app.
  *
  * Enters the terminal alternate screen for a clean full-screen experience
  * and restores the original screen on exit.
  */
 export async function launchTui(components?: AppComponents): Promise<void> {
-  // Enter alternate screen buffer and clear it (like vim/k9s)
-  process.stdout.write('\x1b[?1049h');
-  process.stdout.write('\x1b[2J\x1b[H');
+  process.stdout.write(ENTER_ALT_SCREEN);
+  process.stdout.write(CLEAR_SCREEN);
 
   try {
     if (components !== undefined) {
-      // Bootstrap succeeded — go straight to the main app
-      const instance = render(<App components={components} />);
-      await instance.waitUntilExit();
+      // Bootstrap succeeded — check if telemetry prompt is needed
+      if (components.config.telemetry === undefined) {
+        await showTelemetryPrompt();
+        // Reload only the config (avoid full re-bootstrap which re-opens DB)
+        const refreshedConfig = loadConfig();
+        if (refreshedConfig.telemetry !== undefined) {
+          initSentry(refreshedConfig.telemetry);
+        }
+        const refreshed: AppComponents = { ...components, config: refreshedConfig };
+        const instance = render(<App components={refreshed} />);
+        await instance.waitUntilExit();
+      } else {
+        const instance = render(<App components={components} />);
+        await instance.waitUntilExit();
+      }
     } else {
       // Bootstrap failed — run setup wizard first
       await runSetupThenApp();
     }
   } finally {
-    // Restore original screen
-    process.stdout.write('\x1b[?1049l');
+    process.stdout.write(EXIT_ALT_SCREEN);
   }
 }
 
 /**
- * Show the setup wizard, wait for completion, then bootstrap and launch main app.
+ * Show the telemetry consent prompt and wait for user choice.
+ */
+async function showTelemetryPrompt(): Promise<void> {
+  process.stdout.write(CLEAR_SCREEN);
+
+  await new Promise<void>((resolve) => {
+    const instance = render(
+      <TelemetryPrompt
+        onComplete={() => {
+          instance.unmount();
+          resolve();
+        }}
+      />,
+    );
+  });
+}
+
+/**
+ * Show the setup wizard, telemetry prompt, wait for completion,
+ * then bootstrap and launch main app.
  */
 async function runSetupThenApp(): Promise<void> {
   // Phase 1: Setup wizard
@@ -51,8 +87,18 @@ async function runSetupThenApp(): Promise<void> {
     );
   });
 
-  // Phase 2: Clear and launch main app
-  process.stdout.write('\x1b[H\x1b[2J');
+  // Phase 2: Telemetry consent (only shown if config.telemetry is absent)
+  try {
+    const freshConfig = loadConfig();
+    if (freshConfig.telemetry === undefined) {
+      await showTelemetryPrompt();
+    }
+  } catch {
+    // Config may not load cleanly right after setup — skip telemetry prompt
+  }
+
+  // Phase 3: Clear and launch main app
+  process.stdout.write(CLEAR_SCREEN);
 
   const components = bootstrap();
   const instance = render(<App components={components} />);
