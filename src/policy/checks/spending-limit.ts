@@ -16,27 +16,27 @@ export class SpendingLimitCheck implements PolicyCheck {
   readonly name = 'spending_limit';
   readonly description = 'Enforces per-trade and rolling 24-hour USD spending limits';
 
-  async evaluate(intent: TradeIntent, ctx: PolicyContext): Promise<CheckResult> {
+  evaluate(intent: TradeIntent, ctx: PolicyContext): Promise<CheckResult> {
     const limits = ctx.config.limits;
 
-    if (!limits) {
-      return { status: 'pass' };
+    if (limits === undefined) {
+      return Promise.resolve({ status: 'pass' });
     }
 
     if (ctx.tradeValueUsd === undefined) {
-      return {
+      return Promise.resolve({
         status: 'pass',
         metadata: {
           skipped: true,
           reason: 'oracle_price_unavailable',
         },
-      };
+      });
     }
 
     const tradeValueUsd = ctx.tradeValueUsd;
 
     if (tradeValueUsd > limits.max_single_trade) {
-      return {
+      return Promise.resolve({
         status: 'reject',
         reason: 'exceeds_single_trade_limit',
         detail:
@@ -46,14 +46,14 @@ export class SpendingLimitCheck implements PolicyCheck {
           limit: limits.max_single_trade,
           requested: tradeValueUsd,
         },
-      };
+      });
     }
 
     const rolling24h = getRolling24hVolume(ctx.db, intent.chain);
 
     const projectedVolume = rolling24h + tradeValueUsd;
     if (projectedVolume > limits.max_24h_volume) {
-      return {
+      return Promise.resolve({
         status: 'reject',
         reason: 'exceeds_24h_volume',
         detail:
@@ -64,9 +64,9 @@ export class SpendingLimitCheck implements PolicyCheck {
           current: rolling24h,
           requested: tradeValueUsd,
         },
-      };
+      });
     }
 
-    return { status: 'pass' };
+    return Promise.resolve({ status: 'pass' });
   }
 }

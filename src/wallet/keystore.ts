@@ -148,7 +148,7 @@ export function decryptKeystoreData(encrypted: EncryptedKeystore, password: stri
 
   validateKeystoreData(parsed);
 
-  return parsed as KeystoreData;
+  return parsed;
 }
 
 /**

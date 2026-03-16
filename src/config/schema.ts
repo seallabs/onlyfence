@@ -116,10 +116,12 @@ function validateChainConfig(raw: unknown, path: string): ChainConfig {
 
   return {
     rpc: raw['rpc'],
-    ...(raw['allowlist']
+    ...(raw['allowlist'] !== undefined
       ? { allowlist: validateAllowlist(raw['allowlist'], `${path}.allowlist`) }
       : {}),
-    ...(raw['limits'] ? { limits: validateLimits(raw['limits'], `${path}.limits`) } : {}),
+    ...(raw['limits'] !== undefined
+      ? { limits: validateLimits(raw['limits'], `${path}.limits`) }
+      : {}),
   };
 }
 

@@ -115,12 +115,12 @@ export function registerWalletAddress(
   db: Database.Database,
   chain: string,
   address: string,
-  isPrimary: boolean = false,
+  isPrimary = false,
 ): RegisterWalletResult {
-  if (!chain || chain.trim().length === 0) {
+  if (chain.trim().length === 0) {
     throw new Error('Chain identifier must not be empty.');
   }
-  if (!address || address.trim().length === 0) {
+  if (address.trim().length === 0) {
     throw new Error('Wallet address must not be empty.');
   }
 
@@ -160,7 +160,7 @@ export function getPrimaryWallet(db: Database.Database, chain: string): WalletIn
   const stmt = db.prepare('SELECT * FROM wallets WHERE is_primary = 1 AND chain = ?');
   const row = stmt.get(chain) as WalletRow | undefined;
 
-  if (!row) {
+  if (row === undefined) {
     return null;
   }
 

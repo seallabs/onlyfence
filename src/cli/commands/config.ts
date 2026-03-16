@@ -46,7 +46,7 @@ export function registerConfigCommand(program: Command): void {
       try {
         const config = loadConfig(CONFIG_PATH);
 
-        if (key) {
+        if (key !== undefined) {
           const value = getNestedValue(config, key);
           if (value === undefined) {
             throw new Error(`Key "${key}" not found in configuration.`);

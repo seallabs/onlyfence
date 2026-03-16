@@ -101,7 +101,7 @@ export class CoinGeckoOracle implements OracleClient {
         const data = (await response.json()) as Record<string, { usd?: number } | undefined>;
         const priceData = data[coinId];
 
-        if (!priceData?.usd) {
+        if (priceData?.usd === undefined) {
           throw new Error(`No USD price found for token "${token}" (CoinGecko ID: "${coinId}")`);
         }
 

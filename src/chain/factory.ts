@@ -8,7 +8,7 @@ import type { ChainAdapter } from './adapter.js';
  * ChainAdapter and calling `register()` — no existing code changes required.
  */
 export class ChainAdapterFactory {
-  private readonly adapters: Map<string, ChainAdapter> = new Map();
+  private readonly adapters = new Map<string, ChainAdapter>();
 
   /**
    * Register a chain adapter. Throws if an adapter for the same chain
@@ -29,7 +29,7 @@ export class ChainAdapterFactory {
    */
   get(chain: string): ChainAdapter {
     const adapter = this.adapters.get(chain);
-    if (!adapter) {
+    if (adapter === undefined) {
       throw new Error(`ChainAdapterFactory: no adapter registered for chain "${chain}"`);
     }
     return adapter;

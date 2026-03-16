@@ -61,7 +61,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
         try {
           // Validate chain config exists
           const chainConfig = config.chain[chain];
-          if (!chainConfig) {
+          if (chainConfig === undefined) {
             throw new Error(
               `No configuration found for chain "${chain}". ` +
                 `Available chains: ${Object.keys(config.chain).join(', ')}`,
@@ -73,7 +73,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
 
           // Get wallet address
           const wallet = getPrimaryWallet(db, chain);
-          if (!wallet) {
+          if (wallet === null) {
             throw new Error(
               `No primary wallet found for chain "${chain}". Run "fence setup" first.`,
             );
@@ -129,7 +129,12 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
                 ? { rejection_reason: policyResult.reason }
                 : {}),
               ...(policyResult.metadata?.[REJECTED_BY_KEY] !== undefined
-                ? { rejection_check: policyResult.metadata['rejectedBy'] as string }
+                ? {
+                    rejection_check:
+                      typeof policyResult.metadata['rejectedBy'] === 'string'
+                        ? policyResult.metadata['rejectedBy']
+                        : 'unknown',
+                  }
                 : {}),
             });
 
@@ -137,7 +142,10 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
               status: 'rejected',
               chain: intent.chain,
               action: intent.action,
-              check: (policyResult.metadata?.[REJECTED_BY_KEY] as string) ?? 'unknown',
+              check:
+                typeof policyResult.metadata?.[REJECTED_BY_KEY] === 'string'
+                  ? policyResult.metadata[REJECTED_BY_KEY]
+                  : 'unknown',
               reason: policyResult.reason ?? 'policy_rejected',
               detail: policyResult.detail ?? 'Trade rejected by policy engine',
               ...(policyResult.metadata !== undefined ? { metadata: policyResult.metadata } : {}),
@@ -172,7 +180,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           // In production, we would prompt for password, load keystore, and create signer
           const txResult = await adapter.signAndSubmit(txData, {
             address: intent.walletAddress,
-            sign: async (_data: Uint8Array) => new Uint8Array(64),
+            sign: (_data: Uint8Array): Promise<Uint8Array> => Promise.resolve(new Uint8Array(64)),
           });
 
           // Log approved trade
@@ -235,7 +243,7 @@ function parseBigIntAmount(value: string): bigint {
 
   // If it contains a decimal, truncate to integer
   const integerPart = trimmed.split('.')[0];
-  if (!integerPart) {
+  if (integerPart === undefined || integerPart === '') {
     throw new Error(`Invalid amount "${value}": must be a positive number`);
   }
   return BigInt(integerPart);

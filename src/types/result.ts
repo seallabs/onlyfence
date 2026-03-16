@@ -74,7 +74,7 @@ export interface TxResult {
  */
 export interface BalanceResult {
   readonly address: string;
-  readonly balances: ReadonlyArray<TokenBalance>;
+  readonly balances: readonly TokenBalance[];
 }
 
 /**

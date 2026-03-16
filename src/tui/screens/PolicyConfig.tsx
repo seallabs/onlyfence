@@ -195,7 +195,7 @@ export function PolicyConfig(): ReactElement {
                     onCancel={cancelEdit}
                   />
                 ) : (
-                  <Text color={theme.eyes}>{value || '-'}</Text>
+                  <Text color={theme.eyes}>{value !== '' ? value : '-'}</Text>
                 )}
               </Box>
             </Box>
@@ -216,17 +216,17 @@ export function PolicyConfig(): ReactElement {
         </Text>
         <Text color={theme.eyes}>{`RPC:              ${chainConfig?.rpc ?? '-'}`}</Text>
         <Text color={theme.eyes}>
-          {`Max Single Trade: ${chainConfig?.limits ? `$${chainConfig.limits.max_single_trade}` : '-'}`}
+          {`Max Single Trade: ${chainConfig?.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : '-'}`}
         </Text>
         <Text color={theme.eyes}>
-          {`Max 24h Volume:   ${chainConfig?.limits ? `$${chainConfig.limits.max_24h_volume}` : '-'}`}
+          {`Max 24h Volume:   ${chainConfig?.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : '-'}`}
         </Text>
         <Text color={theme.eyes}>
           {`Tokens:           ${chainConfig?.allowlist?.tokens.join(', ') ?? '-'}`}
         </Text>
       </Box>
 
-      {status && (
+      {status !== null && (
         <Box marginTop={1}>
           <Text color={status.kind === 'error' ? theme.error : theme.success}>{status.text}</Text>
         </Box>

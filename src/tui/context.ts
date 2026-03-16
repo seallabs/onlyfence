@@ -36,7 +36,7 @@ export const TuiProvider = TuiContext.Provider;
  */
 export function useTui(): TuiContextValue {
   const ctx = useContext(TuiContext);
-  if (!ctx) {
+  if (ctx === null) {
     throw new Error('useTui must be used within a TuiProvider');
   }
   return ctx;

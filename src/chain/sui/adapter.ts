@@ -42,8 +42,8 @@ export class SuiAdapter implements ChainAdapter {
    * 3. Map coin types to known token symbols via SUI_TOKEN_MAP
    * 4. Return BalanceResult with all token balances and decimals
    */
-  async getBalance(_address: string): Promise<BalanceResult> {
-    throw new Error('SuiAdapter.getBalance not implemented');
+  getBalance(_address: string): Promise<BalanceResult> {
+    return Promise.reject(new Error('SuiAdapter.getBalance not implemented'));
   }
 
   /**
@@ -55,8 +55,8 @@ export class SuiAdapter implements ChainAdapter {
    * 3. Parse response for route, expectedOutput, priceImpact
    * 4. Return SwapQuote with protocol set to the aggregator's chosen DEX
    */
-  async getSwapQuote(_params: SwapParams): Promise<SwapQuote> {
-    throw new Error('SuiAdapter.getSwapQuote not implemented');
+  getSwapQuote(_params: SwapParams): Promise<SwapQuote> {
+    return Promise.reject(new Error('SuiAdapter.getSwapQuote not implemented'));
   }
 
   /**
@@ -68,8 +68,8 @@ export class SuiAdapter implements ChainAdapter {
    * 3. Attach chain metadata (coin types, amounts) for logging
    * 4. Return TransactionData with serialized bytes
    */
-  async buildSwapTx(_quote: SwapQuote): Promise<TransactionData> {
-    throw new Error('SuiAdapter.buildSwapTx not implemented');
+  buildSwapTx(_quote: SwapQuote): Promise<TransactionData> {
+    return Promise.reject(new Error('SuiAdapter.buildSwapTx not implemented'));
   }
 
   /**
@@ -82,8 +82,8 @@ export class SuiAdapter implements ChainAdapter {
    * 4. Extract gas cost estimate from the dry-run result
    * 5. Return SimulationResult with success status and gasEstimate
    */
-  async simulateTx(_txData: TransactionData): Promise<SimulationResult> {
-    throw new Error('SuiAdapter.simulateTx not implemented');
+  simulateTx(_txData: TransactionData): Promise<SimulationResult> {
+    return Promise.reject(new Error('SuiAdapter.simulateTx not implemented'));
   }
 
   /**
@@ -97,7 +97,7 @@ export class SuiAdapter implements ChainAdapter {
    * 5. Parse effects for actual gas used and output amounts
    * 6. Return TxResult with txDigest, status, gasUsed, and amountOut
    */
-  async signAndSubmit(_txData: TransactionData, _signer: Signer): Promise<TxResult> {
-    throw new Error('SuiAdapter.signAndSubmit not implemented');
+  signAndSubmit(_txData: TransactionData, _signer: Signer): Promise<TxResult> {
+    return Promise.reject(new Error('SuiAdapter.signAndSubmit not implemented'));
   }
 }

@@ -21,7 +21,7 @@ export async function launchTui(components?: AppComponents): Promise<void> {
   process.stdout.write('\x1b[2J\x1b[H');
 
   try {
-    if (components) {
+    if (components !== undefined) {
       // Bootstrap succeeded — go straight to the main app
       const instance = render(<App components={components} />);
       await instance.waitUntilExit();

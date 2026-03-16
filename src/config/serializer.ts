@@ -15,7 +15,7 @@ import { toErrorMessage } from '../utils/index.js';
 export function serializeToToml(obj: Record<string, unknown>, header?: readonly string[]): string {
   const lines: string[] = [];
 
-  if (header) {
+  if (header !== undefined) {
     for (const line of header) {
       lines.push(`# ${line}`);
     }
@@ -54,7 +54,7 @@ function appendSection(lines: string[], obj: Record<string, unknown>, prefix: st
       continue;
     }
 
-    const sectionKey = prefix ? `${prefix}.${key}` : key;
+    const sectionKey = prefix !== '' ? `${prefix}.${key}` : key;
     lines.push('');
     lines.push(`[${sectionKey}]`);
     appendSection(lines, value as Record<string, unknown>, sectionKey);

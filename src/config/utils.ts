@@ -37,7 +37,7 @@ export function setNestedValue(
 
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
-    if (!part) {
+    if (part === undefined || part === '') {
       throw new Error(`Invalid key path: "${keyPath}"`);
     }
     const next = current[part];
@@ -51,7 +51,7 @@ export function setNestedValue(
   }
 
   const lastPart = parts[parts.length - 1];
-  if (!lastPart) {
+  if (lastPart === undefined || lastPart === '') {
     throw new Error(`Invalid key path: "${keyPath}"`);
   }
   current[lastPart] = value;
