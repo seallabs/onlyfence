@@ -1,0 +1,5 @@
+- Code pattern MUST provide extensbility to easily add new features
+- Code pattern MUST follow SOLID and DRY
+- DO NOT silent any error
+- MUST run fmt and clippy before commit
+- Use strict type
