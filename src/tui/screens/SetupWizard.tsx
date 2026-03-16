@@ -100,7 +100,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       setErrorMessage('Password must not be empty.');
       return;
     }
-    if (!walletResult) {
+    if (walletResult === null) {
       setErrorMessage('No wallet data available.');
       setStep('error');
       return;
@@ -220,7 +220,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       )}
 
       {/* Step: show wallet + mnemonic */}
-      {step === 'show_wallet' && walletResult && (
+      {step === 'show_wallet' && walletResult !== null && (
         <Box flexDirection="column">
           <Box
             flexDirection="column"
@@ -246,7 +246,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
             </Text>
             <Text color={theme.eyes}>{`  Chain:   ${walletResult.chain}`}</Text>
             <Text color={theme.eyes}>{`  Address: ${walletResult.address}`}</Text>
-            {walletResult.derivationPath && (
+            {walletResult.derivationPath !== null && (
               <Text color={theme.eyes}>{`  Path:    ${walletResult.derivationPath}`}</Text>
             )}
           </Box>

@@ -102,7 +102,7 @@ export function App({ components }: AppProps): ReactElement {
     <TuiProvider value={ctx}>
       <Box flexDirection="column">
         <Header activeTab={activeTab} />
-        {configError && (
+        {configError !== null && (
           <Box paddingX={1}>
             <Text color={theme.error}>{`Config error: ${configError}`}</Text>
           </Box>

@@ -21,7 +21,7 @@ export function Logo({ double = true }: LogoProps): ReactElement {
       {PIXELS.map((row, y) => (
         <Box key={y}>
           {row.map((color, x) =>
-            color ? (
+            color !== null ? (
               <Text key={x} color={color}>
                 {block}
               </Text>
@@ -49,7 +49,7 @@ export function LogoHeader({ version }: LogoHeaderProps): ReactElement {
       <Text bold color={L}>
         OnlyFence
       </Text>
-      {version && <Text dimColor>v{version}</Text>}
+      {version !== undefined && <Text dimColor>v{version}</Text>}
     </Box>
   );
 }
@@ -76,26 +76,26 @@ export function LogoSmall(): ReactElement {
       const top = topRow[x] ?? null;
       const bot = botRow[x] ?? null;
 
-      if (top && bot) {
+      if (top !== null && bot !== null) {
         cells.push(
           <Text key={x} color={top} backgroundColor={bot}>
             ▀
           </Text>,
         );
-      } else if (top) {
+      } else if (top !== null) {
         cells.push(
           <Text key={x} color={top}>
             ▀
           </Text>,
         );
-      } else if (bot) {
+      } else if (bot !== null) {
         cells.push(
           <Text key={x} color={bot}>
             ▄
           </Text>,
         );
       } else {
-        cells.push(<Text key={x}>{' '}</Text>);
+        cells.push(<Text key={x}> </Text>);
       }
     }
 
@@ -126,7 +126,7 @@ export function LogoSplash({
         <Text bold color={L}>
           OnlyFence
         </Text>
-        {version && <Text dimColor>v{version}</Text>}
+        {version !== undefined && <Text dimColor>v{version}</Text>}
       </Box>
       <Text dimColor>{tagline}</Text>
     </Box>

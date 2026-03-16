@@ -56,7 +56,7 @@ export function loadConfig(configPath: string = CONFIG_PATH): AppConfig {
  * @returns The path to the created config file
  * @throws Error if the config already exists and force is false
  */
-export function initConfig(configPath: string = CONFIG_PATH, force: boolean = false): string {
+export function initConfig(configPath: string = CONFIG_PATH, force = false): string {
   mkdirSync(dirname(configPath), { recursive: true });
 
   const defaultConfig = createDefaultConfig();

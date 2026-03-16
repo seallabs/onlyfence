@@ -11,7 +11,7 @@ import type { CheckResult } from '../types/result.js';
  * on the first rejection, returning that result immediately.
  */
 export class PolicyCheckRegistry {
-  private readonly checks: Map<string, PolicyCheck> = new Map();
+  private readonly checks = new Map<string, PolicyCheck>();
 
   /**
    * Register a new policy check to the end of the pipeline.

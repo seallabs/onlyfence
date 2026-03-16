@@ -37,17 +37,18 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
         }),
       );
 
-      const results: Array<{ token: string; priceUsd: number | null; error?: string }> =
-        settled.map((outcome, idx) => {
+      const results: { token: string; priceUsd: number | null; error?: string }[] = settled.map(
+        (outcome, idx) => {
           if (outcome.status === 'fulfilled') {
             return outcome.value;
           }
           return {
-            token: tokens[idx]!.toUpperCase(),
+            token: (tokens[idx] ?? '').toUpperCase(),
             priceUsd: null,
             error: toErrorMessage(outcome.reason),
           };
-        });
+        },
+      );
 
       if (options.output === 'json') {
         console.log(JSON.stringify(results, null, 2));
@@ -84,7 +85,7 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
 
       try {
         const wallet = getPrimaryWallet(db, chain);
-        if (!wallet) {
+        if (wallet === null) {
           throw new Error(`No primary wallet found for chain "${chain}". Run "fence setup" first.`);
         }
 

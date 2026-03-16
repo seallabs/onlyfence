@@ -78,7 +78,9 @@ export function Dashboard(): ReactElement {
           <Text color={theme.eyes}>
             {`Address: ${data.walletAddress ?? 'No wallet configured'}`}
           </Text>
-          <Text color={theme.eyes}>{`Status:  ${data.walletAddress ? 'Primary' : '-'}`}</Text>
+          <Text
+            color={theme.eyes}
+          >{`Status:  ${data.walletAddress !== null ? 'Primary' : '-'}`}</Text>
         </Box>
 
         <Box
@@ -158,10 +160,10 @@ export function Dashboard(): ReactElement {
             {'Spending Limits'}
           </Text>
           <Text color={theme.eyes}>
-            {`Max Single Trade: ${chainConfig?.limits ? `$${chainConfig.limits.max_single_trade}` : 'None'}`}
+            {`Max Single Trade: ${chainConfig?.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : 'None'}`}
           </Text>
           <Text color={theme.eyes}>
-            {`Max 24h Volume:   ${chainConfig?.limits ? `$${chainConfig.limits.max_24h_volume}` : 'None'}`}
+            {`Max 24h Volume:   ${chainConfig?.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : 'None'}`}
           </Text>
         </Box>
       </Box>

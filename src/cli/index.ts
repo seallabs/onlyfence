@@ -31,9 +31,7 @@ export function createProgram(): Command {
   let cachedComponents: AppComponents | undefined;
 
   function getComponents(): AppComponents {
-    if (!cachedComponents) {
-      cachedComponents = bootstrap();
-    }
+    cachedComponents ??= bootstrap();
     return cachedComponents;
   }
 

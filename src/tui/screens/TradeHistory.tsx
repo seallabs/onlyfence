@@ -32,7 +32,7 @@ const COLUMNS: readonly Column<TradeRow>[] = [
   {
     header: 'Tx Digest',
     width: 16,
-    accessor: (r) => (r.tx_digest ? `${r.tx_digest.slice(0, 12)}..` : '-'),
+    accessor: (r) => (r.tx_digest !== null ? `${r.tx_digest.slice(0, 12)}..` : '-'),
   },
 ];
 
@@ -91,7 +91,7 @@ export function TradeHistory(): ReactElement {
       </Box>
 
       {/* Detail panel for selected trade */}
-      {selected && (
+      {selected !== undefined && (
         <Box
           flexDirection="column"
           borderStyle="single"
@@ -122,11 +122,13 @@ export function TradeHistory(): ReactElement {
                 color={theme.eyes}
               >{`Gas Cost:   ${selected.gas_cost !== null ? selected.gas_cost.toFixed(4) : '-'}`}</Text>
               <Text color={selected.policy_decision === 'approved' ? theme.success : theme.error}>
-                {`Decision:   ${selected.policy_decision}${selected.rejection_reason ? ` (${selected.rejection_reason})` : ''}`}
+                {`Decision:   ${selected.policy_decision}${selected.rejection_reason !== null ? ` (${selected.rejection_reason})` : ''}`}
               </Text>
             </Box>
           </Box>
-          {selected.tx_digest && <Text color={theme.muted}>{`Tx: ${selected.tx_digest}`}</Text>}
+          {selected.tx_digest !== null && (
+            <Text color={theme.muted}>{`Tx: ${selected.tx_digest}`}</Text>
+          )}
         </Box>
       )}
 

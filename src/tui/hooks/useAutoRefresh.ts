@@ -13,7 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
  */
 export function useAutoRefresh<T>(
   fetcher: () => T,
-  intervalMs: number = 5000,
+  intervalMs = 5000,
 ): { data: T; refresh: () => void } {
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;

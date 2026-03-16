@@ -14,11 +14,11 @@ export class TokenAllowlistCheck implements PolicyCheck {
   readonly name = 'token_allowlist';
   readonly description = 'Verifies that both trade tokens are in the chain allowlist';
 
-  async evaluate(intent: TradeIntent, ctx: PolicyContext): Promise<CheckResult> {
+  evaluate(intent: TradeIntent, ctx: PolicyContext): Promise<CheckResult> {
     const allowlist = ctx.config.allowlist;
 
-    if (!allowlist) {
-      return { status: 'pass' };
+    if (allowlist === undefined) {
+      return Promise.resolve({ status: 'pass' });
     }
 
     // Note: The Set is rebuilt on each call because ctx.config may differ per
@@ -28,8 +28,8 @@ export class TokenAllowlistCheck implements PolicyCheck {
 
     const fromTokenUpper = intent.fromToken.toUpperCase();
     if (!allowedTokens.has(fromTokenUpper)) {
-      return {
-        status: 'reject',
+      return Promise.resolve({
+        status: 'reject' as const,
         reason: 'token_not_allowed',
         detail: `Source token "${intent.fromToken}" is not in the allowlist for chain "${intent.chain}"`,
         metadata: {
@@ -37,13 +37,13 @@ export class TokenAllowlistCheck implements PolicyCheck {
           direction: 'from',
           allowedTokens: [...allowlist.tokens],
         },
-      };
+      });
     }
 
     const toTokenUpper = intent.toToken.toUpperCase();
     if (!allowedTokens.has(toTokenUpper)) {
-      return {
-        status: 'reject',
+      return Promise.resolve({
+        status: 'reject' as const,
         reason: 'token_not_allowed',
         detail: `Destination token "${intent.toToken}" is not in the allowlist for chain "${intent.chain}"`,
         metadata: {
@@ -51,9 +51,9 @@ export class TokenAllowlistCheck implements PolicyCheck {
           direction: 'to',
           allowedTokens: [...allowlist.tokens],
         },
-      };
+      });
     }
 
-    return { status: 'pass' };
+    return Promise.resolve({ status: 'pass' as const });
   }
 }

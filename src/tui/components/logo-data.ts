@@ -16,7 +16,7 @@ export const COLORS = {
 } as const;
 
 const { light: L, mid: M, dark: D, eye: E } = COLORS;
-const _: null = null;
+const _ = null;
 
 /** Row-major pixel grid. PIXELS[y][x] = hex color | null */
 export const PIXELS: (string | null)[][] = [

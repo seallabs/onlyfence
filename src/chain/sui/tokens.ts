@@ -33,7 +33,7 @@ export const SUI_TOKEN_MAP: Readonly<Record<string, string>> = {
  */
 export function resolveTokenAddress(symbol: string): string {
   const address = SUI_TOKEN_MAP[symbol];
-  if (!address) {
+  if (address === undefined) {
     throw new Error(
       `Unknown Sui token symbol "${symbol}". Known tokens: ${Object.keys(SUI_TOKEN_MAP).join(', ')}`,
     );
