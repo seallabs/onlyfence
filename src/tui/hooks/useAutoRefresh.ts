@@ -23,7 +23,9 @@ export function useAutoRefresh<T>(
   const refresh = useCallback(() => {
     setData((prev) => {
       const next = fetcherRef.current();
-      // Skip re-render if data hasn't changed (avoids no-op reconciliation)
+      // Preserve reference identity when data is unchanged to skip re-render.
+      // JSON.stringify is fine here — payloads are small (5-15 rows) and the
+      // avoided terminal re-render is far more expensive than the comparison.
       return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
     });
   }, []);

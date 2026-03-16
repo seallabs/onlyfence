@@ -6,6 +6,7 @@ import type { AppConfig } from '../types/config.js';
 import { validateConfig, createDefaultConfig, ConfigAlreadyExistsError } from './schema.js';
 import { serializeToToml } from './serializer.js';
 import { toErrorMessage } from '../utils/index.js';
+import { CONFIG_FILE_HEADER } from './utils.js';
 
 /**
  * Default directory for OnlyFence configuration and data.
@@ -18,16 +19,11 @@ export const ONLYFENCE_DIR = join(homedir(), '.onlyfence');
 export const CONFIG_PATH = join(ONLYFENCE_DIR, 'config.toml');
 
 /**
- * Load and parse the OnlyFence configuration from disk.
- *
- * @param configPath - Path to config.toml (defaults to ~/.onlyfence/config.toml)
- * @returns Parsed and validated AppConfig
- * @throws Error if the file does not exist or is invalid
+ * Read a config file with a friendly error on missing file.
  */
-export function loadConfig(configPath: string = CONFIG_PATH): AppConfig {
-  let content: string;
+function readConfigFile(configPath: string): string {
   try {
-    content = readFileSync(configPath, 'utf-8');
+    return readFileSync(configPath, 'utf-8');
   } catch (err: unknown) {
     if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
       throw new Error(
@@ -37,6 +33,17 @@ export function loadConfig(configPath: string = CONFIG_PATH): AppConfig {
     }
     throw new Error(`Failed to read config at "${configPath}": ${toErrorMessage(err)}`);
   }
+}
+
+/**
+ * Load and parse the OnlyFence configuration from disk.
+ *
+ * @param configPath - Path to config.toml (defaults to ~/.onlyfence/config.toml)
+ * @returns Parsed and validated AppConfig
+ * @throws Error if the file does not exist or is invalid
+ */
+export function loadConfig(configPath: string = CONFIG_PATH): AppConfig {
+  const content = readConfigFile(configPath);
 
   let parsed: unknown;
   try {
@@ -85,4 +92,29 @@ export function initConfig(configPath: string = CONFIG_PATH, force = false): str
   }
 
   return configPath;
+}
+
+/**
+ * Read the current config file, apply mutations, validate, and write back.
+ *
+ * Consolidates the read-parse-mutate-validate-serialize-write pattern
+ * shared by CLI `config set` and TUI policy editor.
+ *
+ * @param mutate - Callback to modify the raw parsed config object
+ * @param configPath - Path to config.toml (defaults to ~/.onlyfence/config.toml)
+ * @returns The validated AppConfig after mutation
+ * @throws Error if the file doesn't exist, mutation produces invalid config, or write fails
+ */
+export function updateConfigFile(
+  mutate: (raw: Record<string, unknown>) => void,
+  configPath: string = CONFIG_PATH,
+): AppConfig {
+  const raw = parse(readConfigFile(configPath)) as Record<string, unknown>;
+  mutate(raw);
+
+  const validated = validateConfig(raw);
+  const toml = serializeToToml(raw, CONFIG_FILE_HEADER);
+  writeFileSync(configPath, toml, 'utf-8');
+
+  return validated;
 }

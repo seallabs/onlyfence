@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import type Database from 'better-sqlite3';
 import type { AppConfig } from '../types/config.js';
 import type { OracleClient } from '../oracle/client.js';
+import type { TradeLog } from '../db/trade-log.js';
 import type { PolicyCheckRegistry } from '../policy/registry.js';
 import type { ChainAdapterFactory } from '../chain/factory.js';
 
@@ -15,6 +16,7 @@ import type { ChainAdapterFactory } from '../chain/factory.js';
 export interface TuiContextValue {
   readonly db: Database.Database;
   readonly oracle: OracleClient;
+  readonly tradeLog: TradeLog;
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
   readonly config: AppConfig;

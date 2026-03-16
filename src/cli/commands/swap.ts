@@ -3,7 +3,6 @@ import type { TradeIntent } from '../../types/intent.js';
 import type { PolicyContext } from '../../policy/context.js';
 import type { CheckResult } from '../../types/result.js';
 import type { AppComponents } from '../bootstrap.js';
-import { logTrade } from '../../db/trade-log.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { printJsonOutput } from '../output.js';
 import type { SuccessResponse, RejectionResponse, ErrorResponse } from '../output.js';
@@ -55,7 +54,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           return;
         }
 
-        const { db, config, oracle, policyRegistry, chainAdapterFactory } = components;
+        const { db, config, oracle, policyRegistry, chainAdapterFactory, tradeLog } = components;
         const chain = options.chain;
 
         try {
@@ -108,6 +107,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             config: chainConfig,
             db,
             oracle,
+            tradeLog,
             ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
           };
 
@@ -116,7 +116,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
 
           if (policyResult.status === 'reject') {
             // Log rejection
-            logTrade(db, {
+            tradeLog.logTrade({
               chain: intent.chain,
               wallet_address: intent.walletAddress,
               action: intent.action,
@@ -184,7 +184,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           });
 
           // Log approved trade
-          logTrade(db, {
+          tradeLog.logTrade({
             chain: intent.chain,
             wallet_address: intent.walletAddress,
             action: intent.action,

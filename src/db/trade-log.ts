@@ -46,15 +46,17 @@ export interface TradeRow {
 }
 
 /**
- * Trade log with cached prepared SQL statements for hot-path performance.
+ * Trade log with cached prepared SQL statements for performance.
  *
- * Preferred over the free functions when the same database connection
- * is used across many calls (e.g., inside a long-running process).
+ * This is the sole API for trade data access. Caching prepared statements
+ * avoids re-parsing SQL on every call, which matters for hot paths
+ * (e.g., policy checks during swap evaluation, TUI polling).
  */
 export class TradeLog {
   private readonly insertStmt: Statement;
   private readonly rolling24hStmt: Statement;
   private readonly recentStmt: Statement;
+  private readonly countStmt: Statement;
 
   constructor(db: Database.Database) {
     this.insertStmt = db.prepare(`
@@ -86,7 +88,11 @@ export class TradeLog {
       SELECT * FROM trades
       WHERE chain = ?
       ORDER BY created_at DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
+    `);
+
+    this.countStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM trades WHERE chain = ?
     `);
   }
 
@@ -134,103 +140,21 @@ export class TradeLog {
    *
    * @param chain - Chain identifier (e.g., "sui")
    * @param limit - Maximum number of trades to return
+   * @param offset - Number of trades to skip (for pagination)
    * @returns Array of trade rows
    */
-  getRecentTrades(chain: string, limit: number): TradeRow[] {
-    return this.recentStmt.all(chain, limit) as TradeRow[];
+  getRecentTrades(chain: string, limit: number, offset = 0): TradeRow[] {
+    return this.recentStmt.all(chain, limit, offset) as TradeRow[];
   }
-}
 
-/**
- * Insert a trade record into the database.
- *
- * Note: For hot paths with many calls on the same connection, prefer the
- * `TradeLog` class which caches prepared statements.
- *
- * @param db - SQLite database connection
- * @param trade - Trade record to insert
- * @returns The inserted row ID
- */
-export function logTrade(db: Database.Database, trade: TradeRecord): number {
-  const stmt = db.prepare(`
-    INSERT INTO trades (
-      chain, wallet_address, action, protocol, pool,
-      from_token, to_token, amount_in, amount_out,
-      value_usd, tx_digest, gas_cost,
-      policy_decision, rejection_reason, rejection_check
-    ) VALUES (
-      @chain, @wallet_address, @action, @protocol, @pool,
-      @from_token, @to_token, @amount_in, @amount_out,
-      @value_usd, @tx_digest, @gas_cost,
-      @policy_decision, @rejection_reason, @rejection_check
-    )
-  `);
-
-  const result = stmt.run({
-    chain: trade.chain,
-    wallet_address: trade.wallet_address,
-    action: trade.action,
-    protocol: trade.protocol ?? null,
-    pool: trade.pool ?? null,
-    from_token: trade.from_token,
-    to_token: trade.to_token,
-    amount_in: trade.amount_in,
-    amount_out: trade.amount_out ?? null,
-    value_usd: trade.value_usd ?? null,
-    tx_digest: trade.tx_digest ?? null,
-    gas_cost: trade.gas_cost ?? null,
-    policy_decision: trade.policy_decision,
-    rejection_reason: trade.rejection_reason ?? null,
-    rejection_check: trade.rejection_check ?? null,
-  });
-
-  return Number(result.lastInsertRowid);
-}
-
-/**
- * Get the rolling 24-hour approved trade volume in USD for a given chain.
- *
- * Note: For hot paths with many calls on the same connection, prefer the
- * `TradeLog` class which caches prepared statements.
- *
- * @param db - SQLite database connection
- * @param chain - Chain identifier (e.g., "sui")
- * @returns Total USD volume of approved trades in the last 24 hours (0 if none)
- */
-export function getRolling24hVolume(db: Database.Database, chain: string): number {
-  // Rows with NULL value_usd are intentionally excluded from the sum:
-  // COALESCE(SUM(value_usd), 0) skips NULLs, so trades where the oracle
-  // price was unavailable do not count toward the 24h volume.
-  const stmt = db.prepare(`
-    SELECT COALESCE(SUM(value_usd), 0) as total
-    FROM trades
-    WHERE chain = ?
-      AND created_at > datetime('now', '-24 hours')
-      AND policy_decision = 'approved'
-  `);
-
-  const row = stmt.get(chain) as { total: number } | undefined;
-  return row?.total ?? 0;
-}
-
-/**
- * Get recent trades for a given chain, ordered by most recent first.
- *
- * Note: For hot paths with many calls on the same connection, prefer the
- * `TradeLog` class which caches prepared statements.
- *
- * @param db - SQLite database connection
- * @param chain - Chain identifier (e.g., "sui")
- * @param limit - Maximum number of trades to return
- * @returns Array of trade rows
- */
-export function getRecentTrades(db: Database.Database, chain: string, limit: number): TradeRow[] {
-  const stmt = db.prepare(`
-    SELECT * FROM trades
-    WHERE chain = ?
-    ORDER BY created_at DESC
-    LIMIT ?
-  `);
-
-  return stmt.all(chain, limit) as TradeRow[];
+  /**
+   * Get the total number of trades for a given chain.
+   *
+   * @param chain - Chain identifier (e.g., "sui")
+   * @returns Total trade count
+   */
+  getTradeCount(chain: string): number {
+    const row = this.countStmt.get(chain) as { count: number } | undefined;
+    return row?.count ?? 0;
+  }
 }

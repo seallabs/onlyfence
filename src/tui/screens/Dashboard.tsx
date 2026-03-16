@@ -6,7 +6,6 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
 import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
-import { getRolling24hVolume, getRecentTrades } from '../../db/trade-log.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
 interface DashboardData {
@@ -32,14 +31,14 @@ const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
 const BAR_WIDTH = 40;
 
 export function Dashboard(): ReactElement {
-  const { db, config, activeChain, policyRegistry } = useTui();
+  const { db, config, activeChain, policyRegistry, tradeLog } = useTui();
 
   const chainConfig = config.chain[activeChain];
 
   const { data } = useAutoRefresh<DashboardData>(() => {
     const wallet = getPrimaryWallet(db, activeChain);
-    const volume = getRolling24hVolume(db, activeChain);
-    const trades = getRecentTrades(db, activeChain, 5);
+    const volume = tradeLog.getRolling24hVolume(activeChain);
+    const trades = tradeLog.getRecentTrades(activeChain, 5);
     return {
       walletAddress: wallet?.address ?? null,
       volume24h: volume,

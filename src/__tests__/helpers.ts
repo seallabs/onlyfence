@@ -2,6 +2,7 @@ import type { PolicyContext } from '../policy/context.js';
 import type { TradeIntent } from '../types/intent.js';
 import type { ChainConfig } from '../types/config.js';
 import type { OracleClient } from '../oracle/client.js';
+import { TradeLog } from '../db/trade-log.js';
 import type { TradeRecord } from '../db/trade-log.js';
 import type Database from 'better-sqlite3';
 
@@ -43,6 +44,7 @@ export function createContext(
     config,
     db,
     oracle: createMockOracle(),
+    tradeLog: new TradeLog(db),
     ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
   };
 }

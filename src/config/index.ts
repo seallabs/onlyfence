@@ -1,4 +1,4 @@
-export { loadConfig, initConfig, ONLYFENCE_DIR, CONFIG_PATH } from './loader.js';
+export { loadConfig, initConfig, updateConfigFile, ONLYFENCE_DIR, CONFIG_PATH } from './loader.js';
 export {
   validateConfig,
   createDefaultConfig,

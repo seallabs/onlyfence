@@ -43,7 +43,7 @@ export function App({ components }: AppProps): ReactElement {
     }
   }, []);
 
-  const { db, oracle, policyRegistry, chainAdapterFactory } = components;
+  const { db, oracle, tradeLog, policyRegistry, chainAdapterFactory } = components;
 
   // Global keyboard shortcuts — only active in navigate mode
   useInput(
@@ -76,6 +76,7 @@ export function App({ components }: AppProps): ReactElement {
     () => ({
       db,
       oracle,
+      tradeLog,
       policyRegistry,
       chainAdapterFactory,
       config,
@@ -88,6 +89,7 @@ export function App({ components }: AppProps): ReactElement {
     [
       db,
       oracle,
+      tradeLog,
       policyRegistry,
       chainAdapterFactory,
       config,

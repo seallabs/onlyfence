@@ -1,15 +1,11 @@
 import { Box, Text, useInput } from 'ink';
 import { useState, useEffect, useCallback } from 'react';
 import type { ReactElement } from 'react';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { parse } from 'smol-toml';
 import { theme } from '../theme.js';
 import { useTui } from '../context.js';
 import { TextInput } from '../components/TextInput.js';
-import { CONFIG_PATH } from '../../config/loader.js';
-import { validateConfig } from '../../config/schema.js';
-import { serializeToToml } from '../../config/serializer.js';
-import { setNestedValue, CONFIG_FILE_HEADER } from '../../config/utils.js';
+import { updateConfigFile } from '../../config/loader.js';
+import { setNestedValue } from '../../config/utils.js';
 import { toErrorMessage } from '../../utils/index.js';
 
 const FIELD_LABELS = [
@@ -123,18 +119,12 @@ export function PolicyConfig(): ReactElement {
         return;
       }
 
-      const content = readFileSync(CONFIG_PATH, 'utf-8');
-      const raw = parse(content) as Record<string, unknown>;
-
-      setNestedValue(raw, `chain.${activeChain}.rpc`, rpc);
-      setNestedValue(raw, `chain.${activeChain}.limits.max_single_trade`, parsedSingle);
-      setNestedValue(raw, `chain.${activeChain}.limits.max_24h_volume`, parsed24h);
-      setNestedValue(raw, `chain.${activeChain}.allowlist.tokens`, parsedTokens);
-
-      validateConfig(raw);
-
-      const toml = serializeToToml(raw, CONFIG_FILE_HEADER);
-      writeFileSync(CONFIG_PATH, toml, 'utf-8');
+      updateConfigFile((raw) => {
+        setNestedValue(raw, `chain.${activeChain}.rpc`, rpc);
+        setNestedValue(raw, `chain.${activeChain}.limits.max_single_trade`, parsedSingle);
+        setNestedValue(raw, `chain.${activeChain}.limits.max_24h_volume`, parsed24h);
+        setNestedValue(raw, `chain.${activeChain}.allowlist.tokens`, parsedTokens);
+      });
 
       reloadConfig();
       setDirty(false);

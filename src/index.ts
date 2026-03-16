@@ -33,6 +33,7 @@ export { TokenAllowlistCheck, SpendingLimitCheck } from './policy/checks/index.j
 export {
   loadConfig,
   initConfig,
+  updateConfigFile,
   ONLYFENCE_DIR,
   CONFIG_PATH,
   validateConfig,
@@ -47,7 +48,7 @@ export {
 // Database
 export { openDatabase, openMemoryDatabase, DB_PATH } from './db/index.js';
 export { runMigrations } from './db/index.js';
-export { TradeLog, logTrade, getRolling24hVolume, getRecentTrades } from './db/index.js';
+export { TradeLog } from './db/index.js';
 export type { TradeRecord, TradeRow } from './db/index.js';
 
 // Oracle
@@ -85,6 +86,13 @@ export type {
   KeystoreData,
   EncryptedKeystore,
   WalletRow,
+  SetupResult,
+} from './wallet/index.js';
+export {
+  ensureSetupEnvironment,
+  generateSetupWallet,
+  importSetupWallet,
+  saveSetupKeystore,
 } from './wallet/index.js';
 
 // CLI

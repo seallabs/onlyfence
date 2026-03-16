@@ -19,3 +19,11 @@ export { deriveSuiKeypair, publicKeyToSuiAddress, SUI_DERIVATION_PATH } from './
 export type { DerivedKeypair } from './derivation.js';
 
 export type { WalletInfo, KeystoreData, EncryptedKeystore, WalletRow } from './types.js';
+
+export {
+  ensureSetupEnvironment,
+  generateSetupWallet,
+  importSetupWallet,
+  saveSetupKeystore,
+} from './setup.js';
+export type { SetupResult } from './setup.js';
