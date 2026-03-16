@@ -43,6 +43,21 @@ const MIGRATIONS: readonly string[] = [
 
   `CREATE INDEX IF NOT EXISTS idx_trades_policy_decision
     ON trades(policy_decision)`,
+
+  `CREATE TABLE IF NOT EXISTS cli_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    command TEXT NOT NULL,
+    success INTEGER NOT NULL CHECK (success IN (0, 1)),
+    duration_ms INTEGER NOT NULL,
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+
+  `CREATE INDEX IF NOT EXISTS idx_cli_events_created
+    ON cli_events(created_at)`,
+
+  `CREATE INDEX IF NOT EXISTS idx_cli_events_command_created
+    ON cli_events(command, created_at)`,
 ];
 
 /**

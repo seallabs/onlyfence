@@ -83,6 +83,16 @@ export interface GlobalConfig {
 }
 
 /**
+ * Telemetry configuration for anonymous error reporting.
+ */
+export interface TelemetryConfig {
+  /** Whether remote error reporting is enabled. Defaults to false. */
+  readonly enabled: boolean;
+  /** Sentry DSN — required when enabled is true. */
+  readonly dsn?: string;
+}
+
+/**
  * Root application configuration parsed from ~/.onlyfence/config.toml.
  */
 export interface AppConfig {
@@ -91,4 +101,7 @@ export interface AppConfig {
 
   /** Global settings (post-MVP) */
   readonly global?: GlobalConfig;
+
+  /** Anonymous telemetry / error reporting */
+  readonly telemetry?: TelemetryConfig;
 }

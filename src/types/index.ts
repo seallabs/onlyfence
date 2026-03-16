@@ -21,4 +21,5 @@ export type {
   ChainConfig,
   GlobalConfig,
   AppConfig,
+  TelemetryConfig,
 } from './config.js';

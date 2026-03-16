@@ -21,6 +21,7 @@ export type {
   ChainConfig,
   GlobalConfig,
   AppConfig,
+  TelemetryConfig,
 } from './types/index.js';
 
 // Policy engine
@@ -48,8 +49,15 @@ export {
 // Database
 export { openDatabase, openMemoryDatabase, DB_PATH } from './db/index.js';
 export { runMigrations } from './db/index.js';
-export { TradeLog } from './db/index.js';
-export type { TradeRecord, TradeRow } from './db/index.js';
+export { TradeLog, CliEventLog } from './db/index.js';
+export type {
+  TradeRecord,
+  TradeRow,
+  CliEvent,
+  CliEventRow,
+  CommandStat,
+  CliStats,
+} from './db/index.js';
 
 // Oracle
 export type { OracleClient } from './oracle/index.js';
@@ -101,6 +109,18 @@ export { bootstrap, buildPolicyRegistry, buildChainAdapterFactory } from './cli/
 export type { AppComponents } from './cli/bootstrap.js';
 export type { SuccessResponse, RejectionResponse, ErrorResponse, CliOutput } from './cli/output.js';
 export { formatJsonOutput, printJsonOutput } from './cli/output.js';
+
+// Logger
+export { createLogger, getLogger, hasLogger } from './logger/index.js';
+export type { Logger, LoggerOptions } from './logger/index.js';
+
+// Telemetry
+export {
+  initSentry,
+  captureException,
+  closeSentry,
+  scrubSensitiveData,
+} from './telemetry/index.js';
 
 // Utils
 export { toErrorMessage } from './utils/index.js';
