@@ -11,9 +11,7 @@ import type {
  */
 export class ConfigAlreadyExistsError extends Error {
   constructor(configPath: string) {
-    super(
-      `Configuration file already exists at "${configPath}". ` + `Use --force to overwrite.`,
-    );
+    super(`Configuration file already exists at "${configPath}". ` + `Use --force to overwrite.`);
     this.name = 'ConfigAlreadyExistsError';
   }
 }

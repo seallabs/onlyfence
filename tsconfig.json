@@ -13,12 +13,13 @@
     "declarationMap": true,
     "sourceMap": true,
     "resolveJsonModule": true,
+    "jsx": "react-jsx",
     "isolatedModules": true,
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "exactOptionalPropertyTypes": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }

@@ -62,9 +62,7 @@ export function loadKeystore(password: string, path: string = DEFAULT_KEYSTORE_P
         `Keystore file not found at "${path}". Run "fence setup" to create a wallet.`,
       );
     }
-    throw new Error(
-      `Failed to read keystore at "${path}": ${toErrorMessage(err)}`,
-    );
+    throw new Error(`Failed to read keystore at "${path}": ${toErrorMessage(err)}`);
   }
 
   let encrypted: EncryptedKeystore;

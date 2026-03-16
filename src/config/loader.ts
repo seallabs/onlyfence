@@ -35,18 +35,14 @@ export function loadConfig(configPath: string = CONFIG_PATH): AppConfig {
           `Run "fence config init" to create a default configuration.`,
       );
     }
-    throw new Error(
-      `Failed to read config at "${configPath}": ${toErrorMessage(err)}`,
-    );
+    throw new Error(`Failed to read config at "${configPath}": ${toErrorMessage(err)}`);
   }
 
   let parsed: unknown;
   try {
     parsed = parse(content);
   } catch (err) {
-    throw new Error(
-      `Failed to parse TOML config at "${configPath}": ${toErrorMessage(err)}`,
-    );
+    throw new Error(`Failed to parse TOML config at "${configPath}": ${toErrorMessage(err)}`);
   }
 
   return validateConfig(parsed);
@@ -77,7 +73,11 @@ export function initConfig(configPath: string = CONFIG_PATH, force: boolean = fa
       // avoiding a TOCTOU race between existsSync and writeFileSync.
       writeFileSync(configPath, tomlContent, { encoding: 'utf-8', flag: 'wx' });
     } catch (err: unknown) {
-      if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'EEXIST') {
+      if (
+        err instanceof Error &&
+        'code' in err &&
+        (err as NodeJS.ErrnoException).code === 'EEXIST'
+      ) {
         throw new ConfigAlreadyExistsError(configPath);
       }
       throw err;

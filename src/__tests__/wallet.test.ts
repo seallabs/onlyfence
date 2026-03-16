@@ -175,7 +175,9 @@ describe('Wallet Manager', () => {
     });
 
     it('should throw on empty address', () => {
-      expect(() => registerWalletAddress(db, 'sui', '')).toThrow('Wallet address must not be empty');
+      expect(() => registerWalletAddress(db, 'sui', '')).toThrow(
+        'Wallet address must not be empty',
+      );
     });
   });
 
