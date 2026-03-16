@@ -1,12 +1,11 @@
 import { Box, Text, useInput } from 'ink';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
 import { theme } from '../theme.js';
 import { useTui } from '../context.js';
 import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
 import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
-import { getRecentTrades } from '../../db/trade-log.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
 const PAGE_SIZE = 15;
@@ -37,43 +36,50 @@ const COLUMNS: readonly Column<TradeRow>[] = [
 ];
 
 export function TradeHistory(): ReactElement {
-  const { db, activeChain, mode } = useTui();
+  const { activeChain, mode, tradeLog } = useTui();
 
+  const [page, setPage] = useState(0);
   const [selectedRow, setSelectedRow] = useState(0);
+  const pageRef = useRef(0);
 
-  const { data: trades } = useAutoRefresh(() => {
-    return getRecentTrades(db, activeChain, 200);
+  const { data, refresh } = useAutoRefresh(() => {
+    const trades = tradeLog.getRecentTrades(activeChain, PAGE_SIZE, pageRef.current * PAGE_SIZE);
+    const totalCount = tradeLog.getTradeCount(activeChain);
+    return { trades, totalCount };
   }, 5000);
+
+  const totalPages = Math.max(1, Math.ceil(data.totalCount / PAGE_SIZE));
 
   // Clamp selectedRow when trades list changes size
   useEffect(() => {
-    setSelectedRow((r) => Math.min(r, Math.max(0, trades.length - 1)));
-  }, [trades.length]);
+    setSelectedRow((r) => Math.min(r, Math.max(0, data.trades.length - 1)));
+  }, [data.trades.length]);
 
   useInput(
     (input, key) => {
       if (key.upArrow) {
         setSelectedRow((r) => Math.max(0, r - 1));
       } else if (key.downArrow) {
-        setSelectedRow((r) => Math.min(Math.max(0, trades.length - 1), r + 1));
+        setSelectedRow((r) => Math.min(Math.max(0, data.trades.length - 1), r + 1));
       } else if (input === 'k') {
-        setSelectedRow((r) => Math.max(0, r - PAGE_SIZE));
+        const next = Math.max(0, page - 1);
+        pageRef.current = next;
+        setPage(next);
+        setSelectedRow(0);
+        refresh();
       } else if (input === 'j') {
-        setSelectedRow((r) => Math.min(Math.max(0, trades.length - 1), r + PAGE_SIZE));
+        const next = Math.min(totalPages - 1, page + 1);
+        pageRef.current = next;
+        setPage(next);
+        setSelectedRow(0);
+        refresh();
       }
     },
     { isActive: mode === 'navigate' },
   );
 
-  // Calculate page from selected row
-  const page = Math.floor(selectedRow / PAGE_SIZE);
-  const pageStart = page * PAGE_SIZE;
-  const visible = trades.slice(pageStart, pageStart + PAGE_SIZE);
-  const highlightIndex = selectedRow - pageStart;
-  const totalPages = Math.max(1, Math.ceil(trades.length / PAGE_SIZE));
-
   // Detail view for selected trade
-  const selected = trades[selectedRow];
+  const selected = data.trades[selectedRow];
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -82,12 +88,12 @@ export function TradeHistory(): ReactElement {
           {'Trade History'}
         </Text>
         <Text color={theme.muted}>
-          {`  ─  ${trades.length} trades  ─  Chain: ${activeChain}  ─  Page ${page + 1}/${totalPages}`}
+          {`  ─  ${data.totalCount} trades  ─  Chain: ${activeChain}  ─  Page ${page + 1}/${totalPages}`}
         </Text>
       </Box>
 
       <Box flexDirection="column" borderStyle="single" borderColor={theme.shadow} paddingX={1}>
-        <Table columns={COLUMNS} data={visible} highlightRow={highlightIndex} />
+        <Table columns={COLUMNS} data={data.trades} highlightRow={selectedRow} />
       </Box>
 
       {/* Detail panel for selected trade */}

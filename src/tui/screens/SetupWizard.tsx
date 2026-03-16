@@ -1,11 +1,13 @@
 import { Box, Text, useInput } from 'ink';
 import { useState, useCallback } from 'react';
 import type { ReactElement } from 'react';
-import { openDatabase, DB_PATH } from '../../db/connection.js';
-import { initConfig, CONFIG_PATH } from '../../config/loader.js';
-import { ConfigAlreadyExistsError } from '../../config/schema.js';
-import { generateWallet, importFromMnemonic, saveKeystore } from '../../wallet/index.js';
-import type { KeystoreData } from '../../wallet/types.js';
+import {
+  ensureSetupEnvironment,
+  generateSetupWallet,
+  importSetupWallet,
+  saveSetupKeystore,
+} from '../../wallet/setup.js';
+import type { SetupResult } from '../../wallet/setup.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { theme } from '../theme.js';
 import { TextInput } from '../components/TextInput.js';
@@ -20,21 +22,13 @@ type SetupStep =
   | 'done'
   | 'error';
 
-interface WalletResult {
-  readonly mnemonic: string;
-  readonly address: string;
-  readonly chain: string;
-  readonly derivationPath: string | null;
-  readonly privateKeyHex: string;
-}
-
 interface SetupWizardProps {
   readonly onComplete: () => void;
 }
 
 export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
   const [step, setStep] = useState<SetupStep>('choose');
-  const [walletResult, setWalletResult] = useState<WalletResult | null>(null);
+  const [walletResult, setWalletResult] = useState<SetupResult | null>(null);
   const [mnemonicInput, setMnemonicInput] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -42,21 +36,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
 
   const doGenerate = useCallback(() => {
     try {
-      const db = openDatabase(DB_PATH);
-      try {
-        initConfig(CONFIG_PATH, false);
-      } catch (err: unknown) {
-        if (!(err instanceof ConfigAlreadyExistsError)) throw err;
-      }
-      const result = generateWallet(db);
-      const wallet = result.wallets[0];
-      setWalletResult({
-        mnemonic: result.mnemonic,
-        address: wallet?.address ?? '',
-        chain: wallet?.chain ?? 'sui',
-        derivationPath: wallet?.derivationPath ?? null,
-        privateKeyHex: result.privateKeyHex,
-      });
+      const db = ensureSetupEnvironment();
+      const result = generateSetupWallet(db);
+      setWalletResult(result);
       db.close();
       setStep('show_wallet');
     } catch (err: unknown) {
@@ -67,20 +49,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
 
   const doImport = useCallback(() => {
     try {
-      const db = openDatabase(DB_PATH);
-      try {
-        initConfig(CONFIG_PATH, false);
-      } catch (err: unknown) {
-        if (!(err instanceof ConfigAlreadyExistsError)) throw err;
-      }
-      const result = importFromMnemonic(db, mnemonicInput.trim());
-      setWalletResult({
-        mnemonic: mnemonicInput.trim(),
-        address: result.wallet.address,
-        chain: result.wallet.chain,
-        derivationPath: result.wallet.derivationPath,
-        privateKeyHex: result.privateKeyHex,
-      });
+      const db = ensureSetupEnvironment();
+      const result = importSetupWallet(db, mnemonicInput);
+      setWalletResult(result);
       db.close();
       setStep('show_wallet');
     } catch (err: unknown) {
@@ -106,11 +77,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       return;
     }
     try {
-      const keystoreData: KeystoreData = {
-        mnemonic: walletResult.mnemonic,
-        keys: { [walletResult.chain]: walletResult.privateKeyHex },
-      };
-      saveKeystore(keystoreData, password);
+      saveSetupKeystore(walletResult, password);
       setStep('done');
     } catch (err: unknown) {
       setErrorMessage(toErrorMessage(err));

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { openMemoryDatabase } from '../db/connection.js';
-import { logTrade } from '../db/trade-log.js';
+import { TradeLog } from '../db/trade-log.js';
 import { createIntent, createContext, insertTestWallet } from './helpers.js';
 import type { ChainConfig } from '../types/config.js';
 import type Database from 'better-sqlite3';
@@ -9,6 +9,7 @@ import type Database from 'better-sqlite3';
 describe('SpendingLimitCheck', () => {
   let check: SpendingLimitCheck;
   let db: Database.Database;
+  let tradeLog: TradeLog;
 
   const configWithLimits: ChainConfig = {
     rpc: 'https://rpc.example.com',
@@ -21,6 +22,7 @@ describe('SpendingLimitCheck', () => {
   beforeEach(() => {
     check = new SpendingLimitCheck();
     db = openMemoryDatabase();
+    tradeLog = new TradeLog(db);
     insertTestWallet(db, '0xabc');
   });
 
@@ -50,7 +52,7 @@ describe('SpendingLimitCheck', () => {
 
   it('should reject when trade pushes 24h volume over limit', async () => {
     // Insert prior approved trades summing to $400
-    logTrade(db, {
+    tradeLog.logTrade({
       chain: 'sui',
       wallet_address: '0xabc',
       action: 'swap',
@@ -95,7 +97,7 @@ describe('SpendingLimitCheck', () => {
 
   it('should not count rejected trades in 24h volume', async () => {
     // Insert a rejected trade (should not count)
-    logTrade(db, {
+    tradeLog.logTrade({
       chain: 'sui',
       wallet_address: '0xabc',
       action: 'swap',

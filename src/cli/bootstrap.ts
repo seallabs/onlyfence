@@ -4,6 +4,7 @@ import type { OracleClient } from '../oracle/client.js';
 import { openDatabase, DB_PATH } from '../db/connection.js';
 import { loadConfig, CONFIG_PATH } from '../config/loader.js';
 import { CoinGeckoOracle } from '../oracle/coingecko.js';
+import { TradeLog } from '../db/trade-log.js';
 import { PolicyCheckRegistry } from '../policy/registry.js';
 import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
 import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
@@ -17,6 +18,7 @@ export interface AppComponents {
   readonly db: Database.Database;
   readonly config: AppConfig;
   readonly oracle: OracleClient;
+  readonly tradeLog: TradeLog;
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
 }
@@ -39,10 +41,11 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const db = openDatabase(options?.dbPath ?? DB_PATH);
   const config = loadConfig(options?.configPath ?? CONFIG_PATH);
   const oracle = new CoinGeckoOracle();
+  const tradeLog = new TradeLog(db);
   const policyRegistry = buildPolicyRegistry(config);
   const chainAdapterFactory = buildChainAdapterFactory();
 
-  return { db, config, oracle, policyRegistry, chainAdapterFactory };
+  return { db, config, oracle, tradeLog, policyRegistry, chainAdapterFactory };
 }
 
 /**

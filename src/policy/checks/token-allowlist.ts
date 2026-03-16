@@ -14,6 +14,19 @@ export class TokenAllowlistCheck implements PolicyCheck {
   readonly name = 'token_allowlist';
   readonly description = 'Verifies that both trade tokens are in the chain allowlist';
 
+  private cache: { ref: readonly string[]; set: Set<string> } | null = null;
+
+  /**
+   * Get or build the uppercased token set, cached by token array reference.
+   * Cache invalidates automatically when config is reloaded (new array reference).
+   */
+  private getAllowedSet(tokens: readonly string[]): Set<string> {
+    if (this.cache?.ref !== tokens) {
+      this.cache = { ref: tokens, set: new Set(tokens.map((t) => t.toUpperCase())) };
+    }
+    return this.cache.set;
+  }
+
   evaluate(intent: TradeIntent, ctx: PolicyContext): Promise<CheckResult> {
     const allowlist = ctx.config.allowlist;
 
@@ -21,10 +34,7 @@ export class TokenAllowlistCheck implements PolicyCheck {
       return Promise.resolve({ status: 'pass' });
     }
 
-    // Note: The Set is rebuilt on each call because ctx.config may differ per
-    // invocation. For MVP-sized token lists this is acceptable. If performance
-    // becomes an issue with very large allowlists, consider caching per config identity.
-    const allowedTokens = new Set(allowlist.tokens.map((t) => t.toUpperCase()));
+    const allowedTokens = this.getAllowedSet(allowlist.tokens);
 
     const fromTokenUpper = intent.fromToken.toUpperCase();
     if (!allowedTokens.has(fromTokenUpper)) {

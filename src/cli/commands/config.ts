@@ -1,15 +1,6 @@
 import type { Command } from 'commander';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { parse } from 'smol-toml';
-import { loadConfig, initConfig, CONFIG_PATH } from '../../config/loader.js';
-import { validateConfig } from '../../config/schema.js';
-import { serializeToToml } from '../../config/serializer.js';
-import {
-  getNestedValue,
-  setNestedValue,
-  parseConfigValue,
-  CONFIG_FILE_HEADER,
-} from '../../config/utils.js';
+import { loadConfig, initConfig, updateConfigFile, CONFIG_PATH } from '../../config/loader.js';
+import { getNestedValue, setNestedValue, parseConfigValue } from '../../config/utils.js';
 import { toErrorMessage } from '../../utils/index.js';
 
 /**
@@ -67,27 +58,10 @@ export function registerConfigCommand(program: Command): void {
     .description('Set a configuration value (dot-notation key path)')
     .action((key: string, value: string) => {
       try {
-        // Read raw TOML, parse, modify, validate, write back
-        let content: string;
-        try {
-          content = readFileSync(CONFIG_PATH, 'utf-8');
-        } catch (err: unknown) {
-          throw new Error(
-            `Configuration file not found. Run "fence config init" first. ` +
-              `(${toErrorMessage(err)})`,
-          );
-        }
-
-        const raw = parse(content) as Record<string, unknown>;
         const parsedValue = parseConfigValue(value);
-        setNestedValue(raw, key, parsedValue);
-
-        // Validate the modified config to ensure it's still valid
-        validateConfig(raw);
-
-        // Write back as TOML
-        const tomlString = serializeToToml(raw, CONFIG_FILE_HEADER);
-        writeFileSync(CONFIG_PATH, tomlString, 'utf-8');
+        updateConfigFile((raw) => {
+          setNestedValue(raw, key, parsedValue);
+        });
 
         console.log(`Set ${key} = ${JSON.stringify(parsedValue)}`);
       } catch (err: unknown) {
