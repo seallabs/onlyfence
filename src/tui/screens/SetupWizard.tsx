@@ -8,6 +8,7 @@ import {
   saveSetupKeystore,
 } from '../../wallet/setup.js';
 import type { SetupResult } from '../../wallet/setup.js';
+import { MIN_PASSWORD_LENGTH } from '../../wallet/keystore.js';
 import { initConfig, updateConfigFile } from '../../config/loader.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { theme } from '../theme.js';
@@ -69,8 +70,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       setStep('password');
       return;
     }
-    if (password.length === 0) {
-      setErrorMessage('Password must not be empty.');
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setErrorMessage(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
       return;
     }
     if (walletResult === null) {
@@ -273,8 +274,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
               value={password}
               onChange={setPassword}
               onSubmit={() => {
-                if (password.length === 0) {
-                  setErrorMessage('Password must not be empty.');
+                if (password.length < MIN_PASSWORD_LENGTH) {
+                  setErrorMessage(
+                    `Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`,
+                  );
                   return;
                 }
                 setErrorMessage('');

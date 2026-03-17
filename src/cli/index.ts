@@ -44,9 +44,9 @@ function handleFatalError(err: unknown): void {
  * when a command that needs them is executed. This allows commands like
  * `fence config init` and `fence setup` to run without a pre-existing config.
  *
- * @returns Configured Commander program instance
+ * @returns Configured Commander program instance and a cleanup function
  */
-export function createProgram(): Command {
+export function createProgram(): { program: Command; cleanup: () => void } {
   const program = new Command();
 
   program
@@ -62,6 +62,11 @@ export function createProgram(): Command {
   function getComponents(): AppComponents {
     cachedComponents ??= bootstrap();
     return cachedComponents;
+  }
+
+  /** Close all resources. Safe to call multiple times. */
+  function cleanup(): void {
+    cachedComponents?.close();
   }
 
   // Initialize logger before any command runs
@@ -97,7 +102,7 @@ export function createProgram(): Command {
     await launchTui(components);
   });
 
-  return program;
+  return { program, cleanup };
 }
 
 // --- Global error handlers ---
@@ -115,11 +120,29 @@ if (isBackgroundCheckProcess()) {
   void runBackgroundCheck().finally(() => process.exit(0));
 } else {
   // Run CLI when this is the entry point
-  const program = createProgram();
-  program
+  const { program, cleanup } = createProgram();
+
+  // Ensure resources are released on signal (process.exit triggers 'exit' which runs cleanup)
+  function gracefulShutdown(code: number): void {
+    cleanup();
+    void closeSentry().finally(() => process.exit(code));
+  }
+
+  process.on('exit', cleanup);
+  process.on('SIGINT', () => {
+    gracefulShutdown(130);
+  });
+  process.on('SIGTERM', () => {
+    gracefulShutdown(143);
+  });
+
+  void program
     .parseAsync(process.argv)
     .catch((err: unknown) => {
       handleFatalError(err);
     })
-    .finally(() => closeSentry());
+    .finally(async () => {
+      cleanup();
+      await closeSentry();
+    });
 }

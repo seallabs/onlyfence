@@ -27,6 +27,9 @@ export interface AppComponents {
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
   readonly logger: Logger;
+
+  /** Close the database and release resources. Safe to call multiple times. */
+  close(): void;
 }
 
 /**
@@ -61,9 +64,31 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const policyRegistry = buildPolicyRegistry(config);
   const chainAdapterFactory = buildChainAdapterFactory();
 
+  let closed = false;
+
+  function close(): void {
+    if (closed) return;
+    closed = true;
+    try {
+      db.close();
+    } catch (err: unknown) {
+      logger.warn({ err }, 'Error closing database');
+    }
+  }
+
   logger.info('Bootstrap complete');
 
-  return { db, config, oracle, tradeLog, cliEventLog, policyRegistry, chainAdapterFactory, logger };
+  return {
+    db,
+    config,
+    oracle,
+    tradeLog,
+    cliEventLog,
+    policyRegistry,
+    chainAdapterFactory,
+    logger,
+    close,
+  };
 }
 
 /**

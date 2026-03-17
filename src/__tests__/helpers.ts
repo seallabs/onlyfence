@@ -43,7 +43,6 @@ export function createContext(
 ): PolicyContext {
   return {
     config,
-    db,
     oracle: createMockOracle(),
     tradeLog: new TradeLog(db),
     ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
