@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OnlyFence — The Guardrail Layer for Sui DeFi</title>
+    <!-- Google Fonts for typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Grain Overlay for tactile texture -->
+    <div class="grain-overlay"></div>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="logo">OnlyFence</div>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#telegram">Telegram Control</a>
+            <a href="#developer">Developer API</a>
+            <a href="#github" class="nav-link-dim">GitHub</a>
+            <a href="#install" class="btn btn-outline">Install &rarr;</a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="hero-content">
+            <h1>Give your AI Agents a life.<br><span class="highlight">Keep yours.</span></h1>
+            <p class="subtitle">The first high-performance guardrail layer for Sui DeFi.<br>Non-custodial, policy-driven, and built for the autonomous economy.</p>
+            <div class="hero-ctas">
+                <div class="code-box">
+                    <span class="prompt">$</span> <span class="typing" id="hero-typing">npm i -g @onlyfence/cli</span>
+                </div>
+                <a href="#demo" class="btn btn-primary">Watch the Telegram Demo</a>
+            </div>
+        </div>
+        <!-- Decorative blurred background element for tech/AI vibe -->
+        <div class="glow-bg"></div>
+    </header>
+
+    <!-- The Problem Section -->
+    <section class="section problem-section">
+        <div class="container">
+            <h2>"Agents have eyes, but no brakes."</h2>
+            <p class="lead-text">
+                Autonomous frameworks like OpenClaw are trading billions. But one prompt injection, one hallucination, or one bad trade can drain a raw private key in milliseconds. 
+            </p>
+            <p class="lead-text emphasis">
+                <strong>OnlyFence provides the missing brakes.</strong>
+            </p>
+        </div>
+    </section>
+
+    <!-- Core Features Section -->
+    <section id="features" class="section bento-grid">
+        <div class="container">
+            <div class="grid">
+                <!-- Card 1 -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-number">01 /</span>
+                        <h3>Policy Engine</h3>
+                    </div>
+                    <p>Define the rules. Set per-trade spending limits (USDC-equivalent) and rolling 24-hour volume caps. The "Policy Brain" evaluates every intent before your wallet signs.</p>
+                    <div class="terminal-block">
+                        onlyfence policy --max-trade 500
+                    </div>
+                </div>
+
+                <!-- Card 2 -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-number">02 /</span>
+                        <h3>Circuit Breakers</h3>
+                    </div>
+                    <p>Automatic halts. If your agent hits a loss threshold or suffers consecutive losing trades, the "Fence" slams shut. Auto-cooldown periods included.</p>
+                    <div class="terminal-block error-block">
+                        HALTED: Loss threshold reached. Cooldown: 4h
+                    </div>
+                </div>
+
+                <!-- Card 3 -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-number">03 /</span>
+                        <h3>Protocol Allowlists</h3>
+                    </div>
+                    <p>Restrict your agent to trusted venues. Only allow interactions with Bluefin, Navi, or Cetus. Keep them away from high-risk pools and unverified contracts.</p>
+                    <div class="terminal-block success-block">
+                        PROTOCOL ALLOWED: cetus_amm
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Telegram Integration Section -->
+    <section id="telegram" class="section split-section">
+        <div class="container split-layout">
+            <div class="split-text">
+                <h2>Talk to your agent. <br>Decide the big moves.</h2>
+                <p>Medium and high-value operations don't just happen. OnlyFence pings your Telegram. You have 60 seconds to Approve or Reject a position rebalance or a major swap.</p>
+                <ul class="feature-list">
+                    <li><strong>Real-time Trade Logs:</strong> See every intent, every rejection, every hit.</li>
+                    <li><strong>Emergency Stop:</strong> Text <code>/halt</code> to freeze all agent activity instantly.</li>
+                    <li><strong>Daily Digest:</strong> A 9 AM summary of what your agent earned (or learned) while you slept.</li>
+                </ul>
+            </div>
+            <div class="split-visual">
+                <div class="mock-telegram">
+                    <div class="telegram-header">OnlyFence Bot</div>
+                    <div class="telegram-body">
+                        <div class="msg bot-msg">
+                            <strong>APPROVAL REQUIRED</strong><br>
+                            Action: Swap 10,000 SUI to USDC<br>
+                            Venue: 7K Aggregator<br>
+                            Time Left: 58s
+                            <div class="msg-buttons">
+                                <button class="btn-approve">Approve</button>
+                                <button class="btn-reject">Reject</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Developer First Section -->
+    <section id="developer" class="section split-section reverse">
+        <div class="container split-layout">
+            <div class="split-text">
+                <h2>Native to your IDE. <br>Native to your Agent.</h2>
+                <p>Built for the modern AI workflow. Expose OnlyFence via MCP, or drop in the OpenClaw skill package.</p>
+                <ul class="feature-list">
+                    <li><strong>MCP Server:</strong> Fully compatible with Claude Code, Cursor, and Windsurf.</li>
+                    <li><strong>OpenClaw Skill:</strong> Pre-packaged skill for the world’s most popular agent framework.</li>
+                    <li><strong>CLI First:</strong> Everything is controllable via the terminal. Simple JSON outputs for parsing.</li>
+                </ul>
+            </div>
+            <div class="split-visual">
+                <div class="terminal-window">
+                    <div class="terminal-header">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                    </div>
+                    <div class="terminal-content">
+                        <span style="color:#888;"># Initialize your fenced wallet</span><br>
+                        <span style="color:#00ffcc;">$</span> onlyfence init --network mainnet<br>
+                        <span style="color:#888;"># Run the proxy for your agent</span><br>
+                        <span style="color:#00ffcc;">$</span> onlyfence proxy --port 8080<br>
+                        <span style="color:#00ffcc;">Starting Guardrail proxy on :8080...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Security Architecture Section -->
+    <section class="section security-section">
+        <div class="container text-center">
+            <h2>Non-Custodial. Non-Negotiable.</h2>
+            <p class="max-w-text">OnlyFence leverages the battle-tested infrastructure of <strong>7K DeFi</strong>. Execution nodes powered by 7K Aggregator. Position intelligence via 7K LP Pro. Private keys never leave your machine — the backend is a policy brain, not a custodian.</p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-top">
+                <div class="footer-logo">OnlyFence</div>
+                <div class="footer-quote">
+                    "Because the only thing more dangerous than a dumb bot is a smart one with your money."
+                </div>
+            </div>
+            <div class="footer-links">
+                <a href="#">Built on Sui</a>
+                <a href="#">GitHub</a>
+                <a href="#">Docs</a>
+                <a href="#">Security Audit</a>
+                <a href="#">7K Ecosystem</a>
+            </div>
+        </div>
+    </footer>
+
+    <script src="main.js"></script>
+</body>
+</html>
