@@ -178,6 +178,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             logger: log,
             ...(signer !== undefined ? { signer } : {}),
             watchOnly,
+            ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
           });
 
           // Map PipelineResult to CliOutput + exit code
@@ -220,7 +221,7 @@ function mapPipelineResultToOutput(result: PipelineResult, intent: SwapIntent): 
         toToken: intent.params.coinTypeOut,
         amountIn: intent.params.amountIn,
         amountOut: result.amountOut ?? result.preview?.expectedOutput ?? '0',
-        valueUsd: null,
+        valueUsd: result.tradeValueUsd ?? null,
         gasCost: result.gasUsed ?? 0,
         route: result.preview?.provider ?? 'unknown',
       };

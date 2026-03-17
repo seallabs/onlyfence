@@ -60,4 +60,5 @@ export interface PipelineResult {
   readonly error?: string;
   readonly rejectionCheck?: string;
   readonly rejectionReason?: string;
+  readonly tradeValueUsd?: number;
 }

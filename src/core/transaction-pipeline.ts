@@ -21,6 +21,7 @@ export interface PipelineInput {
   readonly logger: Logger;
   readonly signer?: Signer;
   readonly watchOnly: boolean;
+  readonly tradeValueUsd?: number;
 }
 
 /**
@@ -57,6 +58,7 @@ function buildTradeRecord(
     readonly amountOut?: string;
     readonly rejectionReason?: string;
     readonly rejectionCheck?: string;
+    readonly valueUsd?: number;
   },
 ): TradeRecord {
   const fields = extractTradeFields(intent);
@@ -73,6 +75,7 @@ function buildTradeRecord(
     ...(opts?.gasUsed !== undefined ? { gas_cost: opts.gasUsed } : {}),
     ...(opts?.rejectionReason !== undefined ? { rejection_reason: opts.rejectionReason } : {}),
     ...(opts?.rejectionCheck !== undefined ? { rejection_check: opts.rejectionCheck } : {}),
+    ...(opts?.valueUsd !== undefined ? { value_usd: opts.valueUsd } : {}),
   };
 }
 
@@ -127,6 +130,7 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
         buildTradeRecord(intent, 'rejected', {
           rejectionReason,
           rejectionCheck,
+          ...(input.tradeValueUsd !== undefined ? { valueUsd: input.tradeValueUsd } : {}),
         }),
       );
 
@@ -167,6 +171,7 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
         buildTradeRecord(intent, 'approved', {
           txDigest: 'watch-only',
           gasUsed: simResult.gasEstimate,
+          ...(input.tradeValueUsd !== undefined ? { valueUsd: input.tradeValueUsd } : {}),
         }),
       );
 
@@ -210,6 +215,7 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
         txDigest: txResult.txDigest,
         gasUsed: txResult.gasUsed,
         ...(amountOutStr !== undefined ? { amountOut: amountOutStr } : {}),
+        ...(input.tradeValueUsd !== undefined ? { valueUsd: input.tradeValueUsd } : {}),
       }),
     );
 
@@ -221,6 +227,7 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
       gasUsed: txResult.gasUsed,
       preview,
       ...(amountOutStr !== undefined ? { amountOut: amountOutStr } : {}),
+      ...(input.tradeValueUsd !== undefined ? { tradeValueUsd: input.tradeValueUsd } : {}),
     };
 
     return result;
