@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { Logger } from 'pino';
 import type { AppConfig } from '../types/config.js';
 import type { OracleClient } from '../oracle/client.js';
+import type { MevProtector } from '../core/mev-protector.js';
 import { openDatabase, DB_PATH } from '../db/connection.js';
 import { loadConfig, CONFIG_PATH } from '../config/loader.js';
 import { CoinGeckoOracle } from '../oracle/coingecko.js';
@@ -12,6 +13,9 @@ import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
 import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { ChainAdapterFactory } from '../chain/factory.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
+import { ActionBuilderRegistry } from '../core/action-builder.js';
+import { SuiSwapBuilder } from '../chain/sui/builder/swap-builder.js';
+import { SuiNoOpMev } from '../chain/sui/sui-mev.js';
 import { getLogger } from '../logger/index.js';
 import { initSentry } from '../telemetry/sentry.js';
 
@@ -26,6 +30,8 @@ export interface AppComponents {
   readonly cliEventLog: CliEventLog;
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
+  readonly actionBuilderRegistry: ActionBuilderRegistry;
+  readonly mevProtectors: Map<string, MevProtector>;
   readonly logger: Logger;
 }
 
@@ -60,10 +66,23 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const cliEventLog = new CliEventLog(db);
   const policyRegistry = buildPolicyRegistry(config);
   const chainAdapterFactory = buildChainAdapterFactory();
+  const actionBuilderRegistry = buildActionBuilderRegistry();
+  const mevProtectors = buildMevProtectors();
 
   logger.info('Bootstrap complete');
 
-  return { db, config, oracle, tradeLog, cliEventLog, policyRegistry, chainAdapterFactory, logger };
+  return {
+    db,
+    config,
+    oracle,
+    tradeLog,
+    cliEventLog,
+    policyRegistry,
+    chainAdapterFactory,
+    actionBuilderRegistry,
+    mevProtectors,
+    logger,
+  };
 }
 
 /**
@@ -97,4 +116,34 @@ export function buildChainAdapterFactory(): ChainAdapterFactory {
   const factory = new ChainAdapterFactory();
   factory.register(new SuiAdapter(process.env['SUI_RPC_URL'] ?? SUI_MAINNET_RPC));
   return factory;
+}
+
+/**
+ * Build an ActionBuilderRegistry with all supported builders registered.
+ *
+ * Uses factory registration so builders are created lazily per-intent,
+ * allowing intent-specific configuration (e.g., slippage).
+ *
+ * @returns ActionBuilderRegistry with SuiSwapBuilder factory registered
+ */
+export function buildActionBuilderRegistry(): ActionBuilderRegistry {
+  const registry = new ActionBuilderRegistry();
+
+  registry.registerFactory('sui', 'swap', '7k', (intent) => {
+    const slippageBps = intent.action === 'swap' ? intent.params.slippageBps : 100;
+    return new SuiSwapBuilder(slippageBps);
+  });
+
+  return registry;
+}
+
+/**
+ * Build a map of MEV protectors keyed by chain identifier.
+ *
+ * @returns Map of chain -> MevProtector
+ */
+export function buildMevProtectors(): Map<string, MevProtector> {
+  const protectors = new Map<string, MevProtector>();
+  protectors.set('sui', new SuiNoOpMev());
+  return protectors;
 }
