@@ -1,7 +1,7 @@
 /**
  * Service for resolving coin metadata (decimals, symbol) from remote APIs.
  *
- * Uses Noodles Finance API as the primary source with an in-memory cache.
+ * Uses Noodles Finance bulk coin-list API as the primary source with an in-memory cache.
  * Falls back to a caller-provided local decimals map for well-known tokens
  * when the API is unreachable or returns no data.
  */
@@ -22,28 +22,27 @@ export interface CoinMetadata {
 export interface CoinMetadataService {
   getDecimals(coinType: string, chain: string): Promise<number>;
   getMetadata(coinType: string, chain: string): Promise<CoinMetadata>;
+  prefetch(coinTypes: readonly string[], chain?: string): Promise<void>;
 }
 
 /**
- * Shape of the Noodles Finance coin-detail API response.
+ * Shape of the Noodles Finance coin-list API response.
  */
-interface NoodlesCoinDetailResponse {
+interface NoodlesCoinListResponse {
   readonly code: number;
-  readonly data?: {
-    readonly coin?: {
-      readonly symbol?: string;
-      readonly decimals?: number;
-      readonly coin_type?: string;
-    };
-  };
+  readonly data?: readonly {
+    readonly coin_type: string;
+    readonly symbol?: string;
+    readonly decimals: number;
+  }[];
 }
 
 /**
- * CoinMetadataService backed by the Noodles Finance API.
+ * CoinMetadataService backed by the Noodles Finance bulk coin-list API.
  *
  * Resolution order:
  * 1. In-memory cache
- * 2. Remote API call
+ * 2. Remote API call (bulk coin-list endpoint)
  * 3. Hardcoded fallback (from constructor-provided known decimals)
  *
  * Errors are never silenced: if all three sources fail, the error propagates.
@@ -51,17 +50,17 @@ interface NoodlesCoinDetailResponse {
 export class NoodlesCoinMetadataService implements CoinMetadataService {
   private readonly cache = new Map<string, CoinMetadata>();
   private readonly apiBaseUrl: string;
-  private readonly apiKey: string;
+  private readonly apiKey: string | undefined;
   private readonly knownDecimals: Readonly<Record<string, number>>;
 
   constructor(
-    apiKey: string,
     knownDecimals: Readonly<Record<string, number>> = {},
+    apiKey?: string,
     apiBaseUrl = 'https://api.noodles.fi',
   ) {
+    this.knownDecimals = knownDecimals;
     this.apiKey = apiKey;
     this.apiBaseUrl = apiBaseUrl;
-    this.knownDecimals = knownDecimals;
   }
 
   async getDecimals(coinType: string, chain = 'sui'): Promise<number> {
@@ -74,9 +73,13 @@ export class NoodlesCoinMetadataService implements CoinMetadataService {
     const cached = this.cache.get(coinType);
     if (cached !== undefined) return cached;
 
-    // 2. Try remote API
+    // 2. Try remote API (bulk endpoint with single coin)
     try {
-      const meta = await this.fetchFromApi(coinType, chain);
+      const results = await this.fetchBulk([coinType], chain);
+      const meta = results.find((r) => r.coinType === coinType);
+      if (meta === undefined) {
+        throw new Error(`Noodles API returned no data for "${coinType}"`);
+      }
       this.cache.set(coinType, meta);
       return meta;
     } catch (apiError: unknown) {
@@ -94,34 +97,54 @@ export class NoodlesCoinMetadataService implements CoinMetadataService {
     }
   }
 
-  private async fetchFromApi(coinType: string, chain: string): Promise<CoinMetadata> {
-    const url = new URL('/api/v1/partner/coin-detail', this.apiBaseUrl);
-    url.searchParams.set('coin_id', coinType);
+  async prefetch(coinTypes: readonly string[], chain = 'sui'): Promise<void> {
+    // Filter out already-cached types
+    const uncached = coinTypes.filter((ct) => !this.cache.has(ct));
+    if (uncached.length === 0) return;
 
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        'x-api-key': this.apiKey,
-        'x-chain': chain,
-      },
+    const results = await this.fetchBulk(uncached, chain);
+    for (const meta of results) {
+      this.cache.set(meta.coinType, meta);
+    }
+  }
+
+  private async fetchBulk(coinTypes: readonly string[], chain: string): Promise<CoinMetadata[]> {
+    const url = `${this.apiBaseUrl}/api/v1/partner/coin-list`;
+
+    const headers: Record<string, string> = {
+      'x-chain': chain,
+      'Content-Type': 'application/json',
+    };
+    if (this.apiKey !== undefined && this.apiKey !== '') {
+      headers['x-api-key'] = this.apiKey;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        pagination: { limit: coinTypes.length, offset: 0 },
+        filters: { coin_ids: coinTypes },
+      }),
     });
 
     if (!response.ok) {
       throw new Error(`Noodles API error: ${response.status} ${response.statusText}`);
     }
 
-    const json = (await response.json()) as NoodlesCoinDetailResponse;
-
-    const coinDecimals = json.data?.coin?.decimals;
-    if (json.code !== 200 || coinDecimals === undefined) {
-      throw new Error(`Noodles API returned no data for "${coinType}"`);
+    const json = (await response.json()) as NoodlesCoinListResponse;
+    const items = json.data;
+    if (json.code !== 200 || items === undefined) {
+      throw new Error('Noodles API returned unexpected response');
     }
 
-    return {
-      coinType,
-      symbol: json.data?.coin?.symbol ?? '',
-      decimals: coinDecimals,
-    };
+    return items
+      .filter((c) => typeof c.decimals === 'number')
+      .map((c) => ({
+        coinType: c.coin_type,
+        symbol: c.symbol ?? '',
+        decimals: c.decimals,
+      }));
   }
 
   private getHardcodedFallback(coinType: string): CoinMetadata | undefined {
