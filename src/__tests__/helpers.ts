@@ -20,7 +20,10 @@ export function createMockOracle(price: number = 1.0): OracleClient {
 /**
  * Create a SwapIntent with sensible defaults, overridable via partial.
  */
-export function createIntent(overrides?: Partial<SwapIntent>): SwapIntent {
+export function createIntent(
+  overrides?: Partial<SwapIntent> & { params?: Partial<SwapIntent['params']> },
+): SwapIntent {
+  const { params: paramOverrides, ...rest } = overrides ?? {};
   return {
     chain: 'sui',
     action: 'swap',
@@ -30,8 +33,9 @@ export function createIntent(overrides?: Partial<SwapIntent>): SwapIntent {
       coinTypeOut: '0xdba3::usdc::USDC',
       amountIn: '100000000',
       slippageBps: 100,
+      ...paramOverrides,
     },
-    ...overrides,
+    ...rest,
   };
 }
 

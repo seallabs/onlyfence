@@ -101,7 +101,7 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
     const best = preview.buildData as BestQuote;
 
     const tx = new Transaction();
-    const coinIn = coinWithBalance({ balance: BigInt(best.amountIn), type: best.coinTypeIn });
+    const coinIn = coinWithBalance({ balance: BigInt(best.amountIn), type: best.coinTypeIn })(tx);
     const coinOut = await this.metaAg.swap({
       quote: best.raw as Parameters<MetaAg['swap']>[0]['quote'],
       signer: intent.walletAddress,

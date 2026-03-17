@@ -50,7 +50,7 @@ function createSwapIntent(overrides?: Partial<SwapIntent['params']>): SwapIntent
 
 const mockPreview: ActionPreview = {
   description: 'Swap 100 SUI -> USDC',
-  expectedOutput: '98.12 USDC',
+  expectedOutput: '98120000',
   provider: '7k',
   priceImpact: 0.01,
   buildData: { tx: 'mock-build-data' },

@@ -27,7 +27,7 @@ vi.mock('@mysten/sui/transactions', () => ({
     transferObjects = mockTransferObjects;
     pure = { address: mockPureAddress };
   },
-  coinWithBalance: vi.fn().mockReturnValue('coin-in-arg'),
+  coinWithBalance: vi.fn().mockReturnValue(() => 'coin-in-arg'),
 }));
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports

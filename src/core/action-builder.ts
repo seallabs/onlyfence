@@ -63,7 +63,13 @@ export class ActionBuilderRegistry {
           `ActionBuilderRegistry: factory key "${key}" requires an intent to construct the builder`,
         );
       }
-      return factory(intent);
+      const built = factory(intent);
+      if (built.chain !== chain) {
+        throw new Error(
+          `ActionBuilderRegistry: factory-produced builder.chain "${built.chain}" does not match registered chain "${chain}"`,
+        );
+      }
+      return built;
     }
     throw new Error(`ActionBuilderRegistry: no builder registered for key "${key}"`);
   }
@@ -80,7 +86,13 @@ export class ActionBuilderRegistry {
             `ActionBuilderRegistry: factory key "${key}" requires an intent to construct the builder`,
           );
         }
-        return factory(intent);
+        const built = factory(intent);
+        if (built.chain !== chain) {
+          throw new Error(
+            `ActionBuilderRegistry: factory-produced builder.chain "${built.chain}" does not match registered chain "${chain}"`,
+          );
+        }
+        return built;
       }
     }
     throw new Error(`ActionBuilderRegistry: no builder registered for "${chain}:${action}"`);
