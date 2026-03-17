@@ -44,9 +44,25 @@ export interface ErrorResponse {
 }
 
 /**
+ * Simulated trade response (watch-only mode).
+ */
+export interface SimulatedResponse {
+  readonly status: 'simulated';
+  readonly chain: string;
+  readonly action: string;
+  readonly fromToken: string;
+  readonly toToken: string;
+  readonly amountIn: string;
+  readonly expectedOutput: string;
+  readonly provider: string;
+  readonly priceImpact?: number;
+  readonly gasEstimate: number;
+}
+
+/**
  * Union of all CLI output types.
  */
-export type CliOutput = SuccessResponse | RejectionResponse | ErrorResponse;
+export type CliOutput = SuccessResponse | RejectionResponse | ErrorResponse | SimulatedResponse;
 
 /**
  * Format a CLI output object as a JSON string for stdout.
