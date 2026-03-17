@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/node';
 import type { TelemetryConfig } from '../types/config.js';
 import { scrubSensitiveData } from './scrubber.js';
+import { CURRENT_VERSION } from '../update/index.js';
 
 let initialized = false;
 
@@ -22,7 +23,7 @@ export function initSentry(config: TelemetryConfig): void {
     },
     sendDefaultPii: false,
     environment: 'production',
-    release: 'onlyfence@0.1.0',
+    release: `onlyfence@${CURRENT_VERSION}`,
   });
 
   initialized = true;

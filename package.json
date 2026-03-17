@@ -9,6 +9,7 @@
     "fence": "dist/cli/index.js"
   },
   "scripts": {
+    "prebuild": "node scripts/sync-version.js",
     "build": "tsc",
     "start": "tsx src/cli/index.ts",
     "dev": "tsx src/cli/index.ts",
@@ -45,7 +46,7 @@
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.0",
+    "typescript-eslint": "^8.57.1",
     "vitest": "^4.1.0"
   },
   "lint-staged": {

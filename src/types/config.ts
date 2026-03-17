@@ -93,6 +93,14 @@ export interface TelemetryConfig {
 }
 
 /**
+ * Update configuration for automatic version checking and installation.
+ */
+export interface UpdateConfig {
+  /** Whether to silently install updates (true) or ask the user first (false) */
+  readonly auto_install: boolean;
+}
+
+/**
  * Root application configuration parsed from ~/.onlyfence/config.toml.
  */
 export interface AppConfig {
@@ -104,4 +112,7 @@ export interface AppConfig {
 
   /** Anonymous telemetry / error reporting */
   readonly telemetry?: TelemetryConfig;
+
+  /** Automatic update settings */
+  readonly update?: UpdateConfig;
 }

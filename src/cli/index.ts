@@ -10,11 +10,20 @@ import {
   registerConfigCommand,
   registerWalletCommand,
   registerStatsCommand,
+  registerUpdateCommand,
 } from './commands/index.js';
 import { withTiming } from './middleware.js';
 import { toErrorMessage } from '../utils/index.js';
 import { createLogger, getLogger, hasLogger } from '../logger/index.js';
 import { captureException, closeSentry } from '../telemetry/index.js';
+import {
+  CURRENT_VERSION,
+  createUpdateChecker,
+  createUpdateInstaller,
+  registerUpdateCheckHook,
+  isBackgroundCheckProcess,
+  runBackgroundCheck,
+} from '../update/index.js';
 
 /**
  * Log, report, and print a fatal error. Used by all global error handlers.
@@ -43,7 +52,7 @@ export function createProgram(): Command {
   program
     .name('fence')
     .description('OnlyFence — AI trading agent guardrails')
-    .version('0.1.0')
+    .version(CURRENT_VERSION)
     .option('--verbose', 'Enable debug logging to stderr', false);
 
   // Lazy bootstrap: only initialize components when needed.
@@ -66,6 +75,11 @@ export function createProgram(): Command {
   // Automatic command timing (Phase 2)
   withTiming(program, () => cachedComponents?.cliEventLog);
 
+  // Non-blocking update check: reads cache (~1ms), spawns background
+  // refresh when stale. Never blocks the main command.
+  const checker = createUpdateChecker();
+  registerUpdateCheckHook(program, checker, CURRENT_VERSION);
+
   // Register commands
   registerSetupCommand(program);
   registerSwapCommand(program, getComponents);
@@ -73,6 +87,7 @@ export function createProgram(): Command {
   registerConfigCommand(program);
   registerWalletCommand(program, getComponents);
   registerStatsCommand(program, getComponents);
+  registerUpdateCommand(program, checker, createUpdateInstaller(), CURRENT_VERSION);
 
   // Default action: launch interactive TUI when no subcommand is given.
   // If bootstrap fails (first run), the TUI shows a setup wizard.
@@ -95,11 +110,16 @@ process.on('unhandledRejection', (reason: unknown) => {
   handleFatalError(reason);
 });
 
-// Run CLI when this is the entry point
-const program = createProgram();
-program
-  .parseAsync(process.argv)
-  .catch((err: unknown) => {
-    handleFatalError(err);
-  })
-  .finally(() => closeSentry());
+// Handle background update check process — exit early, no Commander parsing.
+if (isBackgroundCheckProcess()) {
+  void runBackgroundCheck().finally(() => process.exit(0));
+} else {
+  // Run CLI when this is the entry point
+  const program = createProgram();
+  program
+    .parseAsync(process.argv)
+    .catch((err: unknown) => {
+      handleFatalError(err);
+    })
+    .finally(() => closeSentry());
+}

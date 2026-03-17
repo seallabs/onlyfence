@@ -8,6 +8,7 @@ import {
   saveSetupKeystore,
 } from '../../wallet/setup.js';
 import type { SetupResult } from '../../wallet/setup.js';
+import { initConfig, updateConfigFile } from '../../config/loader.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { theme } from '../theme.js';
 import { TextInput } from '../components/TextInput.js';
@@ -19,6 +20,7 @@ type SetupStep =
   | 'show_wallet'
   | 'password'
   | 'confirm_password'
+  | 'update_preference'
   | 'done'
   | 'error';
 
@@ -78,7 +80,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
     }
     try {
       saveSetupKeystore(walletResult, password);
-      setStep('done');
+      setStep('update_preference');
     } catch (err: unknown) {
       setErrorMessage(toErrorMessage(err));
       setStep('error');
@@ -106,6 +108,38 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
     },
     { isActive: step === 'show_wallet' },
   );
+
+  // --- Step: update_preference (y/n) ---
+  useInput(
+    (input) => {
+      if (input === 'y' || input === 'Y') {
+        saveUpdatePreference(true);
+      } else if (input === 'n' || input === 'N') {
+        saveUpdatePreference(false);
+      }
+    },
+    { isActive: step === 'update_preference' },
+  );
+
+  function saveUpdatePreference(autoInstall: boolean): void {
+    try {
+      // Ensure config.toml exists before mutating it.
+      // initConfig is safe to call if the file already exists — it throws
+      // ConfigAlreadyExistsError which we intentionally ignore here.
+      try {
+        initConfig();
+      } catch {
+        // Config already exists — expected, continue to update.
+      }
+      updateConfigFile((raw) => {
+        raw['update'] = { auto_install: autoInstall };
+      });
+      setStep('done');
+    } catch (err: unknown) {
+      setErrorMessage(toErrorMessage(err));
+      setStep('error');
+    }
+  }
 
   // --- Step: done (press Enter to continue) ---
   useInput(
@@ -272,6 +306,39 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
           </Box>
           <Box marginTop={1}>
             <Text color={theme.muted}>{'Enter to confirm'}</Text>
+          </Box>
+        </Box>
+      )}
+
+      {/* Step: update_preference */}
+      {step === 'update_preference' && (
+        <Box flexDirection="column">
+          <Text color={theme.eyes}>{'Enable automatic updates?'}</Text>
+          <Text color={theme.eyes}>
+            {'OnlyFence will check for new versions and install them automatically.'}
+          </Text>
+
+          <Box marginTop={1}>
+            <Text color={theme.body}>{'  Press '}</Text>
+            <Text color={theme.success} bold>
+              {'y'}
+            </Text>
+            <Text color={theme.body}>{' to enable auto-update'}</Text>
+          </Box>
+          <Box>
+            <Text color={theme.body}>{'  Press '}</Text>
+            <Text color={theme.highlight} bold>
+              {'n'}
+            </Text>
+            <Text color={theme.body}>{' to be asked before each update (default)'}</Text>
+          </Box>
+          {errorMessage.length > 0 && (
+            <Box marginTop={1}>
+              <Text color={theme.error}>{errorMessage}</Text>
+            </Box>
+          )}
+          <Box marginTop={1}>
+            <Text color={theme.muted}>{'You can change this later in config.toml [update]'}</Text>
           </Box>
         </Box>
       )}
