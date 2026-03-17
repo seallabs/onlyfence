@@ -31,14 +31,14 @@ const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
 const BAR_WIDTH = 40;
 
 export function Dashboard(): ReactElement {
-  const { db, config, activeChain, policyRegistry, tradeLog } = useTui();
+  const { db, config, activeChain, activeChainId, policyRegistry, tradeLog } = useTui();
 
   const chainConfig = config.chain[activeChain];
 
   const { data } = useAutoRefresh<DashboardData>(() => {
-    const wallet = getPrimaryWallet(db, activeChain);
-    const volume = tradeLog.getRolling24hVolume(activeChain);
-    const trades = tradeLog.getRecentTrades(activeChain, 5);
+    const wallet = getPrimaryWallet(db, activeChainId);
+    const volume = tradeLog.getRolling24hVolume(activeChainId);
+    const trades = tradeLog.getRecentTrades(activeChainId, 5);
     return {
       walletAddress: wallet?.address ?? null,
       volume24h: volume,

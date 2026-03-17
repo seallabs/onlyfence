@@ -4,6 +4,7 @@ import { initConfig, CONFIG_PATH } from '../config/loader.js';
 import { ConfigAlreadyExistsError } from '../config/schema.js';
 import { generateWallet, importFromMnemonic } from './manager.js';
 import { saveKeystore } from './keystore.js';
+import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import type { KeystoreData } from './types.js';
 
 /**
@@ -46,7 +47,7 @@ export function generateSetupWallet(db: Database.Database): SetupResult {
   return {
     mnemonic: result.mnemonic,
     address: wallet?.address ?? '',
-    chain: wallet?.chain ?? 'sui',
+    chain: wallet?.chain ?? SUI_CHAIN_ID,
     derivationPath: wallet?.derivationPath ?? null,
     privateKeyHex: result.privateKeyHex,
   };

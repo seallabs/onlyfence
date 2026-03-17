@@ -3,6 +3,10 @@ import type Database from 'better-sqlite3';
 /**
  * SQL statements for creating the OnlyFence database schema.
  * Each migration is idempotent (uses IF NOT EXISTS).
+ *
+ * Chain values use CAIP-2 format (e.g., "sui:mainnet", "eip155:1").
+ * Token coin types are fully-qualified on-chain identifiers
+ * (e.g., "0x2::sui::SUI" for Sui Move coin types).
  */
 const MIGRATIONS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS wallets (
@@ -31,6 +35,8 @@ const MIGRATIONS: readonly string[] = [
     policy_decision TEXT NOT NULL CHECK (policy_decision IN ('approved', 'rejected')),
     rejection_reason TEXT,
     rejection_check TEXT,
+    from_coin_type TEXT,
+    to_coin_type TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (wallet_address) REFERENCES wallets(address)
   )`,

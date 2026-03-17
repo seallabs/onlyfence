@@ -70,7 +70,17 @@ export type { CoinGeckoOracleConfig } from './oracle/index.js';
 // Chain adapter
 export type { ChainAdapter } from './chain/index.js';
 export { ChainAdapterFactory } from './chain/index.js';
-export { SuiAdapter, SUI_TOKEN_MAP, resolveTokenAddress, isKnownToken } from './chain/index.js';
+export {
+  SuiAdapter,
+  SUI_CHAIN_ID,
+  SUI_TOKEN_MAP,
+  resolveTokenAddress,
+  isKnownToken,
+  coinTypeToSymbol,
+} from './chain/index.js';
+
+// CAIP utilities
+export { formatCAIP19 } from './utils/caip.js';
 
 // Wallet
 export {

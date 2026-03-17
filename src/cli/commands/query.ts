@@ -81,15 +81,16 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
       }
 
       const { db, chainAdapterFactory } = components;
-      const chain = options.chain;
+      const chainAlias = options.chain;
 
       try {
-        const wallet = getPrimaryWallet(db, chain);
+        const adapter = chainAdapterFactory.get(chainAlias);
+        const wallet = getPrimaryWallet(db, adapter.chainId);
         if (wallet === null) {
-          throw new Error(`No primary wallet found for chain "${chain}". Run "fence setup" first.`);
+          throw new Error(
+            `No primary wallet found for chain "${chainAlias}". Run "fence setup" first.`,
+          );
         }
-
-        const adapter = chainAdapterFactory.get(chain);
         const balanceResult = await adapter.getBalance(wallet.address);
 
         if (options.output === 'json') {
@@ -105,7 +106,7 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
           console.log(JSON.stringify(serializable, null, 2));
         } else {
           console.log(`Wallet: ${balanceResult.address}`);
-          console.log(`Chain:  ${chain}`);
+          console.log(`Chain:  ${chainAlias}`);
           console.log('');
           console.log('Token          Amount               Decimals');
           console.log('─────          ──────               ────────');

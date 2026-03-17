@@ -19,8 +19,12 @@ import type {
  * This is currently a placeholder — all methods throw "not implemented" errors.
  * The structure is ready for drop-in implementation of each method.
  */
+/** CAIP-2 chain identifier for Sui mainnet. */
+export const SUI_CHAIN_ID = 'sui:mainnet' as const;
+
 export class SuiAdapter implements ChainAdapter {
   readonly chain = 'sui' as const;
+  readonly chainId = SUI_CHAIN_ID;
 
   // TODO: Add these fields when implementing:
   // private readonly suiClient: SuiClient;

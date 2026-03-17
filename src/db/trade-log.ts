@@ -20,6 +20,10 @@ export interface TradeRecord {
   readonly policy_decision: 'approved' | 'rejected';
   readonly rejection_reason?: string;
   readonly rejection_check?: string;
+  /** Fully-qualified on-chain coin type for fromToken (e.g., "0x2::sui::SUI") */
+  readonly from_coin_type?: string;
+  /** Fully-qualified on-chain coin type for toToken */
+  readonly to_coin_type?: string;
 }
 
 /**
@@ -42,6 +46,8 @@ export interface TradeRow {
   readonly policy_decision: string;
   readonly rejection_reason: string | null;
   readonly rejection_check: string | null;
+  readonly from_coin_type: string | null;
+  readonly to_coin_type: string | null;
   readonly created_at: string;
 }
 
@@ -64,12 +70,14 @@ export class TradeLog {
         chain, wallet_address, action, protocol, pool,
         from_token, to_token, amount_in, amount_out,
         value_usd, tx_digest, gas_cost,
-        policy_decision, rejection_reason, rejection_check
+        policy_decision, rejection_reason, rejection_check,
+        from_coin_type, to_coin_type
       ) VALUES (
         @chain, @wallet_address, @action, @protocol, @pool,
         @from_token, @to_token, @amount_in, @amount_out,
         @value_usd, @tx_digest, @gas_cost,
-        @policy_decision, @rejection_reason, @rejection_check
+        @policy_decision, @rejection_reason, @rejection_check,
+        @from_coin_type, @to_coin_type
       )
     `);
 
@@ -119,6 +127,8 @@ export class TradeLog {
       policy_decision: trade.policy_decision,
       rejection_reason: trade.rejection_reason ?? null,
       rejection_check: trade.rejection_check ?? null,
+      from_coin_type: trade.from_coin_type ?? null,
+      to_coin_type: trade.to_coin_type ?? null,
     });
 
     return Number(result.lastInsertRowid);
@@ -127,7 +137,7 @@ export class TradeLog {
   /**
    * Get the rolling 24-hour approved trade volume in USD for a given chain.
    *
-   * @param chain - Chain identifier (e.g., "sui")
+   * @param chain - CAIP-2 chain identifier (e.g., "sui:mainnet")
    * @returns Total USD volume of approved trades in the last 24 hours (0 if none)
    */
   getRolling24hVolume(chain: string): number {
@@ -138,7 +148,7 @@ export class TradeLog {
   /**
    * Get recent trades for a given chain, ordered by most recent first.
    *
-   * @param chain - Chain identifier (e.g., "sui")
+   * @param chain - CAIP-2 chain identifier (e.g., "sui:mainnet")
    * @param limit - Maximum number of trades to return
    * @param offset - Number of trades to skip (for pagination)
    * @returns Array of trade rows
@@ -150,7 +160,7 @@ export class TradeLog {
   /**
    * Get the total number of trades for a given chain.
    *
-   * @param chain - Chain identifier (e.g., "sui")
+   * @param chain - CAIP-2 chain identifier (e.g., "sui:mainnet")
    * @returns Total trade count
    */
   getTradeCount(chain: string): number {
