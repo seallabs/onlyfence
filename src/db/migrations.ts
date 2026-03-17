@@ -18,7 +18,7 @@ const MIGRATIONS: readonly string[] = [
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     chain TEXT NOT NULL,
     wallet_address TEXT NOT NULL,
-    action TEXT NOT NULL CHECK (action IN ('swap', 'lp_deposit', 'lp_withdraw')),
+    action TEXT NOT NULL CHECK (action IN ('swap', 'supply', 'lp_deposit', 'lp_withdraw')),
     protocol TEXT,
     pool TEXT,
     from_token TEXT NOT NULL,
@@ -77,4 +77,15 @@ export function runMigrations(db: Database.Database): void {
   });
 
   runAll();
+
+  // ALTER TABLE migration — SQLite lacks IF NOT EXISTS for columns
+  try {
+    db.exec('ALTER TABLE wallets ADD COLUMN is_watch_only INTEGER NOT NULL DEFAULT 0');
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes('duplicate column name')) {
+      // Column already exists — safe to ignore
+    } else {
+      throw err;
+    }
+  }
 }
