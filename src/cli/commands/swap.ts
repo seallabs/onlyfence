@@ -1,27 +1,33 @@
 import type { Command } from 'commander';
-import type { SwapIntent } from '../../core/action-types.js';
+import type { SwapIntent, PipelineResult } from '../../core/action-types.js';
 import type { PolicyContext } from '../../policy/context.js';
-import type { CheckResult } from '../../types/result.js';
 import type { AppComponents } from '../bootstrap.js';
+import type {
+  SuccessResponse,
+  RejectionResponse,
+  ErrorResponse,
+  SimulatedResponse,
+  CliOutput,
+} from '../output.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { printJsonOutput } from '../output.js';
-import type { RejectionResponse, ErrorResponse } from '../output.js';
 import { toErrorMessage } from '../../utils/index.js';
-import { REJECTED_BY_KEY } from '../../policy/check.js';
+import { resolveTokenAddress } from '../../chain/sui/tokens.js';
+import { resolveSuiSigner } from '../../wallet/signer.js';
+import { executePipeline } from '../../core/transaction-pipeline.js';
+import { NoOpMevProtector } from '../../core/mev-protector.js';
 
 /**
  * Register the `fence swap` command on the given program.
  *
- * Flow per spec section 3:
- * 1. Parse args into TradeIntent
- * 2. Load wallet for chain
- * 3. Create PolicyContext
- * 4. Resolve USD price via oracle
- * 5. Run policy pipeline
- * 6. If rejected: output rejection JSON and exit
- * 7. If approved: call chain adapter for quote, simulate, sign, submit
- * 8. Log trade to SQLite
- * 9. Output success JSON
+ * Flow:
+ * 1. Parse args into SwapIntent
+ * 2. Load wallet for chain, check watch-only
+ * 3. Resolve token symbols to coin types
+ * 4. Fetch oracle price, build PolicyContext
+ * 5. Resolve signer (unless watch-only)
+ * 6. Call executePipeline
+ * 7. Map PipelineResult to CliOutput + exit code
  */
 export function registerSwapCommand(program: Command, getComponents: () => AppComponents): void {
   program
@@ -29,6 +35,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
     .description('Execute a swap with policy enforcement')
     .option('-s, --slippage <percent>', 'Slippage tolerance in percent', '0.5')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-p, --password <password>', 'Keystore password for signing')
     .option('-o, --output <format>', 'Output format (json)', 'json')
     .action(
       async (
@@ -38,6 +45,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
         options: {
           slippage: string;
           chain: string;
+          password?: string;
           output: string;
         },
       ) => {
@@ -54,7 +62,17 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           return;
         }
 
-        const { db, config, oracle, policyRegistry, tradeLog, logger } = components;
+        const {
+          db,
+          config,
+          oracle,
+          policyRegistry,
+          tradeLog,
+          chainAdapterFactory,
+          actionBuilderRegistry,
+          mevProtectors,
+          logger,
+        } = components;
         const chain = options.chain;
         const log = logger.child({ command: 'swap' });
 
@@ -68,7 +86,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             );
           }
 
-          // Parse amount to bigint
+          // Parse amount
           const amount = parseBigIntAmount(amountStr);
 
           // Get wallet address
@@ -79,7 +97,19 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             );
           }
 
-          log.info({ fromToken, toToken, amount: amountStr, chain }, 'Swap command invoked');
+          const watchOnly = wallet.isWatchOnly;
+
+          log.info(
+            { fromToken, toToken, amount: amountStr, chain, watchOnly },
+            'Swap command invoked',
+          );
+
+          // Resolve token symbols to coin types
+          const coinTypeIn = resolveTokenAddress(fromToken.toUpperCase());
+          const coinTypeOut = resolveTokenAddress(toToken.toUpperCase());
+
+          // Build slippage in basis points
+          const slippageBps = Math.round(parseFloat(options.slippage) * 100);
 
           // Build SwapIntent
           const intent: SwapIntent = {
@@ -87,23 +117,22 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             action: 'swap',
             walletAddress: wallet.address,
             params: {
-              coinTypeIn: fromToken.toUpperCase(),
-              coinTypeOut: toToken.toUpperCase(),
+              coinTypeIn,
+              coinTypeOut,
               amountIn: amount.toString(),
-              slippageBps: Math.round(parseFloat(options.slippage) * 100),
+              slippageBps,
             },
           };
 
           // Resolve USD price from oracle (handle failure per spec section 10)
           let tradeValueUsd: number | undefined;
           try {
-            const price = await oracle.getPrice(intent.params.coinTypeIn);
+            const price = await oracle.getPrice(fromToken.toUpperCase());
             tradeValueUsd = Number(BigInt(intent.params.amountIn)) * price;
           } catch (err: unknown) {
-            console.warn(
-              `Warning: Oracle price unavailable for ${intent.params.coinTypeIn}: ` +
-                `${toErrorMessage(err)}. ` +
-                `USD spending limits will not be enforced.`,
+            log.warn(
+              { token: fromToken, error: toErrorMessage(err) },
+              'Oracle price unavailable; USD spending limits will not be enforced',
             );
             tradeValueUsd = undefined;
           }
@@ -117,56 +146,36 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
           };
 
-          // Run policy pipeline
-          const policyResult: CheckResult = await policyRegistry.evaluateAll(intent, policyCtx);
+          // Resolve signer if not watch-only
+          const signer = watchOnly ? undefined : resolveSuiSigner(options.password);
 
-          if (policyResult.status === 'reject') {
-            log.info({ reason: policyResult.reason }, 'Trade rejected by policy');
-            // Log rejection
-            tradeLog.logTrade({
-              chain: intent.chain,
-              wallet_address: intent.walletAddress,
-              action: intent.action,
-              from_token: intent.params.coinTypeIn,
-              to_token: intent.params.coinTypeOut,
-              amount_in: intent.params.amountIn,
-              ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
-              policy_decision: 'rejected',
-              ...(policyResult.reason !== undefined
-                ? { rejection_reason: policyResult.reason }
-                : {}),
-              ...(policyResult.metadata?.[REJECTED_BY_KEY] !== undefined
-                ? {
-                    rejection_check:
-                      typeof policyResult.metadata['rejectedBy'] === 'string'
-                        ? policyResult.metadata['rejectedBy']
-                        : 'unknown',
-                  }
-                : {}),
-            });
+          // Get builder from registry
+          const builder = actionBuilderRegistry.getDefault(chain, 'swap', intent);
 
-            const rejectionOutput: RejectionResponse = {
-              status: 'rejected',
-              chain: intent.chain,
-              action: intent.action,
-              check:
-                typeof policyResult.metadata?.[REJECTED_BY_KEY] === 'string'
-                  ? policyResult.metadata[REJECTED_BY_KEY]
-                  : 'unknown',
-              reason: policyResult.reason ?? 'policy_rejected',
-              detail: policyResult.detail ?? 'Trade rejected by policy engine',
-              ...(policyResult.metadata !== undefined ? { metadata: policyResult.metadata } : {}),
-            };
+          // Get chain adapter
+          const chainAdapter = chainAdapterFactory.get(chain);
 
-            printJsonOutput(rejectionOutput);
-            process.exitCode = 1;
-            return;
-          }
+          // Get MEV protector (fallback to NoOp)
+          const mevProtector = mevProtectors.get(chain) ?? new NoOpMevProtector();
 
-          // TODO: replaced by executePipeline in Task 15
-          throw new Error(
-            'Swap chain execution not implemented — will be replaced by executePipeline in Task 15',
-          );
+          // Execute pipeline
+          const result = await executePipeline({
+            intent,
+            builder,
+            chainAdapter,
+            policyRegistry,
+            policyContext: policyCtx,
+            mevProtector,
+            tradeLog,
+            logger: log,
+            ...(signer !== undefined ? { signer } : {}),
+            watchOnly,
+          });
+
+          // Map PipelineResult to CliOutput + exit code
+          const output = mapPipelineResultToOutput(result, intent);
+          printJsonOutput(output.cliOutput);
+          process.exitCode = output.exitCode;
         } catch (err: unknown) {
           log.error({ err: toErrorMessage(err) }, 'Swap failed');
           const errorOutput: ErrorResponse = {
@@ -178,6 +187,84 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
         }
       },
     );
+}
+
+/**
+ * Result of mapping a PipelineResult to CLI output.
+ */
+interface MappedOutput {
+  readonly cliOutput: CliOutput;
+  readonly exitCode: number;
+}
+
+/**
+ * Map a PipelineResult to a CliOutput and process exit code.
+ */
+function mapPipelineResultToOutput(result: PipelineResult, intent: SwapIntent): MappedOutput {
+  switch (result.status) {
+    case 'success': {
+      const output: SuccessResponse = {
+        status: 'success',
+        chain: intent.chain,
+        action: intent.action,
+        txDigest: result.txDigest ?? '',
+        fromToken: intent.params.coinTypeIn,
+        toToken: intent.params.coinTypeOut,
+        amountIn: intent.params.amountIn,
+        amountOut: result.amountOut ?? result.preview?.expectedOutput ?? '0',
+        valueUsd: null,
+        gasCost: result.gasUsed ?? 0,
+        route: result.preview?.provider ?? 'unknown',
+      };
+      return { cliOutput: output, exitCode: 0 };
+    }
+
+    case 'simulated': {
+      const output: SimulatedResponse = {
+        status: 'simulated',
+        chain: intent.chain,
+        action: intent.action,
+        fromToken: intent.params.coinTypeIn,
+        toToken: intent.params.coinTypeOut,
+        amountIn: intent.params.amountIn,
+        expectedOutput: result.preview?.expectedOutput ?? '0',
+        provider: result.preview?.provider ?? 'unknown',
+        ...(result.preview?.priceImpact !== undefined
+          ? { priceImpact: result.preview.priceImpact }
+          : {}),
+        gasEstimate: result.gasUsed ?? 0,
+      };
+      return { cliOutput: output, exitCode: 0 };
+    }
+
+    case 'rejected': {
+      const output: RejectionResponse = {
+        status: 'rejected',
+        chain: intent.chain,
+        action: intent.action,
+        check: result.rejectionCheck ?? 'unknown',
+        reason: result.rejectionReason ?? 'policy_rejected',
+        detail: result.rejectionReason ?? 'Trade rejected by policy engine',
+      };
+      return { cliOutput: output, exitCode: 3 };
+    }
+
+    case 'simulation_failed': {
+      const output: ErrorResponse = {
+        status: 'error',
+        message: `Simulation failed: ${result.error ?? 'unknown error'}`,
+      };
+      return { cliOutput: output, exitCode: 4 };
+    }
+
+    case 'error': {
+      const output: ErrorResponse = {
+        status: 'error',
+        message: result.error ?? 'Unknown pipeline error',
+      };
+      return { cliOutput: output, exitCode: 1 };
+    }
+  }
 }
 
 /**
