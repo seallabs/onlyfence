@@ -1,6 +1,6 @@
 import { derivePath } from 'ed25519-hd-key';
 import nacl from 'tweetnacl';
-import { blake2b } from '@noble/hashes/blake2';
+import { blake2b } from '@noble/hashes/blake2.js';
 
 /** BIP-44 derivation path for Sui (ed25519). */
 export const SUI_DERIVATION_PATH = "m/44'/784'/0'/0'/0'";
