@@ -7,7 +7,7 @@ import type { Statement } from 'better-sqlite3';
 export interface TradeRecord {
   readonly chain: string;
   readonly wallet_address: string;
-  readonly action: 'swap' | 'lp_deposit' | 'lp_withdraw';
+  readonly action: 'swap' | 'supply' | 'lp_deposit' | 'lp_withdraw';
   readonly protocol?: string;
   readonly pool?: string;
   readonly from_token: string;
