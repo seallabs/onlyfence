@@ -2,15 +2,20 @@ import type { Command } from 'commander';
 import type { AppComponents } from '../bootstrap.js';
 import { listWallets } from '../../wallet/manager.js';
 import { toErrorMessage } from '../../utils/index.js';
+import { registerWalletWatchCommand } from './wallet-watch.js';
 
 /**
  * Register the `fence wallet` command group.
  *
  * Subcommands:
  * - `fence wallet list` - List all wallets
+ * - `fence wallet watch <address>` - Add a watch-only wallet
  */
 export function registerWalletCommand(program: Command, getComponents: () => AppComponents): void {
   const walletCmd = program.command('wallet').description('Manage wallets');
+
+  // Register watch subcommand with lazy DB accessor
+  registerWalletWatchCommand(walletCmd, () => getComponents().db);
 
   // fence wallet list
   walletCmd
