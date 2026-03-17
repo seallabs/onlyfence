@@ -53,6 +53,7 @@ export function generateWallet(db: Database.Database): GenerateWalletResult {
     address: suiKeypair.address,
     derivationPath: SUI_DERIVATION_PATH,
     isPrimary: true,
+    isWatchOnly: false,
   };
 
   insertWallet(db, suiWallet);
@@ -89,6 +90,7 @@ export function importFromMnemonic(db: Database.Database, mnemonic: string): Imp
     address: suiKeypair.address,
     derivationPath: SUI_DERIVATION_PATH,
     isPrimary: true,
+    isWatchOnly: false,
   };
 
   insertWallet(db, wallet);
@@ -116,6 +118,7 @@ export function registerWalletAddress(
   chain: string,
   address: string,
   isPrimary = false,
+  isWatchOnly = false,
 ): RegisterWalletResult {
   if (chain.trim().length === 0) {
     throw new Error('Chain identifier must not be empty.');
@@ -129,6 +132,7 @@ export function registerWalletAddress(
     address,
     derivationPath: null,
     isPrimary,
+    isWatchOnly,
   };
 
   insertWallet(db, wallet);
@@ -176,8 +180,8 @@ export function getPrimaryWallet(db: Database.Database, chain: string): WalletIn
  */
 function insertWallet(db: Database.Database, wallet: WalletInfo): void {
   const stmt = db.prepare(`
-    INSERT INTO wallets (chain, address, derivation_path, is_primary)
-    VALUES (@chain, @address, @derivation_path, @is_primary)
+    INSERT INTO wallets (chain, address, derivation_path, is_primary, is_watch_only)
+    VALUES (@chain, @address, @derivation_path, @is_primary, @is_watch_only)
   `);
 
   try {
@@ -186,6 +190,7 @@ function insertWallet(db: Database.Database, wallet: WalletInfo): void {
       address: wallet.address,
       derivation_path: wallet.derivationPath,
       is_primary: wallet.isPrimary ? 1 : 0,
+      is_watch_only: wallet.isWatchOnly ? 1 : 0,
     });
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
@@ -204,5 +209,6 @@ function rowToWalletInfo(row: WalletRow): WalletInfo {
     address: row.address,
     derivationPath: row.derivation_path,
     isPrimary: row.is_primary === 1,
+    isWatchOnly: row.is_watch_only === 1,
   };
 }
