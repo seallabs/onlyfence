@@ -98,9 +98,22 @@ The following existing interfaces are renamed or re-signatured:
 | `ChainAdapter.signAndSubmit(txData, signer)` | `signAndSubmit(txBytes: Uint8Array, signer: Signer)` | Takes raw bytes; adapter is responsible for calling `signer.sign()` internally and encoding the result |
 | `SwapParams`, `SwapQuote`, `TransactionData` | No longer used by `ChainAdapter` | These types remain in `types/result.ts` but are no longer part of the adapter interface |
 
-**Signing responsibility:** The `Signer` interface's `sign(data: Uint8Array): Promise<Uint8Array>` returns raw Ed25519 signature bytes. The `SuiChainAdapter.signAndSubmit()` is responsible for:
-1. Calling `signer.sign(txBytes)` to get raw signature bytes
-2. Prepending the Ed25519 scheme flag byte (`0x00`) to the signature
+**Signing responsibility:** The Sui serialized signature format is: `[scheme_flag (1 byte)] || [signature (64 bytes)] || [public_key (32 bytes)]` — 97 bytes total, then base64-encoded.
+
+The `Signer` interface must be extended to expose the public key:
+
+```typescript
+// src/types/result.ts (modified)
+interface Signer {
+  readonly address: string;
+  readonly publicKey: Uint8Array;  // NEW — 32 bytes for Ed25519
+  sign(data: Uint8Array): Promise<Uint8Array>;
+}
+```
+
+The `SuiChainAdapter.signAndSubmit()` is responsible for:
+1. Calling `signer.sign(txBytes)` to get raw 64-byte Ed25519 signature
+2. Constructing the Sui serialized signature: `[0x00, ...signature, ...signer.publicKey]` (97 bytes)
 3. Base64-encoding the result for `client.executeTransactionBlock({ signature })`
 
 This keeps chain-specific encoding inside the chain adapter where it belongs.
@@ -172,18 +185,32 @@ type BuilderKey = `${string}:${string}:${string}`;  // "sui:swap:7k"
 
 class ActionBuilderRegistry {
   private readonly builders = new Map<BuilderKey, ActionBuilder>();
+  private readonly factories = new Map<BuilderKey, (intent: ActionIntent) => ActionBuilder>();
 
   /**
-   * Register a builder. Asserts builder.chain === chain parameter.
+   * Register a pre-built builder instance. Asserts builder.chain === chain parameter.
    * @throws Error if key already registered or chain mismatch
    */
   register(chain: string, action: string, protocol: string, builder: ActionBuilder): void;
 
   /**
-   * Get a builder by exact key.
-   * @throws Error with message: 'No builder registered for key "sui:swap:7k"'
+   * Register a factory function for builders that need per-trade configuration.
+   * @throws Error if key already registered
    */
-  get(chain: string, action: string, protocol: string): ActionBuilder;
+  registerFactory(
+    chain: string,
+    action: string,
+    protocol: string,
+    factory: (intent: ActionIntent) => ActionBuilder,
+  ): void;
+
+  /**
+   * Get a builder by exact key. If the key was registered with registerFactory,
+   * the intent parameter is required to construct the builder.
+   * @throws Error with message: 'No builder registered for key "sui:swap:7k"'
+   * @throws Error if factory-registered key is accessed without intent
+   */
+  get(chain: string, action: string, protocol: string, intent?: ActionIntent): ActionBuilder;
 
   /**
    * Get the first registered builder for a (chain, action) pair.
@@ -192,7 +219,7 @@ class ActionBuilderRegistry {
    * (insertion order, matching Map iteration order).
    * @throws Error with message: 'No builder registered for "sui:swap"'
    */
-  getDefault(chain: string, action: string): ActionBuilder;
+  getDefault(chain: string, action: string, intent?: ActionIntent): ActionBuilder;
 
   has(chain: string, action: string, protocol: string): boolean;
 }
@@ -322,8 +349,11 @@ Constructor takes RPC URL, creates `SuiClient` (owned by adapter, not a module-l
 ```typescript
 async signAndSubmit(txBytes: Uint8Array, signer: Signer): Promise<TxResult> {
   const rawSignature = await signer.sign(txBytes);
-  // Prepend Ed25519 scheme flag byte (0x00) to raw signature bytes
-  const suiSignature = new Uint8Array([0x00, ...rawSignature]);
+  // Sui serialized signature: [scheme_flag] || [signature (64)] || [public_key (32)] = 97 bytes
+  const suiSignature = new Uint8Array(97);
+  suiSignature[0] = 0x00;  // Ed25519 scheme flag
+  suiSignature.set(rawSignature, 1);
+  suiSignature.set(signer.publicKey, 65);
   const signatureB64 = toB64(suiSignature);  // from @mysten/sui/utils
 
   const result = await this.client.executeTransactionBlock({
@@ -385,7 +415,7 @@ src/chain/sui/
 ├── adapter.ts             # SuiChainAdapter (rewritten)
 ├── sui-swap-builder.ts    # SuiSwapBuilder (new, ported)
 ├── tokens.ts              # Token map (existing, moved from sui-tokens.ts)
-├── client.ts              # Singleton SuiClient (new)
+├── client.ts              # SuiClient helpers (no singleton — adapter owns instance)
 └── sui-mev.ts             # SuiNoOpMev (new)
 ```
 
@@ -399,7 +429,7 @@ New migration added to `src/db/migrations.ts`:
 ALTER TABLE wallets ADD COLUMN is_watch_only INTEGER NOT NULL DEFAULT 0;
 ```
 
-Wrapped in try-catch since SQLite lacks `ALTER TABLE ... IF NOT EXISTS`. If column already exists, error is caught and ignored.
+Wrapped in try-catch since SQLite lacks `ALTER TABLE ... IF NOT EXISTS`. The catch block must only swallow the specific "duplicate column" error (SQLite error message contains "duplicate column name"); all other errors must be re-thrown to comply with "DO NOT silent any error" (CLAUDE.md).
 
 ### Type changes
 
@@ -432,7 +462,9 @@ function registerWalletAddress(
 // INSERT with is_watch_only = isWatchOnly ? 1 : 0
 ```
 
-Also update `rowToWalletInfo()` to map the new column:
+Also update the private `insertWallet()` function's SQL to include `is_watch_only` in the INSERT statement, and update all callers (`generateWallet`, `importFromMnemonic`) to pass `isWatchOnly: false` explicitly.
+
+Update `rowToWalletInfo()` to map the new column:
 
 ```typescript
 function rowToWalletInfo(row: WalletRow): WalletInfo {
@@ -522,7 +554,6 @@ function buildMevProtectors(): Map<string, MevProtector> {
 **Note:** `ActionBuilderRegistry` supports two registration modes:
 - `register(chain, action, protocol, builder)` — for builders with no per-trade config
 - `registerFactory(chain, action, protocol, factory)` — for builders that need per-trade parameters (like slippage). The `getDefault()`/`get()` methods accept an optional `intent` parameter to pass to the factory.
-```
 
 ### Swap command rewrite
 
@@ -564,7 +595,11 @@ async function resolveSuiSigner(
 
 ### Output types
 
-Add `SimulatedResponse` to `src/cli/output.ts` for watch-only results.
+Add `SimulatedResponse` to `src/cli/output.ts` and include it in the `CliOutput` union type so `printJsonOutput()` accepts it at compile time:
+
+```typescript
+type CliOutput = SuccessResponse | RejectionResponse | ErrorResponse | SimulatedResponse;
+```
 
 ### Unchanged modules
 
