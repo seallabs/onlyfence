@@ -12,7 +12,7 @@ import type {
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { printJsonOutput } from '../output.js';
 import { toErrorMessage } from '../../utils/index.js';
-import { resolveTokenAddress } from '../../chain/sui/tokens.js';
+import { resolveTokenAddress, scaleToSmallestUnit } from '../../chain/sui/tokens.js';
 import { resolveSuiSigner } from '../../wallet/signer.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
 import { NoOpMevProtector } from '../../core/mev-protector.js';
@@ -89,9 +89,6 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             );
           }
 
-          // Parse amount
-          const amount = parseBigIntAmount(amountStr);
-
           // Get wallet address
           const wallet = getPrimaryWallet(db, chain);
           if (wallet === null) {
@@ -107,9 +104,13 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             'Swap command invoked',
           );
 
-          // Resolve token symbols to coin types
+          // === Resolve CLI inputs to stable internal representations ===
+          // Token aliases (SUI, USDC) → fully-qualified coin types (0x2::sui::SUI)
+          // Human-readable amount (100.5) → smallest unit string (100500000000)
+          // These resolved values are the source of truth for all downstream code.
           const coinTypeIn = resolveTokenAddress(fromToken.toUpperCase());
           const coinTypeOut = resolveTokenAddress(toToken.toUpperCase());
+          const scaledAmountIn = scaleToSmallestUnit(amountStr, coinTypeIn);
 
           // Build slippage in basis points
           const slippageBps = Math.round(parseFloat(options.slippage) * 100);
@@ -122,7 +123,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             params: {
               coinTypeIn,
               coinTypeOut,
-              amountIn: amount.toString(),
+              amountIn: scaledAmountIn,
               slippageBps,
             },
           };
@@ -131,7 +132,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           let tradeValueUsd: number | undefined;
           try {
             const price = await oracle.getPrice(fromToken.toUpperCase());
-            tradeValueUsd = Number(intent.params.amountIn) * price;
+            tradeValueUsd = parseFloat(amountStr) * price;
           } catch (err: unknown) {
             log.warn(
               { token: fromToken, error: toErrorMessage(err) },
@@ -268,26 +269,4 @@ function mapPipelineResultToOutput(result: PipelineResult, intent: SwapIntent): 
       return { cliOutput: output, exitCode: 1 };
     }
   }
-}
-
-/**
- * Parse a string amount to bigint. Supports integer and decimal notation.
- * Decimal values are truncated to integers (smallest unit).
- *
- * @param value - String representation of the amount
- * @returns Parsed bigint value
- * @throws Error if the value is not a valid number
- */
-function parseBigIntAmount(value: string): bigint {
-  const trimmed = value.trim();
-  if (!/^\d+(\.\d+)?$/.test(trimmed)) {
-    throw new Error(`Invalid amount "${value}": must be a positive number`);
-  }
-
-  // If it contains a decimal, truncate to integer
-  const integerPart = trimmed.split('.')[0];
-  if (integerPart === undefined || integerPart === '') {
-    throw new Error(`Invalid amount "${value}": must be a positive number`);
-  }
-  return BigInt(integerPart);
 }

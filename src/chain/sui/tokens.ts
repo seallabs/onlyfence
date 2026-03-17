@@ -90,6 +90,37 @@ export function getKnownDecimals(coinType: string): number | undefined {
 }
 
 /**
+ * Scale a human-readable amount to the token's smallest unit.
+ * E.g., scaleToSmallestUnit("100.5", "0x2::sui::SUI") → "100500000000" (100.5 * 10^9)
+ * Floors to safely cast to BigInt.
+ *
+ * Uses string manipulation to avoid floating-point precision loss.
+ *
+ * @throws if decimals are unknown for the coin type
+ * @throws if the amount is not a valid positive number
+ */
+export function scaleToSmallestUnit(humanAmount: string, coinType: string): string {
+  const decimals = getKnownDecimals(coinType);
+  if (decimals === undefined) {
+    throw new Error(`Unknown decimals for coin type "${coinType}". Cannot scale amount.`);
+  }
+  const float = parseFloat(humanAmount);
+  if (isNaN(float) || float <= 0) {
+    throw new Error(`Invalid amount "${humanAmount}": must be a positive number`);
+  }
+  // Use string manipulation to avoid floating point precision issues
+  // Split on decimal point, pad/truncate fractional part to `decimals` digits
+  const parts = humanAmount.split('.');
+  const intPart = parts[0] ?? '0';
+  const fracPart = parts[1] ?? '';
+  const paddedFrac = (fracPart + '0'.repeat(decimals)).slice(0, decimals);
+  const raw = intPart + paddedFrac;
+  // Remove leading zeros but keep at least "0"
+  const stripped = raw.replace(/^0+/, '');
+  return stripped === '' ? '0' : stripped;
+}
+
+/**
  * Check whether a token symbol is known in the Sui token registry.
  */
 export function isKnownToken(symbol: string): boolean {
