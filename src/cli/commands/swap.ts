@@ -74,6 +74,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           chainAdapterFactory,
           actionBuilderRegistry,
           mevProtectors,
+          coinMetadataService,
           logger,
         } = components;
         const chain = options.chain;
@@ -110,7 +111,10 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           // These resolved values are the source of truth for all downstream code.
           const coinTypeIn = resolveTokenAddress(fromToken.toUpperCase());
           const coinTypeOut = resolveTokenAddress(toToken.toUpperCase());
-          const scaledAmountIn = scaleToSmallestUnit(amountStr, coinTypeIn);
+
+          // Resolve decimals remotely (Noodles API) with local fallback
+          const decimals = await coinMetadataService.getDecimals(coinTypeIn, chain);
+          const scaledAmountIn = scaleToSmallestUnit(amountStr, decimals);
 
           // Build slippage in basis points
           const slippageBps = Math.round(parseFloat(options.slippage) * 100);

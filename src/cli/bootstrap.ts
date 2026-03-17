@@ -17,6 +17,9 @@ import { ActionBuilderRegistry } from '../core/action-builder.js';
 import { SuiSwapBuilder } from '../chain/sui/builder/swap-builder.js';
 import { getLogger } from '../logger/index.js';
 import { initSentry } from '../telemetry/sentry.js';
+import type { CoinMetadataService } from '../data/coin-metadata.js';
+import { NoodlesCoinMetadataService } from '../data/coin-metadata.js';
+import { SUI_KNOWN_DECIMALS } from '../chain/sui/tokens.js';
 
 /**
  * All initialized application components returned by bootstrap.
@@ -31,6 +34,7 @@ export interface AppComponents {
   readonly chainAdapterFactory: ChainAdapterFactory;
   readonly actionBuilderRegistry: ActionBuilderRegistry;
   readonly mevProtectors: Map<string, MevProtector>;
+  readonly coinMetadataService: CoinMetadataService;
   readonly logger: Logger;
 }
 
@@ -67,6 +71,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const chainAdapterFactory = buildChainAdapterFactory();
   const actionBuilderRegistry = buildActionBuilderRegistry();
   const mevProtectors = buildMevProtectors();
+  const coinMetadataService = buildCoinMetadataService(logger);
 
   logger.info('Bootstrap complete');
 
@@ -80,6 +85,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     chainAdapterFactory,
     actionBuilderRegistry,
     mevProtectors,
+    coinMetadataService,
     logger,
   };
 }
@@ -145,4 +151,22 @@ export function buildMevProtectors(): Map<string, MevProtector> {
   const protectors = new Map<string, MevProtector>();
   protectors.set('sui', new NoOpMevProtector());
   return protectors;
+}
+
+/**
+ * Build a CoinMetadataService using the NOODLES_API_KEY env var.
+ *
+ * Falls back to SUI_KNOWN_DECIMALS for well-known tokens when the
+ * API key is not set or the API is unreachable. Logs a warning when
+ * the env var is missing so operators know remote resolution is disabled.
+ *
+ * @param logger - Logger for diagnostic messages
+ * @returns CoinMetadataService instance
+ */
+export function buildCoinMetadataService(logger: Logger): CoinMetadataService {
+  const apiKey = process.env['NOODLES_API_KEY'] ?? '';
+  if (apiKey === '') {
+    logger.warn('NOODLES_API_KEY not set; coin metadata will only resolve from local fallback');
+  }
+  return new NoodlesCoinMetadataService(apiKey, SUI_KNOWN_DECIMALS);
 }

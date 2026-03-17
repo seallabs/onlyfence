@@ -91,33 +91,24 @@ export function getKnownDecimals(coinType: string): number | undefined {
 
 /**
  * Scale a human-readable amount to the token's smallest unit.
- * E.g., scaleToSmallestUnit("100.5", "0x2::sui::SUI") → "100500000000" (100.5 * 10^9)
- * Floors to safely cast to BigInt.
+ * E.g., scaleToSmallestUnit("100.5", 9) → "100500000000" (100.5 * 10^9)
  *
- * Uses string manipulation to avoid floating-point precision loss.
+ * The caller is responsible for providing the correct decimals value
+ * (from remote API, cache, or local fallback). This decouples scaling
+ * from decimal resolution.
  *
- * @throws if decimals are unknown for the coin type
+ * @param humanAmount - Human-readable amount string (e.g., "100.5")
+ * @param decimals - Number of decimal places for the token
+ * @returns The amount in the token's smallest unit as a string
  * @throws if the amount is not a valid positive number
  */
-export function scaleToSmallestUnit(humanAmount: string, coinType: string): string {
-  const decimals = getKnownDecimals(coinType);
-  if (decimals === undefined) {
-    throw new Error(`Unknown decimals for coin type "${coinType}". Cannot scale amount.`);
-  }
+export function scaleToSmallestUnit(humanAmount: string, decimals: number): string {
   const float = parseFloat(humanAmount);
   if (isNaN(float) || float <= 0) {
     throw new Error(`Invalid amount "${humanAmount}": must be a positive number`);
   }
-  // Use string manipulation to avoid floating point precision issues
-  // Split on decimal point, pad/truncate fractional part to `decimals` digits
-  const parts = humanAmount.split('.');
-  const intPart = parts[0] ?? '0';
-  const fracPart = parts[1] ?? '';
-  const paddedFrac = (fracPart + '0'.repeat(decimals)).slice(0, decimals);
-  const raw = intPart + paddedFrac;
-  // Remove leading zeros but keep at least "0"
-  const stripped = raw.replace(/^0+/, '');
-  return stripped === '' ? '0' : stripped;
+  const scaled = Math.floor(float * 10 ** decimals);
+  return scaled.toString();
 }
 
 /**
