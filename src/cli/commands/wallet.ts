@@ -1,8 +1,11 @@
 import type { Command } from 'commander';
+import type Database from 'better-sqlite3';
 import type { AppComponents } from '../bootstrap.js';
 import { listWallets } from '../../wallet/manager.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { registerWalletWatchCommand } from './wallet-watch.js';
+import { registerWalletSwitchCommand } from './wallet-switch.js';
+import { registerWalletRenameCommand } from './wallet-rename.js';
 
 /**
  * Register the `fence wallet` command group.
@@ -10,12 +13,18 @@ import { registerWalletWatchCommand } from './wallet-watch.js';
  * Subcommands:
  * - `fence wallet list` - List all wallets
  * - `fence wallet watch <address>` - Add a watch-only wallet
+ * - `fence wallet switch <alias>` - Set a wallet as primary for its chain
+ * - `fence wallet rename <old> <new>` - Rename a wallet alias
  */
 export function registerWalletCommand(program: Command, getComponents: () => AppComponents): void {
   const walletCmd = program.command('wallet').description('Manage wallets');
 
-  // Register watch subcommand with lazy DB accessor
-  registerWalletWatchCommand(walletCmd, () => getComponents().db);
+  const getDb = (): Database.Database => getComponents().db;
+
+  // Register subcommands with lazy DB accessor
+  registerWalletWatchCommand(walletCmd, getDb);
+  registerWalletSwitchCommand(walletCmd, getDb);
+  registerWalletRenameCommand(walletCmd, getDb);
 
   // fence wallet list
   walletCmd
@@ -45,11 +54,14 @@ export function registerWalletCommand(program: Command, getComponents: () => App
         if (options.output === 'json') {
           console.log(JSON.stringify(wallets, null, 2));
         } else {
-          console.log('Chain     Primary  Address');
-          console.log('─────     ───────  ───────');
+          console.log('Alias        Chain     Primary  Watch-Only  Address');
+          console.log('───────────  ─────     ───────  ──────────  ───────');
           for (const w of wallets) {
-            const primaryStr = w.isPrimary ? 'Yes' : 'No';
-            console.log(`${w.chain.padEnd(10)}${primaryStr.padEnd(9)}${w.address}`);
+            const primaryStr = w.isPrimary ? '*' : '';
+            const watchStr = w.isWatchOnly ? '*' : '';
+            console.log(
+              `${w.alias.padEnd(13)}${w.chain.padEnd(10)}${primaryStr.padEnd(9)}${watchStr.padEnd(12)}${w.address}`,
+            );
           }
         }
       } catch (err: unknown) {

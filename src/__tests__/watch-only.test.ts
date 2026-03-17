@@ -10,6 +10,7 @@ describe('watch-only wallet', () => {
     expect(wallets).toHaveLength(1);
     expect(wallets[0]!.isWatchOnly).toBe(true);
     expect(wallets[0]!.derivationPath).toBeNull();
+    expect(wallets[0]!.alias).toBe('sui-watch-1');
   });
 
   it('regular wallet has isWatchOnly=false', () => {

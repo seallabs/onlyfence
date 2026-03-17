@@ -20,14 +20,17 @@ export function registerWalletWatchCommand(
     .command('watch <address>')
     .description('Add a watch-only wallet (simulate trades without signing)')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
-    .action((address: string, options: { chain: string }) => {
+    .option('-a, --alias <alias>', 'Custom alias for the wallet')
+    .action((address: string, options: { chain: string; alias?: string }) => {
       if (options.chain === 'sui' && !SUI_ADDRESS_REGEX.test(address)) {
         throw new Error(
           `Invalid Sui address "${address}". Expected 0x followed by 64 hex characters.`,
         );
       }
       const db = getDb();
-      registerWalletAddress(db, options.chain, address, false, true);
-      console.log(`Watch-only wallet added: ${address} (${options.chain})`);
+      const result = registerWalletAddress(db, options.chain, address, false, true, options.alias);
+      console.log(
+        `Watch-only wallet added: ${address} (${options.chain}) [alias: ${result.wallet.alias}]`,
+      );
     });
 }
