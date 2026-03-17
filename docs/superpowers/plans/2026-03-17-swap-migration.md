@@ -255,6 +255,8 @@ Contains: `BuiltTransaction` interface, `ActionBuilder<T>` interface (with `buil
 
 Key: `getDefault` iterates builders then factories in insertion order, returns first match for `${chain}:${action}:` prefix. `register` asserts `builder.chain === chain`. Factory `get` throws if intent not provided.
 
+**Porting note:** The old CLI uses `chainId` on `ActionBuilder` — in onlyfence this is renamed to `chain` to match `ChainAdapter.chain`. Workers must use `chain`, not `chainId`.
+
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/__tests__/action-builder-registry.test.ts`
@@ -366,7 +368,12 @@ Test: `buildTransactionBytes`, `simulate` (success + failure), `signAndSubmit` (
 
 - [ ] **Step 3: Implement SuiChainAdapter**
 
-Constructor takes `rpcUrl`, creates owned `SuiClient`. Port methods from old CLI. Key: `signAndSubmit` constructs 97-byte Sui signature `[0x00, ...rawSig, ...pubKey]`, base64-encodes, calls `executeTransactionBlock`.
+Constructor takes `rpcUrl`, creates owned `SuiClient`. **This is NOT a straight port from the old CLI** — key differences:
+
+- **`signAndSubmit`:** Old CLI takes `(txBytes, signature: string)` where signing is done externally. New version takes `(txBytes, signer: Signer)` and signs internally: call `signer.sign(txBytes)`, construct 97-byte Sui signature `[0x00, ...rawSig(64), ...signer.publicKey(32)]`, base64-encode, call `executeTransactionBlock`.
+- **`simulate`:** Old CLI silently catches all exceptions as `{ success: false }`. New version must only catch dry-run logic failures — re-throw network errors, RPC auth failures, etc. to comply with CLAUDE.md "DO NOT silent any error".
+- **`tokens.ts`:** Already exists at `src/chain/sui/tokens.ts` — no move needed.
+- **`client.ts`:** Not needed as a separate file. The `SuiClient` is created directly in the adapter constructor.
 
 - [ ] **Step 4: Run tests, verify pass**
 
@@ -398,7 +405,12 @@ Test: `validate` (rejects same coin, zero amount), `preview` (returns ActionPrev
 
 - [ ] **Step 4: Implement SuiSwapBuilder**
 
-Port from old CLI. `builderId = '7k-swap'`, `chain = 'sui'`. Constructor takes `slippageBps`, creates `MetaAg`. Methods: `validate`, `preview` (calls `metaAg.quote`), `build` (calls `metaAg.swap`, adds transfer move).
+Port from old CLI with these changes:
+- Old CLI uses `chainId = 'sui'` → rename to `chain = 'sui'`
+- Old CLI `preview()` returns `{ details: Record<string, unknown>, buildData }` → rewrite to return `ActionPreview` with `expectedOutput` (from `best.amountOut`, raw integer string) and `provider` (from `best.provider` or quote source)
+- Old CLI has no `priceImpact` field → compute from quote if available, or omit
+
+`builderId = '7k-swap'`, `chain = 'sui'`. Constructor takes `slippageBps`, creates `MetaAg`. Methods: `validate`, `preview` (calls `metaAg.quote`, populates `expectedOutput`/`provider`), `build` (calls `metaAg.swap`, adds transfer move).
 
 - [ ] **Step 5: Run tests, verify pass**
 
@@ -416,13 +428,17 @@ git commit -m "feat: add SuiSwapBuilder with 7K Aggregator integration"
 **Files:**
 - Create: `src/chain/sui/sui-mev.ts`
 
-- [ ] **Step 1: Create SuiNoOpMev**
+- [ ] **Step 1: Write failing test**
 
-Implements `MevProtector`. Returns bytes unchanged.
+Test: `SuiNoOpMev` has `name === 'sui-noop'` and returns input bytes unchanged (mirrors Task 4 pattern).
 
-- [ ] **Step 2: Run typecheck**
+- [ ] **Step 2: Create SuiNoOpMev**
 
-- [ ] **Step 3: Commit**
+Implements `MevProtector`. `name = 'sui-noop'`. Returns bytes unchanged.
+
+- [ ] **Step 3: Run test and typecheck**
+
+- [ ] **Step 4: Commit**
 
 ```
 git add src/chain/sui/sui-mev.ts
@@ -446,16 +462,26 @@ With mocked dependencies, test: `success` (full flow), `rejected` (policy reject
 
 - [ ] **Step 2: Run tests, verify fail**
 
-- [ ] **Step 3: Implement executePipeline**
+- [ ] **Step 3: Update `TradeRecord` and DB schema for new action types**
+
+Before implementing the pipeline, update:
+- `src/db/trade-log.ts`: Update `TradeRecord.action` type to include `'supply'` (matching `DeFiAction`)
+- `src/db/migrations.ts`: Add migration to update the `trades.action` CHECK constraint: `CHECK (action IN ('swap', 'supply', 'lp_deposit', 'lp_withdraw'))`
+
+The pipeline constructs `TradeRecord` from `ActionIntent` by extracting action-specific fields:
+- For swap: `from_token = params.coinTypeIn`, `to_token = params.coinTypeOut`, `amount_in = params.amountIn`
+- For other actions: extract relevant fields from their params
+
+- [ ] **Step 4: Implement executePipeline**
 
 Stateless function. Steps: validate, policy, preview, build, serialize, simulate, watch-only check, MEV protect, sign+submit, log. Each step wrapped in try/catch. Uses `REJECTED_BY_KEY` from policy. Logs trades via `tradeLog.logTrade()`. Watch-only logs with `tx_digest: 'watch-only'`.
 
-- [ ] **Step 4: Run tests, verify pass**
+- [ ] **Step 5: Run tests, verify pass**
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```
-git add src/core/transaction-pipeline.ts src/__tests__/transaction-pipeline.test.ts
+git add src/core/transaction-pipeline.ts src/__tests__/transaction-pipeline.test.ts src/db/trade-log.ts src/db/migrations.ts
 git commit -m "feat: add executePipeline generic transaction orchestrator"
 ```
 
@@ -487,7 +513,11 @@ Add `isWatchOnly` to `WalletInfo` and `is_watch_only` to `WalletRow`.
 
 - [ ] **Step 5: Update wallet manager**
 
-Add `isWatchOnly` param to `registerWalletAddress`. Update `insertWallet` SQL. Update `rowToWalletInfo`. Update `generateWallet`/`importFromMnemonic` callers.
+1. Add `isWatchOnly = false` param to `registerWalletAddress`, pass to `insertWallet`
+2. Update `insertWallet` SQL to include `is_watch_only` in INSERT and params
+3. Update `rowToWalletInfo` to include `isWatchOnly: row.is_watch_only === 1`
+4. Update `WalletInfo` object literals inside `generateWallet` (line ~51) and `importFromMnemonic` (line ~87) to include `isWatchOnly: false` — these construct `WalletInfo` directly before calling `insertWallet`
+5. Update `registerWalletAddress` to include `isWatchOnly` in its `WalletInfo` construction
 
 - [ ] **Step 6: Run tests, verify pass**
 
@@ -613,9 +643,37 @@ git commit -m "feat: add fence wallet watch command"
 
 ---
 
-## Chunk 6: Final Verification
+## Chunk 6: Integration Tests and Final Verification
 
-### Task 17: Full lint, format, typecheck, test
+### Task 17: End-to-end pipeline integration tests
+
+**Files:**
+- Create: `src/__tests__/pipeline-integration.test.ts`
+
+- [ ] **Step 1: Write integration tests**
+
+Test the full `SwapIntent -> executePipeline -> SuiChainAdapter -> SuiSwapBuilder` flow with mocked `SuiClient` and mocked `MetaAg`. Verify:
+- Complete success path: intent → policy pass → quote → build → simulate → sign → submit → log → PipelineResult
+- Watch-only path: stops after simulate, returns gasEstimate
+- Policy rejection path: logs rejected trade, returns rejection info
+- Simulation failure path
+
+Use real `PolicyCheckRegistry`, `TradeLog` (in-memory DB), and `ActionBuilderRegistry`. Only mock external dependencies (SuiClient RPC, 7K SDK).
+
+- [ ] **Step 2: Run tests, verify pass**
+
+Run: `npx vitest run src/__tests__/pipeline-integration.test.ts`
+
+- [ ] **Step 3: Commit**
+
+```
+git add src/__tests__/pipeline-integration.test.ts
+git commit -m "test: add end-to-end pipeline integration tests"
+```
+
+---
+
+### Task 18: Full lint, format, typecheck, tests
 
 - [ ] **Step 1: Run format**
 
@@ -641,7 +699,7 @@ git add -A && git commit -m "chore: final lint and format pass"
 
 ---
 
-### Task 18: Remove dead types
+### Task 19: Remove dead types
 
 - [ ] **Step 1: Check if SwapParams, SwapQuote, TransactionData are still imported**
 
