@@ -1,20 +1,38 @@
-import type { ActionIntent, ActionPreview } from './action-types.js';
-
-export type { ActionPreview } from './action-types.js';
+import type { ActionIntent, ActionPreviewBase } from './action-types.js';
 
 export interface BuiltTransaction {
   readonly transaction: unknown;
   readonly metadata: Record<string, unknown>;
 }
 
-export interface ActionBuilder<T extends ActionIntent = ActionIntent> {
+/**
+ * Context passed to ActionBuilder.finish() after the pipeline completes
+ * a loggable step (approval, rejection, or watch-only simulation).
+ */
+export interface FinishContext<Preview = unknown, Response = unknown> {
+  readonly intent: ActionIntent;
+  readonly status: 'approved' | 'rejected';
+  readonly preview?: Preview;
+  readonly rawResponse?: Response;
+  readonly txDigest?: string;
+  readonly gasUsed?: number;
+  readonly rejection?: {
+    readonly check: string;
+    readonly reason: string;
+  };
+}
+
+export interface ActionBuilder<
+  T extends ActionIntent = ActionIntent,
+  P extends ActionPreviewBase = ActionPreviewBase,
+> {
   readonly builderId: string;
   readonly chain: string;
   validate(intent: T): void;
-  preview(intent: T): Promise<ActionPreview>;
-  build(intent: T, preview: ActionPreview): Promise<BuiltTransaction>;
+  preview(intent: T): Promise<P>;
+  build(intent: T, preview: P): Promise<BuiltTransaction>;
+  finish?(context: FinishContext): void;
 }
-
 type BuilderKey = `${string}:${string}:${string}`;
 
 function makeKey(chain: string, action: string, protocol: string): BuilderKey {

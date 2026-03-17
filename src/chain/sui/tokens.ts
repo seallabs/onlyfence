@@ -112,6 +112,23 @@ export function scaleToSmallestUnit(humanAmount: string, decimals: number): stri
 }
 
 /**
+ * Format a smallest-unit amount string to a human-readable value.
+ * E.g., formatSmallestUnit("100500000000", "0x2::sui::SUI") → "100.5"
+ *
+ * Falls back to the raw string when decimals are unknown.
+ */
+export function formatSmallestUnit(raw: string, coinType: string): string {
+  const decimals = getKnownDecimals(coinType);
+  if (decimals === undefined) return raw;
+  if (decimals === 0) return raw;
+
+  const padded = raw.padStart(decimals + 1, '0');
+  const intPart = padded.slice(0, padded.length - decimals);
+  const fracPart = padded.slice(padded.length - decimals).replace(/0+$/, '');
+  return fracPart.length > 0 ? `${intPart}.${fracPart}` : intPart;
+}
+
+/**
  * Check whether a token symbol is known in the Sui token registry.
  */
 export function isKnownToken(symbol: string): boolean {

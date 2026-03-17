@@ -34,11 +34,11 @@ class StubAdapter implements ChainAdapter {
   }
 
   async simulate(_txBytes: Uint8Array, _sender: string): Promise<SimulationResult> {
-    return { success: true, gasEstimate: 0 };
+    return { success: true, gasEstimate: 0, rawResponse: {} };
   }
 
   async signAndSubmit(_txBytes: Uint8Array, _signer: Signer): Promise<TxResult> {
-    return { txDigest: '', status: 'success', gasUsed: 0 };
+    return { txDigest: '', status: 'success', gasUsed: 0, rawResponse: {} };
   }
 }
 

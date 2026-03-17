@@ -22,21 +22,29 @@ export interface CheckResult {
 
 /**
  * Result of a transaction simulation (dry-run).
+ *
+ * Generic parameter `T` carries the chain-specific raw RPC response
+ * (e.g., `DryRunTransactionBlockResponse` on Sui). The pipeline can
+ * pass this to chain-specific event parsers without knowing the shape.
  */
-export interface SimulationResult {
+export interface SimulationResult<T = unknown> {
   readonly success: boolean;
   readonly gasEstimate: number;
   readonly error?: string;
+  readonly rawResponse: T;
 }
 
 /**
  * Result of a submitted and confirmed transaction.
+ *
+ * Generic parameter `T` carries the chain-specific raw RPC response
+ * (e.g., `SuiTransactionBlockResponse` on Sui).
  */
-export interface TxResult {
+export interface TxResult<T = unknown> {
   readonly txDigest: string;
   readonly status: 'success' | 'failure';
   readonly gasUsed: number;
-  readonly amountOut?: bigint;
+  readonly rawResponse: T;
 }
 
 /**

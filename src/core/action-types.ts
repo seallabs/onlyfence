@@ -23,6 +23,7 @@ export interface SwapIntent extends ActionIntentBase {
     readonly amountIn: string;
     readonly slippageBps: number;
   };
+  readonly tradeValueUsd?: number | undefined;
 }
 
 /** Supply-specific intent (future -- included for union completeness) */
@@ -42,7 +43,11 @@ export type ActionIntent = SwapIntent | SupplyIntent;
 export type PipelineStatus = 'success' | 'simulated' | 'rejected' | 'simulation_failed' | 'error';
 
 /** Preview returned by ActionBuilder.preview() */
-export interface ActionPreview {
+export interface ActionPreviewBase {
+  readonly action: DeFiAction;
+}
+export interface SwapPreview extends ActionPreviewBase {
+  readonly action: 'swap';
   readonly description: string;
   readonly expectedOutput: string;
   readonly provider: string;
@@ -51,14 +56,12 @@ export interface ActionPreview {
 }
 
 /** Result returned by executePipeline */
-export interface PipelineResult {
+export interface PipelineResult<Preview extends ActionPreviewBase = ActionIntentBase> {
   readonly status: PipelineStatus;
-  readonly preview?: ActionPreview;
+  readonly preview?: Preview;
   readonly txDigest?: string;
   readonly gasUsed?: number;
-  readonly amountOut?: string;
   readonly error?: string;
   readonly rejectionCheck?: string;
   readonly rejectionReason?: string;
-  readonly tradeValueUsd?: number;
 }

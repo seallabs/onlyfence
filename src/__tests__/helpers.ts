@@ -1,10 +1,10 @@
-import type { PolicyContext } from '../policy/context.js';
-import type { SwapIntent } from '../core/action-types.js';
-import type { ChainConfig } from '../types/config.js';
-import type { OracleClient } from '../oracle/client.js';
-import { TradeLog } from '../db/trade-log.js';
-import type { TradeRecord } from '../db/trade-log.js';
 import type Database from 'better-sqlite3';
+import type { SwapIntent } from '../core/action-types.js';
+import type { TradeRecord } from '../db/trade-log.js';
+import { TradeLog } from '../db/trade-log.js';
+import type { OracleClient } from '../oracle/client.js';
+import type { PolicyContext } from '../policy/context.js';
+import type { ChainConfig } from '../types/config.js';
 
 /**
  * Create a mock OracleClient that returns a fixed price.
@@ -35,6 +35,7 @@ export function createIntent(
       slippageBps: 100,
       ...paramOverrides,
     },
+    tradeValueUsd: undefined,
     ...rest,
   };
 }

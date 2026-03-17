@@ -11,6 +11,8 @@ export interface Column<T> {
   readonly accessor: (row: T) => string;
   readonly width: number;
   readonly align?: 'left' | 'right';
+  /** Override color for this cell. Return undefined to use the default row color. */
+  readonly color?: (row: T) => string | undefined;
 }
 
 interface TableProps<T> {
@@ -19,10 +21,19 @@ interface TableProps<T> {
   readonly highlightRow?: number;
 }
 
+/** Truncate a string to fit within maxLen, appending '..' if truncated. */
+function truncate(value: string, maxLen: number): string {
+  if (maxLen <= 0) return '';
+  if (value.length <= maxLen) return value;
+  if (maxLen <= 2) return value.slice(0, maxLen);
+  return `${value.slice(0, maxLen - 2)}..`;
+}
+
 /**
  * Generic table component that renders a header, separator, and data rows.
  *
- * Supports column widths, left/right alignment, and row highlighting.
+ * Supports column widths, left/right alignment, text truncation, per-cell
+ * color overrides, and row highlighting.
  */
 export function Table<T>({ columns, data, highlightRow }: TableProps<T>): ReactElement {
   const totalWidth = useMemo(() => columns.reduce((sum, c) => sum + c.width, 0), [columns]);
@@ -54,11 +65,16 @@ export function Table<T>({ columns, data, highlightRow }: TableProps<T>): ReactE
           return (
             <Box key={String(i)}>
               {columns.map((col) => {
-                const value = col.accessor(row);
-                const padded = col.align === 'right' ? value.padStart(col.width - 1) : value;
+                const raw = col.accessor(row);
+                // Truncate to column width (leave 1 char padding)
+                const maxLen = col.width - 1;
+                const value = truncate(raw, maxLen);
+                const padded = col.align === 'right' ? value.padStart(maxLen) : value;
+                const cellColor =
+                  col.color?.(row) ?? (isHighlighted ? theme.highlight : theme.eyes);
                 return (
                   <Box key={col.header} width={col.width}>
-                    <Text color={isHighlighted ? theme.highlight : theme.eyes}>{padded}</Text>
+                    <Text color={cellColor}>{padded}</Text>
                   </Box>
                 );
               })}
