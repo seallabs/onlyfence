@@ -65,10 +65,10 @@ src/
 │       ├── adapter.ts                 # SuiChainAdapter (working impl)
 │       ├── sui-swap-builder.ts        # SuiSwapBuilder (7K Aggregator)
 │       ├── tokens.ts                  # Token map (existing, moved)
-│       ├── client.ts                  # Singleton SuiClient factory
+│       ├── client.ts                  # SuiClient creation (no singleton)
 │       └── sui-mev.ts                # SuiNoOpMev placeholder
 ├── wallet/                            # EXISTING — extended
-│   ├── manager.ts                     # Add registerWatchOnlyWallet()
+│   ├── manager.ts                     # Extend registerWalletAddress() + update rowToWalletInfo()
 │   ├── signer.ts                      # NEW — resolveSuiSigner()
 │   ├── keystore.ts                    # Existing, unchanged
 │   └── types.ts                       # Add isWatchOnly to WalletInfo/WalletRow
@@ -86,18 +86,37 @@ src/
 └── logger/                            # UNCHANGED
 ```
 
+## Breaking Interface Changes
+
+The following existing interfaces are renamed or re-signatured:
+
+| Existing | New | Change |
+|----------|-----|--------|
+| `ChainAdapter.getSwapQuote()` | Removed | Moved to `ActionBuilder.preview()` |
+| `ChainAdapter.buildSwapTx()` | Removed | Moved to `ActionBuilder.build()` |
+| `ChainAdapter.simulateTx(txData: TransactionData)` | `simulate(txBytes: Uint8Array, sender: string)` | Renamed; takes raw bytes + sender instead of `TransactionData` |
+| `ChainAdapter.signAndSubmit(txData, signer)` | `signAndSubmit(txBytes: Uint8Array, signer: Signer)` | Takes raw bytes; adapter is responsible for calling `signer.sign()` internally and encoding the result |
+| `SwapParams`, `SwapQuote`, `TransactionData` | No longer used by `ChainAdapter` | These types remain in `types/result.ts` but are no longer part of the adapter interface |
+
+**Signing responsibility:** The `Signer` interface's `sign(data: Uint8Array): Promise<Uint8Array>` returns raw Ed25519 signature bytes. The `SuiChainAdapter.signAndSubmit()` is responsible for:
+1. Calling `signer.sign(txBytes)` to get raw signature bytes
+2. Prepending the Ed25519 scheme flag byte (`0x00`) to the signature
+3. Base64-encoding the result for `client.executeTransactionBlock({ signature })`
+
+This keeps chain-specific encoding inside the chain adapter where it belongs.
+
 ## Section 1: Core Types & Interfaces
 
 ### ActionIntent hierarchy
 
 ```typescript
 // src/core/action-types.ts
+import type { TradeAction } from '../types/intent.js';
 
-type DeFiAction = 'swap' | 'lp_deposit' | 'lp_withdraw';
-
+// Re-use existing TradeAction type (no duplication)
 interface ActionIntent {
   readonly chain: string;
-  readonly action: DeFiAction;
+  readonly action: TradeAction;
   readonly walletAddress: string;
   readonly params: Record<string, unknown>;
 }
@@ -107,7 +126,7 @@ interface SwapIntent extends ActionIntent {
   readonly params: {
     readonly coinTypeIn: string;
     readonly coinTypeOut: string;
-    readonly amountIn: string;
+    readonly amountIn: string;     // raw amount in smallest unit (e.g., MIST)
     readonly slippageBps: number;
   };
 }
@@ -122,14 +141,15 @@ Existing `TradeIntent` stays as policy engine input. The swap command maps `Swap
 
 interface ActionPreview {
   readonly description: string;
-  readonly expectedOutput: string;
+  readonly expectedOutput: string;  // raw amount in token's smallest unit, derived from buildData
   readonly provider: string;
   readonly priceImpact?: number;
-  readonly buildData: unknown;
+  readonly buildData: unknown;      // opaque, passed to build(); source of truth for amounts
 }
 
 interface ActionBuilder<T extends ActionIntent = ActionIntent> {
   readonly builderId: string;
+  readonly chain: string;           // chain this builder targets (for registration validation)
   validate(intent: T): void;
   preview(intent: T): Promise<ActionPreview>;
   build(intent: T, preview: ActionPreview): Promise<BuiltTransaction>;
@@ -141,6 +161,8 @@ interface BuiltTransaction {
 }
 ```
 
+**Note on `expectedOutput`:** This is a convenience field derived from `buildData` by the builder during `preview()`. For `SuiSwapBuilder`, it is set from the 7K quote's `amountOut` field (raw integer string in the output token's smallest unit). `buildData` remains the canonical source — `expectedOutput` is for display/logging only.
+
 ### ActionBuilderRegistry
 
 ```typescript
@@ -151,9 +173,27 @@ type BuilderKey = `${string}:${string}:${string}`;  // "sui:swap:7k"
 class ActionBuilderRegistry {
   private readonly builders = new Map<BuilderKey, ActionBuilder>();
 
+  /**
+   * Register a builder. Asserts builder.chain === chain parameter.
+   * @throws Error if key already registered or chain mismatch
+   */
   register(chain: string, action: string, protocol: string, builder: ActionBuilder): void;
+
+  /**
+   * Get a builder by exact key.
+   * @throws Error with message: 'No builder registered for key "sui:swap:7k"'
+   */
   get(chain: string, action: string, protocol: string): ActionBuilder;
+
+  /**
+   * Get the first registered builder for a (chain, action) pair.
+   * Used when the caller does not specify a protocol (e.g., no --protocol flag).
+   * Selection rule: returns the first builder registered for that (chain, action) pair
+   * (insertion order, matching Map iteration order).
+   * @throws Error with message: 'No builder registered for "sui:swap"'
+   */
   getDefault(chain: string, action: string): ActionBuilder;
+
   has(chain: string, action: string, protocol: string): boolean;
 }
 ```
@@ -196,6 +236,8 @@ interface ChainAdapter {
 ```
 
 Swap-specific methods (`getSwapQuote`, `buildSwapTx`) removed — now handled by `ActionBuilder`.
+`simulateTx` renamed to `simulate` (takes raw bytes + sender instead of `TransactionData`).
+`signAndSubmit` now takes raw bytes — adapter handles signing internally (see Breaking Interface Changes).
 
 ## Section 2: Transaction Pipeline
 
@@ -230,6 +272,7 @@ interface PipelineResult {
 
 interface PipelineInput {
   readonly intent: ActionIntent;
+  readonly tradeIntent: TradeIntent;  // pre-built by caller for policy evaluation
   readonly builder: ActionBuilder;
   readonly chainAdapter: ChainAdapter;
   readonly policyRegistry: PolicyCheckRegistry;
@@ -237,42 +280,29 @@ interface PipelineInput {
   readonly mevProtector: MevProtector;
   readonly tradeLog: TradeLog;
   readonly logger: Logger;
-  readonly signer?: Signer;
+  readonly signer?: Signer;           // undefined = watch-only
   readonly watchOnly: boolean;
 }
 
 async function executePipeline(input: PipelineInput): Promise<PipelineResult>
 ```
 
+**Why `tradeIntent` is separate from `intent`:** The policy engine expects `TradeIntent` (from `src/types/intent.ts`), while the pipeline works with `ActionIntent` (from `src/core/action-types.ts`). Different actions (swap vs LP) map differently to `TradeIntent`, and the caller already has the context to do this correctly. The pipeline passes `tradeIntent` directly to `policyRegistry.evaluateAll()`.
+
 ### Pipeline steps
 
 1. `builder.validate(intent)` — throws on bad params
-2. `policyRegistry.evaluateAll(tradeIntent, policyContext)` — short-circuits on rejection
+2. `policyRegistry.evaluateAll(tradeIntent, policyContext)` — short-circuits on rejection; logs rejected trade
 3. `builder.preview(intent)` — fetch quotes from aggregator
 4. `builder.build(intent, preview)` — build chain-specific transaction
 5. `chainAdapter.buildTransactionBytes(transaction)` — serialize to bytes
 6. `chainAdapter.simulate(txBytes, sender)` — dry-run; fail → `simulation_failed`
-7. Watch-only check → if true: log trade, return `simulated`
+7. Watch-only check → if true: log trade, return `{ status: 'simulated', preview, gasUsed: simResult.gasEstimate }`
 8. `mevProtector.protect(txBytes, chain)` — wrap with MEV protection
 9. `chainAdapter.signAndSubmit(protectedBytes, signer)` — sign + submit
 10. `tradeLog.logTrade(...)` — record to SQLite, return `success`
 
 Every step wrapped in error handling. No silent failures. Pipeline is a stateless function.
-
-### TradeIntent mapping
-
-The pipeline receives `ActionIntent` but the policy engine expects `TradeIntent`. The swap command constructs both — the pipeline receives a `PolicyContext` that's already built with the right `TradeIntent`. The pipeline calls `policyRegistry.evaluateAll(tradeIntent, ctx)` where `tradeIntent` is derived from the `ActionIntent` by the caller.
-
-**Alternative considered:** Having the pipeline do the mapping internally. Rejected because different actions (swap vs LP) map differently to `TradeIntent`, and the caller already has the context to do this correctly.
-
-Updated pipeline input:
-
-```typescript
-interface PipelineInput {
-  // ... same as above, plus:
-  readonly tradeIntent: TradeIntent;  // pre-built by caller for policy evaluation
-}
-```
 
 ## Section 3: Sui Chain Implementation
 
@@ -283,19 +313,40 @@ Ported from `sui-defi-cli/src/chains/sui/sui-adapter.ts`. Methods:
 - `getBalance(address)` — `client.getAllBalances()`, map via token map
 - `buildTransactionBytes(transaction)` — `(transaction as Transaction).build({ client })`
 - `simulate(txBytes, sender)` — `client.dryRunTransactionBlock()`, check status
-- `signAndSubmit(txBytes, signer)` — `signer.sign()` + `client.executeTransactionBlock()`, wait for finality
+- `signAndSubmit(txBytes, signer)` — see signature encoding below
 
-Constructor takes RPC URL, creates `SuiClient` via singleton factory.
+Constructor takes RPC URL, creates `SuiClient` (owned by adapter, not a module-level singleton).
+
+**Signature encoding in `signAndSubmit`:**
+
+```typescript
+async signAndSubmit(txBytes: Uint8Array, signer: Signer): Promise<TxResult> {
+  const rawSignature = await signer.sign(txBytes);
+  // Prepend Ed25519 scheme flag byte (0x00) to raw signature bytes
+  const suiSignature = new Uint8Array([0x00, ...rawSignature]);
+  const signatureB64 = toB64(suiSignature);  // from @mysten/sui/utils
+
+  const result = await this.client.executeTransactionBlock({
+    transactionBlock: toB64(txBytes),
+    signature: signatureB64,
+    options: { showEffects: true, showObjectChanges: true },
+  });
+  // ... extract txDigest, status, gasUsed from result
+}
+```
 
 ### SuiSwapBuilder
 
 Ported from `sui-defi-cli/src/chains/sui/sui-swap.ts`. Implements `ActionBuilder<SwapIntent>`:
 
 - `builderId = '7k-swap'`
-- Constructor takes `slippageBps`, creates `MetaAg` with Cetus/Bluefin/FlowX providers
+- `chain = 'sui'`
+- **Constructed per-trade** (not at bootstrap) — takes `slippageBps` from `intent.params.slippageBps` so the CLI `--slippage` flag is respected. The swap command creates a new `SuiSwapBuilder(intent.params.slippageBps)` for each trade.
 - `validate()` — coinTypeIn !== coinTypeOut, amountIn > 0, known tokens
-- `preview()` — `metaAg.quote()`, select best by output, return `ActionPreview`
+- `preview()` — `metaAg.quote()`, select best by output, return `ActionPreview` with `expectedOutput` set from `best.amountOut` (raw integer string in output token's smallest unit)
 - `build()` — `new Transaction()`, `metaAg.swap()`, add transfer move, return `BuiltTransaction`
+
+**Note on per-trade construction:** The `ActionBuilderRegistry` stores a factory function instead of a pre-built instance for builders that need per-trade configuration. See updated bootstrap section.
 
 ### SuiNoOpMev
 
@@ -308,17 +359,18 @@ class SuiNoOpMev implements MevProtector {
 }
 ```
 
-### Singleton SuiClient
+### SuiClient ownership
+
+The `SuiChainAdapter` owns its `SuiClient` instance directly (created in constructor from the RPC URL parameter). No module-level singleton — this avoids silently ignoring RPC URL changes and ensures test isolation.
 
 ```typescript
-// src/chain/sui/client.ts
-let cachedClient: SuiClient | null = null;
+class SuiChainAdapter implements ChainAdapter {
+  readonly chain = 'sui';
+  private readonly client: SuiClient;
 
-function getSuiClient(rpcUrl: string): SuiClient {
-  if (!cachedClient) {
-    cachedClient = new SuiClient({ url: rpcUrl });
+  constructor(rpcUrl: string) {
+    this.client = new SuiClient({ url: rpcUrl });
   }
-  return cachedClient;
 }
 ```
 
@@ -365,17 +417,33 @@ interface WalletRow {
 }
 ```
 
-### New wallet function
+### Wallet manager changes
+
+Extend existing `registerWalletAddress()` in `src/wallet/manager.ts` with an optional `isWatchOnly` parameter (default `false`) instead of creating a separate function. This avoids a DRY violation:
 
 ```typescript
-// src/wallet/manager.ts
-
-function registerWatchOnlyWallet(
+function registerWalletAddress(
   db: Database.Database,
   chain: string,
   address: string,
+  isPrimary?: boolean,
+  isWatchOnly?: boolean,  // NEW — default false
 ): void
-// INSERT with is_watch_only = 1, derivation_path = NULL
+// INSERT with is_watch_only = isWatchOnly ? 1 : 0
+```
+
+Also update `rowToWalletInfo()` to map the new column:
+
+```typescript
+function rowToWalletInfo(row: WalletRow): WalletInfo {
+  return {
+    chain: row.chain,
+    address: row.address,
+    derivationPath: row.derivation_path,
+    isPrimary: row.is_primary === 1,
+    isWatchOnly: row.is_watch_only === 1,  // NEW
+  };
+}
 ```
 
 ### No keystore changes
@@ -385,9 +453,11 @@ Watch-only wallets have no private key. No keystore entry created.
 ### Pipeline behavior
 
 When `watchOnly === true`, pipeline stops after step 6 (simulate):
-- Logs trade with `policy_decision: 'approved'`
-- Returns `{ status: 'simulated', preview }`
+- Logs trade with `policy_decision: 'approved'`, `tx_digest: 'watch-only'`
+- Returns `{ status: 'simulated', preview, gasUsed: simResult.gasEstimate }`
 - Skips MEV protection, signing, submission
+
+**Known limitation (MVP):** Watch-only simulations and failed submissions both show `policy_decision: 'approved'` in the trades table. They can be distinguished by `tx_digest` — watch-only trades have `tx_digest = 'watch-only'` while failed submissions have no `tx_digest`. A `trade_mode` column may be added post-MVP if finer granularity is needed.
 
 ### CLI command
 
@@ -395,7 +465,7 @@ When `watchOnly === true`, pipeline stops after step 6 (simulate):
 fence wallet watch <address> --chain sui
 ```
 
-New file `src/cli/commands/wallet-watch.ts`. Validates address format, calls `registerWatchOnlyWallet()`.
+New file `src/cli/commands/wallet-watch.ts`. Validates Sui address format with regex `/^0x[0-9a-fA-F]{64}$/` (32-byte hex). Calls `registerWalletAddress(db, chain, address, false, true)`.
 
 ### Watch-only output
 
@@ -431,9 +501,14 @@ interface AppComponents {
 Registration in bootstrap:
 
 ```typescript
-function buildActionBuilderRegistry(slippageBps: number): ActionBuilderRegistry {
+function buildActionBuilderRegistry(): ActionBuilderRegistry {
   const registry = new ActionBuilderRegistry();
-  registry.register('sui', 'swap', '7k', new SuiSwapBuilder(slippageBps));
+  // SuiSwapBuilder is constructed per-trade (needs slippageBps from intent),
+  // so we register a factory that creates the builder on demand.
+  // The registry supports both pre-built instances and factory functions.
+  registry.registerFactory('sui', 'swap', '7k', (intent: SwapIntent) =>
+    new SuiSwapBuilder(intent.params.slippageBps)
+  );
   return registry;
 }
 
@@ -442,6 +517,11 @@ function buildMevProtectors(): Map<string, MevProtector> {
   map.set('sui', new SuiNoOpMev());
   return map;
 }
+```
+
+**Note:** `ActionBuilderRegistry` supports two registration modes:
+- `register(chain, action, protocol, builder)` — for builders with no per-trade config
+- `registerFactory(chain, action, protocol, factory)` — for builders that need per-trade parameters (like slippage). The `getDefault()`/`get()` methods accept an optional `intent` parameter to pass to the factory.
 ```
 
 ### Swap command rewrite
@@ -500,10 +580,10 @@ Add `SimulatedResponse` to `src/cli/output.ts` for watch-only results.
 | Test File | Coverage |
 |-----------|----------|
 | `transaction-pipeline.test.ts` | Full flow: success, rejection, simulation failure, watch-only, error |
-| `action-builder-registry.test.ts` | Register, get, getDefault, duplicate key, missing key |
-| `sui-swap-builder.test.ts` | validate, preview (mocked MetaAg), build |
-| `sui-adapter.test.ts` | Update for new interface (buildTransactionBytes, simulate, signAndSubmit) |
-| `watch-only.test.ts` | DB migration, registerWatchOnlyWallet, pipeline stops after simulate |
+| `action-builder-registry.test.ts` | Register, registerFactory, get, getDefault, duplicate key, missing key, chain mismatch |
+| `sui-swap-builder.test.ts` | validate, preview (mocked MetaAg), build, per-trade slippage |
+| `sui-adapter.test.ts` | Update for new interface (buildTransactionBytes, simulate, signAndSubmit with signature encoding) |
+| `watch-only.test.ts` | DB migration, registerWalletAddress with isWatchOnly, pipeline stops after simulate with gasEstimate |
 
 ## Implementation Layers
 
