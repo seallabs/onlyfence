@@ -19,6 +19,8 @@ import { getLogger } from '../logger/index.js';
 import { initSentry } from '../telemetry/sentry.js';
 import type { CoinMetadataService } from '../data/coin-metadata.js';
 import { NoodlesCoinMetadataService } from '../data/coin-metadata.js';
+import { CachedCoinMetadataService } from '../data/cached-coin-metadata.js';
+import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
 import { SUI_KNOWN_DECIMALS } from '../chain/sui/tokens.js';
 
 /**
@@ -71,7 +73,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const chainAdapterFactory = buildChainAdapterFactory();
   const actionBuilderRegistry = buildActionBuilderRegistry();
   const mevProtectors = buildMevProtectors();
-  const coinMetadataService = buildCoinMetadataService(logger);
+  const coinMetadataService = buildCoinMetadataService(db);
 
   logger.info('Bootstrap complete');
 
@@ -154,16 +156,18 @@ export function buildMevProtectors(): Map<string, MevProtector> {
 }
 
 /**
- * Build a CoinMetadataService using the NOODLES_API_KEY env var.
+ * Build a CoinMetadataService with DB-backed caching.
  *
- * Falls back to SUI_KNOWN_DECIMALS for well-known tokens when the
- * API is unreachable. The API key is optional — free-tier calls are
- * rate-limited but still functional.
+ * Wraps the Noodles API service with a local SQLite cache so coin metadata
+ * (decimals, symbol) is persisted across CLI invocations. Falls back to
+ * SUI_KNOWN_DECIMALS for well-known tokens when the API is unreachable.
  *
- * @param _logger - Logger for diagnostic messages (reserved for future use)
- * @returns CoinMetadataService instance
+ * @param db - SQLite database connection (for the coin_metadata cache table)
+ * @returns CoinMetadataService instance with DB caching
  */
-export function buildCoinMetadataService(_logger: Logger): CoinMetadataService {
+export function buildCoinMetadataService(db: Database.Database): CoinMetadataService {
   const apiKey = process.env['NOODLES_API_KEY'];
-  return new NoodlesCoinMetadataService(SUI_KNOWN_DECIMALS, apiKey);
+  const inner = new NoodlesCoinMetadataService(SUI_KNOWN_DECIMALS, apiKey);
+  const repo = new CoinMetadataRepository(db);
+  return new CachedCoinMetadataService(repo, inner);
 }
