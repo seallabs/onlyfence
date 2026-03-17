@@ -1,5 +1,5 @@
 import type { PolicyContext } from '../policy/context.js';
-import type { TradeIntent } from '../types/intent.js';
+import type { SwapIntent } from '../core/action-types.js';
 import type { ChainConfig } from '../types/config.js';
 import type { OracleClient } from '../oracle/client.js';
 import { TradeLog } from '../db/trade-log.js';
@@ -18,16 +18,19 @@ export function createMockOracle(price: number = 1.0): OracleClient {
 }
 
 /**
- * Create a TradeIntent with sensible defaults, overridable via partial.
+ * Create a SwapIntent with sensible defaults, overridable via partial.
  */
-export function createIntent(overrides?: Partial<TradeIntent>): TradeIntent {
+export function createIntent(overrides?: Partial<SwapIntent>): SwapIntent {
   return {
     chain: 'sui',
     action: 'swap',
-    fromToken: 'SUI',
-    toToken: 'USDC',
-    amount: 100n,
     walletAddress: '0xabc',
+    params: {
+      coinTypeIn: '0x2::sui::SUI',
+      coinTypeOut: '0xdba3::usdc::USDC',
+      amountIn: '100000000',
+      slippageBps: 100,
+    },
     ...overrides,
   };
 }
