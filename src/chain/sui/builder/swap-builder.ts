@@ -102,13 +102,17 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
 
     const tx = new Transaction();
     const coinIn = coinWithBalance({ balance: BigInt(best.amountIn), type: best.coinTypeIn })(tx);
+    // Cast through unknown to bridge ESM/CJS dual-module boundary with @7kprotocol/sdk-ts
     const coinOut = await this.metaAg.swap({
       quote: best.raw as Parameters<MetaAg['swap']>[0]['quote'],
       signer: intent.walletAddress,
-      tx,
-      coinIn,
+      tx: tx as unknown as Parameters<MetaAg['swap']>[0]['tx'],
+      coinIn: coinIn as unknown as Parameters<MetaAg['swap']>[0]['coinIn'],
     });
-    tx.transferObjects([coinOut], tx.pure.address(intent.walletAddress));
+    tx.transferObjects(
+      [coinOut as unknown as Parameters<typeof tx.transferObjects>[0][number]],
+      tx.pure.address(intent.walletAddress),
+    );
 
     return {
       transaction: tx,
