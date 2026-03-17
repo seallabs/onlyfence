@@ -157,16 +157,13 @@ export function buildMevProtectors(): Map<string, MevProtector> {
  * Build a CoinMetadataService using the NOODLES_API_KEY env var.
  *
  * Falls back to SUI_KNOWN_DECIMALS for well-known tokens when the
- * API key is not set or the API is unreachable. Logs a warning when
- * the env var is missing so operators know remote resolution is disabled.
+ * API is unreachable. The API key is optional — free-tier calls are
+ * rate-limited but still functional.
  *
- * @param logger - Logger for diagnostic messages
+ * @param _logger - Logger for diagnostic messages (reserved for future use)
  * @returns CoinMetadataService instance
  */
-export function buildCoinMetadataService(logger: Logger): CoinMetadataService {
-  const apiKey = process.env['NOODLES_API_KEY'] ?? '';
-  if (apiKey === '') {
-    logger.warn('NOODLES_API_KEY not set; coin metadata will only resolve from local fallback');
-  }
-  return new NoodlesCoinMetadataService(apiKey, SUI_KNOWN_DECIMALS);
+export function buildCoinMetadataService(_logger: Logger): CoinMetadataService {
+  const apiKey = process.env['NOODLES_API_KEY'];
+  return new NoodlesCoinMetadataService(SUI_KNOWN_DECIMALS, apiKey);
 }
