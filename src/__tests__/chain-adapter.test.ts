@@ -1,9 +1,17 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ChainAdapterFactory } from '../chain/factory.js';
-import { SuiAdapter } from '../chain/sui/adapter.js';
 import { SUI_TOKEN_MAP, resolveTokenAddress, isKnownToken } from '../chain/sui/tokens.js';
 import type { ChainAdapter } from '../chain/adapter.js';
 import type { BalanceResult, SimulationResult, TxResult, Signer } from '../types/result.js';
+
+// Mock SuiJsonRpcClient so SuiAdapter can be constructed
+vi.mock('@mysten/sui/jsonRpc', () => ({
+  SuiJsonRpcClient: class MockSuiJsonRpcClient {},
+}));
+
+vi.mock('@mysten/bcs', () => ({
+  toBase64: vi.fn((bytes: Uint8Array) => Buffer.from(bytes).toString('base64')),
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,46 +94,16 @@ describe('ChainAdapterFactory', () => {
 // ---------------------------------------------------------------------------
 
 describe('SuiAdapter', () => {
-  let adapter: SuiAdapter;
-
-  beforeEach(() => {
-    adapter = new SuiAdapter();
-  });
-
-  it('should have chain set to "sui"', () => {
+  // SuiAdapter now requires an rpcUrl, imported lazily to use mocked deps
+  it('should have chain set to "sui"', async () => {
+    const { SuiAdapter } = await import('../chain/sui/adapter.js');
+    const adapter = new SuiAdapter('https://rpc.example.com');
     expect(adapter.chain).toBe('sui');
   });
 
-  it('getBalance should throw not implemented', async () => {
-    await expect(adapter.getBalance('0xabc')).rejects.toThrow(
-      'SuiAdapter.getBalance not implemented',
-    );
-  });
-
-  it('buildTransactionBytes should throw not implemented', async () => {
-    await expect(adapter.buildTransactionBytes({})).rejects.toThrow(
-      'SuiAdapter.buildTransactionBytes not implemented',
-    );
-  });
-
-  it('simulate should throw not implemented', async () => {
-    await expect(adapter.simulate(new Uint8Array(), '0xabc')).rejects.toThrow(
-      'SuiAdapter.simulate not implemented',
-    );
-  });
-
-  it('signAndSubmit should throw not implemented', async () => {
-    const signer: Signer = {
-      address: '0xabc',
-      publicKey: new Uint8Array(32),
-      sign: async (_data: Uint8Array) => new Uint8Array(),
-    };
-    await expect(adapter.signAndSubmit(new Uint8Array(), signer)).rejects.toThrow(
-      'SuiAdapter.signAndSubmit not implemented',
-    );
-  });
-
-  it('should be registerable with ChainAdapterFactory', () => {
+  it('should be registerable with ChainAdapterFactory', async () => {
+    const { SuiAdapter } = await import('../chain/sui/adapter.js');
+    const adapter = new SuiAdapter('https://rpc.example.com');
     const factory = new ChainAdapterFactory();
     factory.register(adapter);
 

@@ -90,8 +90,11 @@ export function buildPolicyRegistry(_config: AppConfig): PolicyCheckRegistry {
  *
  * @returns ChainAdapterFactory with SuiAdapter registered
  */
+/** Default Sui mainnet RPC endpoint. */
+const SUI_MAINNET_RPC = 'https://fullnode.mainnet.sui.io:443';
+
 export function buildChainAdapterFactory(): ChainAdapterFactory {
   const factory = new ChainAdapterFactory();
-  factory.register(new SuiAdapter());
+  factory.register(new SuiAdapter(process.env['SUI_RPC_URL'] ?? SUI_MAINNET_RPC));
   return factory;
 }

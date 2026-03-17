@@ -42,6 +42,53 @@ export function resolveTokenAddress(symbol: string): string {
 }
 
 /**
+ * Known decimals for well-known Sui tokens, keyed by fully-qualified coin type.
+ */
+export const SUI_KNOWN_DECIMALS: Readonly<Record<string, number>> = Object.fromEntries(
+  (
+    [
+      ['SUI', 9],
+      ['USDC', 6],
+      ['USDT', 6],
+      ['DEEP', 6],
+      ['BLUE', 9],
+      ['WAL', 9],
+    ] as const
+  ).map(([symbol, decimals]) => {
+    const coinType = SUI_TOKEN_MAP[symbol];
+    if (coinType === undefined) {
+      throw new Error(`SUI_KNOWN_DECIMALS: missing token map entry for "${symbol}"`);
+    }
+    return [coinType, decimals] as const;
+  }),
+);
+
+/**
+ * Reverse mapping from fully-qualified coin type to token symbol.
+ */
+const COIN_TYPE_TO_SYMBOL: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(SUI_TOKEN_MAP).map(([symbol, coinType]) => [coinType, symbol]),
+);
+
+/**
+ * Resolve a coin type to its human-readable symbol.
+ * Falls back to extracting the last segment of the coin type (e.g., "SUI" from "0x2::sui::SUI").
+ */
+export function resolveSymbol(coinType: string): string {
+  const known = COIN_TYPE_TO_SYMBOL[coinType];
+  if (known !== undefined) return known;
+  const parts = coinType.split('::');
+  return parts[parts.length - 1] ?? coinType;
+}
+
+/**
+ * Get known decimals for a coin type, or undefined if not in the registry.
+ */
+export function getKnownDecimals(coinType: string): number | undefined {
+  return SUI_KNOWN_DECIMALS[coinType];
+}
+
+/**
  * Check whether a token symbol is known in the Sui token registry.
  */
 export function isKnownToken(symbol: string): boolean {
