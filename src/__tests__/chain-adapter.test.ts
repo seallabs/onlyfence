@@ -3,15 +3,7 @@ import { ChainAdapterFactory } from '../chain/factory.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
 import { SUI_TOKEN_MAP, resolveTokenAddress, isKnownToken } from '../chain/sui/tokens.js';
 import type { ChainAdapter } from '../chain/adapter.js';
-import type {
-  BalanceResult,
-  SwapParams,
-  SwapQuote,
-  TransactionData,
-  SimulationResult,
-  TxResult,
-  Signer,
-} from '../types/result.js';
+import type { BalanceResult, SimulationResult, TxResult, Signer } from '../types/result.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,19 +21,15 @@ class StubAdapter implements ChainAdapter {
     return { address: '', balances: [] };
   }
 
-  async getSwapQuote(_params: SwapParams): Promise<SwapQuote> {
-    return { route: '', expectedOutput: 0n, priceImpact: 0, protocol: '' };
+  async buildTransactionBytes(_transaction: unknown): Promise<Uint8Array> {
+    return new Uint8Array();
   }
 
-  async buildSwapTx(_quote: SwapQuote): Promise<TransactionData> {
-    return { chain: this.chain, bytes: new Uint8Array() };
-  }
-
-  async simulateTx(_txData: TransactionData): Promise<SimulationResult> {
+  async simulate(_txBytes: Uint8Array, _sender: string): Promise<SimulationResult> {
     return { success: true, gasEstimate: 0 };
   }
 
-  async signAndSubmit(_txData: TransactionData, _signer: Signer): Promise<TxResult> {
+  async signAndSubmit(_txBytes: Uint8Array, _signer: Signer): Promise<TxResult> {
     return { txDigest: '', status: 'success', gasUsed: 0 };
   }
 }
@@ -114,51 +102,25 @@ describe('SuiAdapter', () => {
     );
   });
 
-  it('getSwapQuote should throw not implemented', async () => {
-    const params: SwapParams = {
-      fromToken: 'SUI',
-      toToken: 'USDC',
-      amount: 100n,
-      slippage: 0.5,
-      walletAddress: '0xabc',
-    };
-    await expect(adapter.getSwapQuote(params)).rejects.toThrow(
-      'SuiAdapter.getSwapQuote not implemented',
+  it('buildTransactionBytes should throw not implemented', async () => {
+    await expect(adapter.buildTransactionBytes({})).rejects.toThrow(
+      'SuiAdapter.buildTransactionBytes not implemented',
     );
   });
 
-  it('buildSwapTx should throw not implemented', async () => {
-    const quote: SwapQuote = {
-      route: 'SUI->USDC',
-      expectedOutput: 100n,
-      priceImpact: 0.01,
-      protocol: '7k',
-    };
-    await expect(adapter.buildSwapTx(quote)).rejects.toThrow(
-      'SuiAdapter.buildSwapTx not implemented',
-    );
-  });
-
-  it('simulateTx should throw not implemented', async () => {
-    const txData: TransactionData = {
-      chain: 'sui',
-      bytes: new Uint8Array(),
-    };
-    await expect(adapter.simulateTx(txData)).rejects.toThrow(
-      'SuiAdapter.simulateTx not implemented',
+  it('simulate should throw not implemented', async () => {
+    await expect(adapter.simulate(new Uint8Array(), '0xabc')).rejects.toThrow(
+      'SuiAdapter.simulate not implemented',
     );
   });
 
   it('signAndSubmit should throw not implemented', async () => {
-    const txData: TransactionData = {
-      chain: 'sui',
-      bytes: new Uint8Array(),
-    };
     const signer: Signer = {
       address: '0xabc',
+      publicKey: new Uint8Array(32),
       sign: async (_data: Uint8Array) => new Uint8Array(),
     };
-    await expect(adapter.signAndSubmit(txData, signer)).rejects.toThrow(
+    await expect(adapter.signAndSubmit(new Uint8Array(), signer)).rejects.toThrow(
       'SuiAdapter.signAndSubmit not implemented',
     );
   });

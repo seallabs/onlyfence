@@ -91,5 +91,6 @@ export interface TokenBalance {
  */
 export interface Signer {
   readonly address: string;
+  readonly publicKey: Uint8Array;
   sign(data: Uint8Array): Promise<Uint8Array>;
 }

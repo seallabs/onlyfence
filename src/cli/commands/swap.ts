@@ -1,11 +1,11 @@
 import type { Command } from 'commander';
-import type { TradeIntent } from '../../types/intent.js';
+import type { SwapIntent } from '../../core/action-types.js';
 import type { PolicyContext } from '../../policy/context.js';
 import type { CheckResult } from '../../types/result.js';
 import type { AppComponents } from '../bootstrap.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { printJsonOutput } from '../output.js';
-import type { SuccessResponse, RejectionResponse, ErrorResponse } from '../output.js';
+import type { RejectionResponse, ErrorResponse } from '../output.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { REJECTED_BY_KEY } from '../../policy/check.js';
 
@@ -54,8 +54,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           return;
         }
 
-        const { db, config, oracle, policyRegistry, chainAdapterFactory, tradeLog, logger } =
-          components;
+        const { db, config, oracle, policyRegistry, tradeLog, logger } = components;
         const chain = options.chain;
         const log = logger.child({ command: 'swap' });
 
@@ -82,24 +81,27 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
 
           log.info({ fromToken, toToken, amount: amountStr, chain }, 'Swap command invoked');
 
-          // Build TradeIntent
-          const intent: TradeIntent = {
+          // Build SwapIntent
+          const intent: SwapIntent = {
             chain,
             action: 'swap',
-            fromToken: fromToken.toUpperCase(),
-            toToken: toToken.toUpperCase(),
-            amount,
             walletAddress: wallet.address,
+            params: {
+              coinTypeIn: fromToken.toUpperCase(),
+              coinTypeOut: toToken.toUpperCase(),
+              amountIn: amount.toString(),
+              slippageBps: Math.round(parseFloat(options.slippage) * 100),
+            },
           };
 
           // Resolve USD price from oracle (handle failure per spec section 10)
           let tradeValueUsd: number | undefined;
           try {
-            const price = await oracle.getPrice(intent.fromToken);
-            tradeValueUsd = Number(intent.amount) * price;
+            const price = await oracle.getPrice(intent.params.coinTypeIn);
+            tradeValueUsd = Number(BigInt(intent.params.amountIn)) * price;
           } catch (err: unknown) {
             console.warn(
-              `Warning: Oracle price unavailable for ${intent.fromToken}: ` +
+              `Warning: Oracle price unavailable for ${intent.params.coinTypeIn}: ` +
                 `${toErrorMessage(err)}. ` +
                 `USD spending limits will not be enforced.`,
             );
@@ -125,9 +127,9 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
               chain: intent.chain,
               wallet_address: intent.walletAddress,
               action: intent.action,
-              from_token: intent.fromToken,
-              to_token: intent.toToken,
-              amount_in: intent.amount.toString(),
+              from_token: intent.params.coinTypeIn,
+              to_token: intent.params.coinTypeOut,
+              amount_in: intent.params.amountIn,
               ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
               policy_decision: 'rejected',
               ...(policyResult.reason !== undefined
@@ -161,67 +163,10 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             return;
           }
 
-          // Policy approved - attempt chain execution
-          const adapter = chainAdapterFactory.get(chain);
-          const slippage = parseFloat(options.slippage);
-
-          const quote = await adapter.getSwapQuote({
-            fromToken: intent.fromToken,
-            toToken: intent.toToken,
-            amount: intent.amount,
-            slippage,
-            walletAddress: intent.walletAddress,
-          });
-
-          const txData = await adapter.buildSwapTx(quote);
-          const simResult = await adapter.simulateTx(txData);
-
-          if (!simResult.success) {
-            throw new Error(`Transaction simulation failed: ${simResult.error ?? 'unknown error'}`);
-          }
-
-          // For now, sign and submit requires a signer which needs keystore password
-          // This is a placeholder - the SuiAdapter methods throw "not implemented"
-          // In production, we would prompt for password, load keystore, and create signer
-          const txResult = await adapter.signAndSubmit(txData, {
-            address: intent.walletAddress,
-            sign: (_data: Uint8Array): Promise<Uint8Array> => Promise.resolve(new Uint8Array(64)),
-          });
-
-          // Log approved trade
-          tradeLog.logTrade({
-            chain: intent.chain,
-            wallet_address: intent.walletAddress,
-            action: intent.action,
-            from_token: intent.fromToken,
-            to_token: intent.toToken,
-            amount_in: intent.amount.toString(),
-            ...(txResult.amountOut !== undefined
-              ? { amount_out: txResult.amountOut.toString() }
-              : {}),
-            ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
-            tx_digest: txResult.txDigest,
-            gas_cost: txResult.gasUsed,
-            policy_decision: 'approved',
-          });
-
-          const successOutput: SuccessResponse = {
-            status: 'success',
-            chain: intent.chain,
-            action: intent.action,
-            txDigest: txResult.txDigest,
-            fromToken: intent.fromToken,
-            toToken: intent.toToken,
-            amountIn: intent.amount.toString(),
-            amountOut: txResult.amountOut?.toString() ?? '0',
-            valueUsd: tradeValueUsd ?? null,
-            gasCost: txResult.gasUsed,
-            route: quote.route,
-          };
-
-          log.info({ txDigest: txResult.txDigest }, 'Swap executed successfully');
-
-          printJsonOutput(successOutput);
+          // TODO: replaced by executePipeline in Task 15
+          throw new Error(
+            'Swap chain execution not implemented — will be replaced by executePipeline in Task 15',
+          );
         } catch (err: unknown) {
           log.error({ err: toErrorMessage(err) }, 'Swap failed');
           const errorOutput: ErrorResponse = {
