@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(cat:*)",
+      "Bash(npx prettier:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run:*)",
+      "Bash(chmod:*)",
+      "Bash(find:*)"
+    ]
+  }
+}
