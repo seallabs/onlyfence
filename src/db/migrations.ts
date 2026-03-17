@@ -60,14 +60,14 @@ const MIGRATIONS: readonly string[] = [
     ON cli_events(command, created_at)`,
 
   `CREATE TABLE IF NOT EXISTS coin_metadata (
-  coin_type   TEXT    NOT NULL,
-  chain       TEXT    NOT NULL,
-  symbol      TEXT    NOT NULL,
-  name        TEXT,
-  decimals    INTEGER NOT NULL,
-  updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-  PRIMARY KEY (coin_type, chain)
-)`,
+    coin_type   TEXT    NOT NULL,
+    chain       TEXT    NOT NULL,
+    symbol      TEXT    NOT NULL,
+    name        TEXT,
+    decimals    INTEGER NOT NULL,
+    updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (coin_type, chain)
+  )`,
 ];
 
 /**
