@@ -107,6 +107,7 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
     logger,
     signer,
     watchOnly,
+    tradeValueUsd,
   } = input;
 
   const log = logger.child({ action: intent.action, chain: intent.chain });
@@ -130,7 +131,7 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
         buildTradeRecord(intent, 'rejected', {
           rejectionReason,
           rejectionCheck,
-          ...(input.tradeValueUsd !== undefined ? { valueUsd: input.tradeValueUsd } : {}),
+          ...(tradeValueUsd !== undefined ? { valueUsd: tradeValueUsd } : {}),
         }),
       );
 
@@ -171,7 +172,7 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
         buildTradeRecord(intent, 'approved', {
           txDigest: 'watch-only',
           gasUsed: simResult.gasEstimate,
-          ...(input.tradeValueUsd !== undefined ? { valueUsd: input.tradeValueUsd } : {}),
+          ...(tradeValueUsd !== undefined ? { valueUsd: tradeValueUsd } : {}),
         }),
       );
 
@@ -215,7 +216,7 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
         txDigest: txResult.txDigest,
         gasUsed: txResult.gasUsed,
         ...(amountOutStr !== undefined ? { amountOut: amountOutStr } : {}),
-        ...(input.tradeValueUsd !== undefined ? { valueUsd: input.tradeValueUsd } : {}),
+        ...(tradeValueUsd !== undefined ? { valueUsd: tradeValueUsd } : {}),
       }),
     );
 
@@ -227,7 +228,7 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
       gasUsed: txResult.gasUsed,
       preview,
       ...(amountOutStr !== undefined ? { amountOut: amountOutStr } : {}),
-      ...(input.tradeValueUsd !== undefined ? { tradeValueUsd: input.tradeValueUsd } : {}),
+      ...(tradeValueUsd !== undefined ? { tradeValueUsd: tradeValueUsd } : {}),
     };
 
     return result;
