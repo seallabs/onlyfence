@@ -39,12 +39,7 @@ export interface SupplyIntent extends ActionIntentBase {
 export type ActionIntent = SwapIntent | SupplyIntent;
 
 /** Pipeline result status */
-export type PipelineStatus =
-  | 'success'
-  | 'simulated'
-  | 'rejected'
-  | 'simulation_failed'
-  | 'error';
+export type PipelineStatus = 'success' | 'simulated' | 'rejected' | 'simulation_failed' | 'error';
 
 /** Preview returned by ActionBuilder.preview() */
 export interface ActionPreview {
