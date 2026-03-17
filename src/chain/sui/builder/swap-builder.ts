@@ -82,16 +82,12 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
       raw: q,
     }));
 
-    // Select best by output amount
-    const sorted = mapped.toSorted((a, b) => {
-      const diff = BigInt(b.amountOut) - BigInt(a.amountOut);
-      return diff > 0n ? 1 : diff < 0n ? -1 : 0;
-    });
-
-    const best = sorted[0];
-    if (best === undefined) {
+    // Select best by output amount (single pass)
+    if (mapped.length === 0) {
       throw new Error('No swap quotes available');
     }
+
+    const best = mapped.reduce((acc, q) => (BigInt(q.amountOut) > BigInt(acc.amountOut) ? q : acc));
 
     return {
       description: `Swap via ${best.provider}`,

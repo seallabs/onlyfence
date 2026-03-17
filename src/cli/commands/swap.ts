@@ -17,6 +17,9 @@ import { resolveSuiSigner } from '../../wallet/signer.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
 import { NoOpMevProtector } from '../../core/mev-protector.js';
 
+/** Shared fallback MEV protector for chains without a registered protector. */
+const FALLBACK_MEV_PROTECTOR = new NoOpMevProtector();
+
 /**
  * Register the `fence swap` command on the given program.
  *
@@ -128,7 +131,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           let tradeValueUsd: number | undefined;
           try {
             const price = await oracle.getPrice(fromToken.toUpperCase());
-            tradeValueUsd = Number(BigInt(intent.params.amountIn)) * price;
+            tradeValueUsd = Number(intent.params.amountIn) * price;
           } catch (err: unknown) {
             log.warn(
               { token: fromToken, error: toErrorMessage(err) },
@@ -156,7 +159,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           const chainAdapter = chainAdapterFactory.get(chain);
 
           // Get MEV protector (fallback to NoOp)
-          const mevProtector = mevProtectors.get(chain) ?? new NoOpMevProtector();
+          const mevProtector = mevProtectors.get(chain) ?? FALLBACK_MEV_PROTECTOR;
 
           // Execute pipeline
           const result = await executePipeline({

@@ -1,3 +1,5 @@
+import { extractTokenSymbol } from '../../utils/index.js';
+
 /**
  * Sui mainnet coin type addresses for well-known tokens.
  *
@@ -77,8 +79,7 @@ const COIN_TYPE_TO_SYMBOL: Readonly<Record<string, string>> = Object.fromEntries
 export function resolveSymbol(coinType: string): string {
   const known = COIN_TYPE_TO_SYMBOL[coinType];
   if (known !== undefined) return known;
-  const parts = coinType.split('::');
-  return parts[parts.length - 1] ?? coinType;
+  return extractTokenSymbol(coinType);
 }
 
 /**
