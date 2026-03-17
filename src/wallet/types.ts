@@ -7,6 +7,7 @@ export interface WalletInfo {
   readonly derivationPath: string | null;
   readonly isPrimary: boolean;
   readonly isWatchOnly: boolean;
+  readonly alias: string;
 }
 
 /**
@@ -46,5 +47,6 @@ export interface WalletRow {
   readonly derivation_path: string | null;
   readonly is_primary: number;
   readonly is_watch_only: number;
+  readonly alias: string | null;
   readonly created_at: string;
 }

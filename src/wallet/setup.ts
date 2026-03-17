@@ -40,8 +40,8 @@ export function ensureSetupEnvironment(): Database.Database {
  * @param db - Open database connection
  * @returns Setup result with mnemonic, address, and private key
  */
-export function generateSetupWallet(db: Database.Database): SetupResult {
-  const result = generateWallet(db);
+export function generateSetupWallet(db: Database.Database, alias?: string): SetupResult {
+  const result = generateWallet(db, alias);
   const wallet = result.wallets[0];
   return {
     mnemonic: result.mnemonic,
@@ -59,9 +59,13 @@ export function generateSetupWallet(db: Database.Database): SetupResult {
  * @param mnemonic - BIP-39 mnemonic phrase
  * @returns Setup result with mnemonic, address, and private key
  */
-export function importSetupWallet(db: Database.Database, mnemonic: string): SetupResult {
+export function importSetupWallet(
+  db: Database.Database,
+  mnemonic: string,
+  alias?: string,
+): SetupResult {
   const trimmed = mnemonic.trim();
-  const result = importFromMnemonic(db, trimmed);
+  const result = importFromMnemonic(db, trimmed, alias);
   return {
     mnemonic: trimmed,
     address: result.wallet.address,
