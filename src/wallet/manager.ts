@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { generateMnemonic, validateMnemonic, mnemonicToSeedSync } from 'bip39';
 import { deriveSuiKeypair, SUI_DERIVATION_PATH } from './derivation.js';
+import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import type { WalletInfo, WalletRow } from './types.js';
 
 /**
@@ -49,7 +50,7 @@ export function generateWallet(db: Database.Database): GenerateWalletResult {
 
   const suiKeypair = deriveSuiKeypair(Buffer.from(seed));
   const suiWallet: WalletInfo = {
-    chain: 'sui',
+    chain: SUI_CHAIN_ID,
     address: suiKeypair.address,
     derivationPath: SUI_DERIVATION_PATH,
     isPrimary: true,
@@ -85,7 +86,7 @@ export function importFromMnemonic(db: Database.Database, mnemonic: string): Imp
   const suiKeypair = deriveSuiKeypair(Buffer.from(seed));
 
   const wallet: WalletInfo = {
-    chain: 'sui',
+    chain: SUI_CHAIN_ID,
     address: suiKeypair.address,
     derivationPath: SUI_DERIVATION_PATH,
     isPrimary: true,

@@ -20,8 +20,11 @@ import type {
  * Post-MVP: EvmAdapter, SvmAdapter
  */
 export interface ChainAdapter {
-  /** Chain identifier (e.g., "sui", "evm", "solana") */
+  /** Short chain name used as config key and factory key (e.g., "sui", "ethereum") */
   readonly chain: string;
+
+  /** CAIP-2 chain identifier for DB storage and diagnostics (e.g., "sui:mainnet", "eip155:1") */
+  readonly chainId: string;
 
   /**
    * Get token balances for an address.

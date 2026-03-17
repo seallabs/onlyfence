@@ -36,15 +36,15 @@ const COLUMNS: readonly Column<TradeRow>[] = [
 ];
 
 export function TradeHistory(): ReactElement {
-  const { activeChain, mode, tradeLog } = useTui();
+  const { activeChain, activeChainId, mode, tradeLog } = useTui();
 
   const [page, setPage] = useState(0);
   const [selectedRow, setSelectedRow] = useState(0);
   const pageRef = useRef(0);
 
   const { data, refresh } = useAutoRefresh(() => {
-    const trades = tradeLog.getRecentTrades(activeChain, PAGE_SIZE, pageRef.current * PAGE_SIZE);
-    const totalCount = tradeLog.getTradeCount(activeChain);
+    const trades = tradeLog.getRecentTrades(activeChainId, PAGE_SIZE, pageRef.current * PAGE_SIZE);
+    const totalCount = tradeLog.getTradeCount(activeChainId);
     return { trades, totalCount };
   }, 5000);
 

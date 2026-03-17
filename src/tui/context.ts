@@ -21,7 +21,10 @@ export interface TuiContextValue {
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
   readonly config: AppConfig;
+  /** Short chain alias for config key lookup (e.g., "sui") */
   readonly activeChain: string;
+  /** CAIP-2 chain ID for DB queries (e.g., "sui:mainnet") */
+  readonly activeChainId: string;
   readonly reloadConfig: () => void;
   readonly configError: string | null;
   readonly mode: 'navigate' | 'edit';

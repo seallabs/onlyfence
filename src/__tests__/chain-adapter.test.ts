@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ChainAdapterFactory } from '../chain/factory.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
-import { SUI_TOKEN_MAP, resolveTokenAddress, isKnownToken } from '../chain/sui/tokens.js';
+import {
+  SUI_TOKEN_MAP,
+  resolveTokenAddress,
+  isKnownToken,
+  coinTypeToSymbol,
+} from '../chain/sui/tokens.js';
 import type { ChainAdapter } from '../chain/adapter.js';
 import type {
   BalanceResult,
@@ -20,9 +25,11 @@ import type {
 /** Minimal stub adapter for factory tests (not Sui-specific). */
 class StubAdapter implements ChainAdapter {
   readonly chain: string;
+  readonly chainId: string;
 
-  constructor(chain: string) {
+  constructor(chain: string, chainId?: string) {
     this.chain = chain;
+    this.chainId = chainId ?? `${chain}:testnet`;
   }
 
   async getBalance(_address: string): Promise<BalanceResult> {
@@ -106,6 +113,10 @@ describe('SuiAdapter', () => {
 
   it('should have chain set to "sui"', () => {
     expect(adapter.chain).toBe('sui');
+  });
+
+  it('should have chainId set to "sui:mainnet"', () => {
+    expect(adapter.chainId).toBe('sui:mainnet');
   });
 
   it('getBalance should throw not implemented', async () => {
@@ -208,5 +219,16 @@ describe('SUI Token Registry', () => {
     for (const token of expectedTokens) {
       expect(SUI_TOKEN_MAP[token]).toBeDefined();
     }
+  });
+
+  it('coinTypeToSymbol should reverse-resolve known coin types', () => {
+    expect(coinTypeToSymbol('0x2::sui::SUI')).toBe('SUI');
+    expect(coinTypeToSymbol(SUI_TOKEN_MAP['USDC']!)).toBe('USDC');
+    expect(coinTypeToSymbol(SUI_TOKEN_MAP['DEEP']!)).toBe('DEEP');
+  });
+
+  it('coinTypeToSymbol should return undefined for unknown coin types', () => {
+    expect(coinTypeToSymbol('0xunknown::module::TOKEN')).toBeUndefined();
+    expect(coinTypeToSymbol('')).toBeUndefined();
   });
 });

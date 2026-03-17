@@ -36,7 +36,10 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
   const [configError, setConfigError] = useState<string | null>(null);
   const [mode, setMode] = useState<'navigate' | 'edit'>('navigate');
 
+  const { db, oracle, tradeLog, policyRegistry, chainAdapterFactory } = components;
+
   const activeChain = Object.keys(config.chain)[0] ?? 'sui';
+  const activeChainId = chainAdapterFactory.get(activeChain).chainId;
 
   const updateStatus = useUpdateCheck(updateChecker, CURRENT_VERSION);
 
@@ -49,8 +52,6 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
       setConfigError(toErrorMessage(err));
     }
   }, []);
-
-  const { db, oracle, tradeLog, policyRegistry, chainAdapterFactory } = components;
 
   // Global keyboard shortcuts — only active in navigate mode
   useInput(
@@ -88,6 +89,7 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
       chainAdapterFactory,
       config,
       activeChain,
+      activeChainId,
       reloadConfig,
       configError,
       mode,
@@ -102,6 +104,7 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
       chainAdapterFactory,
       config,
       activeChain,
+      activeChainId,
       reloadConfig,
       configError,
       mode,

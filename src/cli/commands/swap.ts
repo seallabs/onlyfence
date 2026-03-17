@@ -8,6 +8,7 @@ import { printJsonOutput } from '../output.js';
 import type { SuccessResponse, RejectionResponse, ErrorResponse } from '../output.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { REJECTED_BY_KEY } from '../../policy/check.js';
+import { resolveTokenAddress } from '../../chain/index.js';
 
 /**
  * Register the `fence swap` command on the given program.
@@ -56,35 +57,42 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
 
         const { db, config, oracle, policyRegistry, chainAdapterFactory, tradeLog, logger } =
           components;
-        const chain = options.chain;
+        const chainAlias = options.chain;
         const log = logger.child({ command: 'swap' });
 
         try {
           // Validate chain config exists
-          const chainConfig = config.chain[chain];
+          const chainConfig = config.chain[chainAlias];
           if (chainConfig === undefined) {
             throw new Error(
-              `No configuration found for chain "${chain}". ` +
+              `No configuration found for chain "${chainAlias}". ` +
                 `Available chains: ${Object.keys(config.chain).join(', ')}`,
             );
           }
 
+          // Resolve CAIP-2 chain ID from adapter
+          const adapter = chainAdapterFactory.get(chainAlias);
+          const chainId = adapter.chainId;
+
           // Parse amount to bigint
           const amount = parseBigIntAmount(amountStr);
 
-          // Get wallet address
-          const wallet = getPrimaryWallet(db, chain);
+          // Get wallet address (DB stores CAIP-2 chain IDs)
+          const wallet = getPrimaryWallet(db, chainId);
           if (wallet === null) {
             throw new Error(
-              `No primary wallet found for chain "${chain}". Run "fence setup" first.`,
+              `No primary wallet found for chain "${chainAlias}". Run "fence setup" first.`,
             );
           }
 
-          log.info({ fromToken, toToken, amount: amountStr, chain }, 'Swap command invoked');
+          log.info(
+            { fromToken, toToken, amount: amountStr, chain: chainId },
+            'Swap command invoked',
+          );
 
-          // Build TradeIntent
+          // Build TradeIntent (chain uses CAIP-2 ID for DB consistency)
           const intent: TradeIntent = {
-            chain,
+            chain: chainId,
             action: 'swap',
             fromToken: fromToken.toUpperCase(),
             toToken: toToken.toUpperCase(),
@@ -136,8 +144,8 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
               ...(policyResult.metadata?.[REJECTED_BY_KEY] !== undefined
                 ? {
                     rejection_check:
-                      typeof policyResult.metadata['rejectedBy'] === 'string'
-                        ? policyResult.metadata['rejectedBy']
+                      typeof policyResult.metadata[REJECTED_BY_KEY] === 'string'
+                        ? policyResult.metadata[REJECTED_BY_KEY]
                         : 'unknown',
                   }
                 : {}),
@@ -161,8 +169,20 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             return;
           }
 
-          // Policy approved - attempt chain execution
-          const adapter = chainAdapterFactory.get(chain);
+          // Policy approved — resolve coin types for DB storage
+          let fromCoinType: string | undefined;
+          let toCoinType: string | undefined;
+          try {
+            fromCoinType = resolveTokenAddress(intent.fromToken);
+            toCoinType = resolveTokenAddress(intent.toToken);
+          } catch (err: unknown) {
+            log.warn(
+              { err: toErrorMessage(err) },
+              'Token not in Sui registry — coin types will be omitted from DB',
+            );
+          }
+
+          // Attempt chain execution
           const slippage = parseFloat(options.slippage);
 
           const quote = await adapter.getSwapQuote({
@@ -203,6 +223,8 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             tx_digest: txResult.txDigest,
             gas_cost: txResult.gasUsed,
             policy_decision: 'approved',
+            ...(fromCoinType !== undefined ? { from_coin_type: fromCoinType } : {}),
+            ...(toCoinType !== undefined ? { to_coin_type: toCoinType } : {}),
           });
 
           const successOutput: SuccessResponse = {
