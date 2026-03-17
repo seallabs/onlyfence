@@ -14,6 +14,7 @@ This design migrates the swap execution pipeline and watch-only wallets from the
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
+| Single generic `ActionIntent` replaces `TradeIntent` | Yes | One intent type flows through the entire pipeline including policy; discriminated by `action` field |
 | Separate `ActionBuilder` from `ChainAdapter` | Yes (old CLI pattern) | Adding a new DEX or action doesn't require modifying the chain adapter |
 | Generic `TransactionPipeline` | Yes | Single orchestrator for all DeFi actions across all chains |
 | MEV protection | Explicit pipeline step with chain-specific strategy | Configurable, visible, extensible per chain |
@@ -30,7 +31,7 @@ Agent: fence swap SUI USDC 100 --slippage 0.5
 
 CLI (swap command)
   |
-  ├─ Parse args → SwapIntent + TradeIntent
+  ├─ Parse args → SwapIntent (ActionIntent)
   ├─ Resolve wallet (check isWatchOnly)
   ├─ Fetch oracle price → PolicyContext
   ├─ Resolve signer (skip if watch-only)
@@ -38,7 +39,7 @@ CLI (swap command)
   └─ executePipeline(PipelineInput)
        |
        ├─ 1. builder.validate(intent)
-       ├─ 2. policyRegistry.evaluateAll(tradeIntent, ctx)  ← existing policy engine
+       ├─ 2. policyRegistry.evaluateAll(intent, ctx)        ← policy engine (refactored to ActionIntent)
        ├─ 3. builder.preview(intent)                        ← fetch quotes from 7K
        ├─ 4. builder.build(intent, preview)                 ← build Sui Transaction
        ├─ 5. chainAdapter.buildTransactionBytes(tx)         ← serialize
@@ -54,7 +55,7 @@ CLI (swap command)
 ```
 src/
 ├── core/                              # NEW — generic pipeline & interfaces
-│   ├── action-types.ts                # ActionIntent, SwapIntent, ActionPreview, PipelineResult
+│   ├── action-types.ts                # ActionIntent (discriminated union), SwapIntent, ActionPreview, PipelineResult
 │   ├── action-builder.ts              # ActionBuilder interface + ActionBuilderRegistry
 │   ├── transaction-pipeline.ts        # executePipeline() function
 │   └── mev-protector.ts              # MevProtector interface + NoOpMevProtector
@@ -63,7 +64,8 @@ src/
 │   ├── factory.ts                     # ChainAdapterFactory (existing, unchanged)
 │   └── sui/                           # Per-chain subdirectory
 │       ├── adapter.ts                 # SuiChainAdapter (working impl)
-│       ├── sui-swap-builder.ts        # SuiSwapBuilder (7K Aggregator)
+│       ├── builder/                   # Action builders for Sui
+│       │   └── swap-builder.ts        # SuiSwapBuilder (7K Aggregator)
 │       ├── tokens.ts                  # Token map (existing, moved)
 │       ├── client.ts                  # SuiClient creation (no singleton)
 │       └── sui-mev.ts                # SuiNoOpMev placeholder
@@ -80,7 +82,11 @@ src/
 │   │   ├── swap.ts                    # Rewritten to use executePipeline()
 │   │   └── wallet-watch.ts            # NEW — fence wallet watch <address>
 │   └── output.ts                      # Add 'simulated' response type
-├── policy/                            # UNCHANGED
+├── policy/                            # REFACTORED — PolicyCheck.evaluate() accepts ActionIntent
+│   ├── check.ts                       # PolicyCheck interface updated
+│   ├── context.ts                     # PolicyContext unchanged
+│   ├── registry.ts                    # PolicyCheckRegistry.evaluateAll() accepts ActionIntent
+│   └── checks/                        # Each check refactored to use intent.action discriminant
 ├── config/                            # UNCHANGED
 ├── oracle/                            # UNCHANGED
 └── logger/                            # UNCHANGED
@@ -97,6 +103,8 @@ The following existing interfaces are renamed or re-signatured:
 | `ChainAdapter.simulateTx(txData: TransactionData)` | `simulate(txBytes: Uint8Array, sender: string)` | Renamed; takes raw bytes + sender instead of `TransactionData` |
 | `ChainAdapter.signAndSubmit(txData, signer)` | `signAndSubmit(txBytes: Uint8Array, signer: Signer)` | Takes raw bytes; adapter is responsible for calling `signer.sign()` internally and encoding the result |
 | `SwapParams`, `SwapQuote`, `TransactionData` | No longer used by `ChainAdapter` | These types remain in `types/result.ts` but are no longer part of the adapter interface |
+| `TradeIntent` (from `types/intent.ts`) | Removed — replaced by `ActionIntent` | Single generic intent type used across pipeline and policy engine; discriminated union via `action` field |
+| `PolicyCheck.evaluate(intent: TradeIntent, ...)` | `evaluate(intent: ActionIntent, ...)` | Policy checks refactored to extract fields from `intent.params` instead of top-level `TradeIntent` fields |
 
 **Signing responsibility:** The Sui serialized signature format is: `[scheme_flag (1 byte)] || [signature (64 bytes)] || [public_key (32 bytes)]` — 97 bytes total, then base64-encoded.
 
@@ -120,32 +128,95 @@ This keeps chain-specific encoding inside the chain adapter where it belongs.
 
 ## Section 1: Core Types & Interfaces
 
-### ActionIntent hierarchy
+### ActionIntent — single generic intent (discriminated union)
+
+`ActionIntent` replaces the old `TradeIntent`. It is the **only** intent type in the system — used by the pipeline, policy engine, builders, and trade logging. The `action` field discriminates which `params` shape is carried.
 
 ```typescript
 // src/core/action-types.ts
-import type { TradeAction } from '../types/intent.js';
 
-// Re-use existing TradeAction type (no duplication)
-interface ActionIntent {
+/** Supported DeFi actions — extend this union to add new action types */
+type DeFiAction = 'swap' | 'supply' | 'lp_deposit' | 'lp_withdraw';
+
+/** Base intent — all actions share these fields */
+interface ActionIntentBase {
   readonly chain: string;
-  readonly action: TradeAction;
+  readonly action: DeFiAction;
   readonly walletAddress: string;
-  readonly params: Record<string, unknown>;
 }
 
-interface SwapIntent extends ActionIntent {
+/** Swap-specific intent */
+interface SwapIntent extends ActionIntentBase {
   readonly action: 'swap';
   readonly params: {
-    readonly coinTypeIn: string;
+    readonly coinTypeIn: string;    // fully-qualified Move type / ERC-20 address
     readonly coinTypeOut: string;
-    readonly amountIn: string;     // raw amount in smallest unit (e.g., MIST)
+    readonly amountIn: string;      // raw amount in smallest unit (e.g., MIST)
     readonly slippageBps: number;
   };
 }
+
+/** Supply-specific intent (future) */
+interface SupplyIntent extends ActionIntentBase {
+  readonly action: 'supply';
+  readonly params: {
+    readonly coinType: string;
+    readonly amount: string;
+    readonly protocol: string;
+  };
+}
+
+// ... more intents added here as new actions are supported
+
+/** Discriminated union — the single intent type used everywhere */
+type ActionIntent = SwapIntent | SupplyIntent;
+// Extend with: | LpDepositIntent | LpWithdrawIntent | ...
 ```
 
-Existing `TradeIntent` stays as policy engine input. The swap command maps `SwapIntent` → `TradeIntent` for policy evaluation.
+**Key design points:**
+- `TradeIntent` from `src/types/intent.ts` is **deleted** — `ActionIntent` replaces it everywhere
+- `TradeAction` type from `src/types/intent.ts` is replaced by `DeFiAction` (broader scope)
+- Policy checks receive `ActionIntent` and use the `action` discriminant to extract the fields they need
+- Adding a new action = add a new interface + add it to the union. No changes to pipeline, policy engine, or existing checks
+
+### Policy engine refactoring
+
+The existing policy checks (`TokenAllowlistCheck`, `SpendingLimitCheck`) are refactored to accept `ActionIntent` instead of `TradeIntent`:
+
+```typescript
+// src/policy/check.ts (modified)
+import type { ActionIntent } from '../core/action-types.js';
+
+interface PolicyCheck {
+  readonly name: string;
+  readonly description: string;
+  evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult>;
+}
+```
+
+Each check extracts what it needs based on the `action` discriminant:
+
+```typescript
+// TokenAllowlistCheck — extract tokens from intent.params
+evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult> {
+  if (intent.action === 'swap') {
+    // TypeScript narrows to SwapIntent — intent.params.coinTypeIn is typed
+    const { coinTypeIn, coinTypeOut } = intent.params;
+    // check against allowlist...
+  }
+  // Other action types: extract their relevant tokens similarly
+}
+
+// SpendingLimitCheck — extract amount from intent.params
+evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult> {
+  if (intent.action === 'swap') {
+    const { amountIn } = intent.params;
+    // check against limits...
+  }
+}
+```
+
+This keeps the policy engine fully generic — new action types just add new branches in the checks that care about them. Checks that don't apply to an action type return `pass`.
 
 ### ActionBuilder interface
 
@@ -298,8 +369,7 @@ interface PipelineResult {
 // src/core/transaction-pipeline.ts
 
 interface PipelineInput {
-  readonly intent: ActionIntent;
-  readonly tradeIntent: TradeIntent;  // pre-built by caller for policy evaluation
+  readonly intent: ActionIntent;      // single generic intent — used by pipeline AND policy
   readonly builder: ActionBuilder;
   readonly chainAdapter: ChainAdapter;
   readonly policyRegistry: PolicyCheckRegistry;
@@ -314,12 +384,12 @@ interface PipelineInput {
 async function executePipeline(input: PipelineInput): Promise<PipelineResult>
 ```
 
-**Why `tradeIntent` is separate from `intent`:** The policy engine expects `TradeIntent` (from `src/types/intent.ts`), while the pipeline works with `ActionIntent` (from `src/core/action-types.ts`). Different actions (swap vs LP) map differently to `TradeIntent`, and the caller already has the context to do this correctly. The pipeline passes `tradeIntent` directly to `policyRegistry.evaluateAll()`.
+The same `intent` flows through the entire pipeline — validation, policy, preview, build, simulate, sign, log. No mapping between intent types needed.
 
 ### Pipeline steps
 
 1. `builder.validate(intent)` — throws on bad params
-2. `policyRegistry.evaluateAll(tradeIntent, policyContext)` — short-circuits on rejection; logs rejected trade
+2. `policyRegistry.evaluateAll(intent, policyContext)` — short-circuits on rejection; logs rejected trade
 3. `builder.preview(intent)` — fetch quotes from aggregator
 4. `builder.build(intent, preview)` — build chain-specific transaction
 5. `chainAdapter.buildTransactionBytes(transaction)` — serialize to bytes
@@ -413,7 +483,8 @@ class SuiChainAdapter implements ChainAdapter {
 ```
 src/chain/sui/
 ├── adapter.ts             # SuiChainAdapter (rewritten)
-├── sui-swap-builder.ts    # SuiSwapBuilder (new, ported)
+├── builder/               # Action builders for Sui chain
+│   └── swap-builder.ts    # SuiSwapBuilder (7K Aggregator, new, ported)
 ├── tokens.ts              # Token map (existing, moved from sui-tokens.ts)
 ├── client.ts              # SuiClient helpers (no singleton — adapter owns instance)
 └── sui-mev.ts             # SuiNoOpMev (new)
@@ -562,10 +633,10 @@ Current 150-line inline orchestration collapses to:
 1. Parse CLI args
 2. Resolve wallet, check `isWatchOnly`
 3. Resolve token symbols → coin types
-4. Build `SwapIntent` + `TradeIntent`
+4. Build `SwapIntent` (the only intent needed — `ActionIntent` discriminated union)
 5. Fetch oracle price → `PolicyContext`
 6. Resolve signer (skip if watch-only)
-7. `executePipeline(...)` → `PipelineResult`
+7. `executePipeline({ intent: swapIntent, ... })` → `PipelineResult`
 8. Map result → JSON output + exit code
 
 ### Signer resolution
@@ -603,7 +674,7 @@ type CliOutput = SuccessResponse | RejectionResponse | ErrorResponse | Simulated
 
 ### Unchanged modules
 
-- `policy/` — no changes
+- `policy/` — refactored: `PolicyCheck.evaluate()` accepts `ActionIntent` instead of `TradeIntent`; checks use discriminant to extract fields
 - `config/` — no changes
 - `oracle/` — no changes
 - `logger/` — no changes
@@ -624,9 +695,10 @@ type CliOutput = SuccessResponse | RejectionResponse | ErrorResponse | Simulated
 
 Ordered for incremental delivery:
 
-1. **Core types & interfaces** — `src/core/` (action-types, action-builder, mev-protector)
-2. **Sui chain implementation** — port adapter + swap builder + client + mev
-3. **Transaction pipeline** — `executePipeline()` with policy integration
-4. **Watch-only wallet** — DB migration, wallet types, manager, pipeline branch
-5. **CLI wiring** — swap command rewrite, bootstrap, signer, wallet watch command
-6. **Integration tests** — end-to-end pipeline tests with mocked RPC
+1. **Core types & interfaces** — `src/core/` (action-types with discriminated union, action-builder, mev-protector); delete `TradeIntent` from `src/types/intent.ts`
+2. **Policy engine refactor** — update `PolicyCheck`, `PolicyCheckRegistry`, and existing checks to accept `ActionIntent`; use `action` discriminant for field extraction
+3. **Sui chain implementation** — port adapter + swap builder (in `builder/` subfolder) + client + mev
+4. **Transaction pipeline** — `executePipeline()` with single `ActionIntent` flowing through all steps
+5. **Watch-only wallet** — DB migration, wallet types, manager, pipeline branch
+6. **CLI wiring** — swap command rewrite, bootstrap, signer, wallet watch command
+7. **Integration tests** — end-to-end pipeline tests with mocked RPC
