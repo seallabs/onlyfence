@@ -24,7 +24,14 @@ describe('TokenAllowlistCheck', () => {
       rpc: 'https://rpc.example.com',
       allowlist: { tokens: ['SUI', 'USDC', 'USDT'] },
     };
-    const intent = createIntent({ fromToken: 'SUI', toToken: 'USDC' });
+    const intent = createIntent({
+      params: {
+        coinTypeIn: '0x2::sui::SUI',
+        coinTypeOut: '0xdba3::usdc::USDC',
+        amountIn: '100',
+        slippageBps: 100,
+      },
+    });
     const result = await check.evaluate(intent, createContext(config, db));
 
     expect(result.status).toBe('pass');
@@ -35,7 +42,14 @@ describe('TokenAllowlistCheck', () => {
       rpc: 'https://rpc.example.com',
       allowlist: { tokens: ['SUI', 'USDC'] },
     };
-    const intent = createIntent({ fromToken: 'sui', toToken: 'usdc' });
+    const intent = createIntent({
+      params: {
+        coinTypeIn: '0x2::sui::sui',
+        coinTypeOut: '0xdba3::usdc::usdc',
+        amountIn: '100',
+        slippageBps: 100,
+      },
+    });
     const result = await check.evaluate(intent, createContext(config, db));
 
     expect(result.status).toBe('pass');
@@ -46,7 +60,14 @@ describe('TokenAllowlistCheck', () => {
       rpc: 'https://rpc.example.com',
       allowlist: { tokens: ['SUI', 'USDC'] },
     };
-    const intent = createIntent({ fromToken: 'SCAM', toToken: 'USDC' });
+    const intent = createIntent({
+      params: {
+        coinTypeIn: '0xdead::scam::SCAM',
+        coinTypeOut: '0xdba3::usdc::USDC',
+        amountIn: '100',
+        slippageBps: 100,
+      },
+    });
     const result = await check.evaluate(intent, createContext(config, db));
 
     expect(result.status).toBe('reject');
@@ -60,7 +81,14 @@ describe('TokenAllowlistCheck', () => {
       rpc: 'https://rpc.example.com',
       allowlist: { tokens: ['SUI', 'USDC'] },
     };
-    const intent = createIntent({ fromToken: 'SUI', toToken: 'SCAM' });
+    const intent = createIntent({
+      params: {
+        coinTypeIn: '0x2::sui::SUI',
+        coinTypeOut: '0xdead::scam::SCAM',
+        amountIn: '100',
+        slippageBps: 100,
+      },
+    });
     const result = await check.evaluate(intent, createContext(config, db));
 
     expect(result.status).toBe('reject');
@@ -73,7 +101,14 @@ describe('TokenAllowlistCheck', () => {
     const config: ChainConfig = {
       rpc: 'https://rpc.example.com',
     };
-    const intent = createIntent({ fromToken: 'ANY_TOKEN', toToken: 'WHATEVER' });
+    const intent = createIntent({
+      params: {
+        coinTypeIn: '0xdead::any::ANY_TOKEN',
+        coinTypeOut: '0xdead::what::WHATEVER',
+        amountIn: '100',
+        slippageBps: 100,
+      },
+    });
     const result = await check.evaluate(intent, createContext(config, db));
 
     expect(result.status).toBe('pass');

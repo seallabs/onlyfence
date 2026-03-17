@@ -1,7 +1,7 @@
 import type { PolicyCheck } from './check.js';
 import { REJECTED_BY_KEY } from './check.js';
 import type { PolicyContext } from './context.js';
-import type { TradeIntent } from '../types/intent.js';
+import type { ActionIntent } from '../core/action-types.js';
 import type { CheckResult } from '../types/result.js';
 
 /**
@@ -40,7 +40,7 @@ export class PolicyCheckRegistry {
    * @param ctx - Context for checks (config, DB, oracle)
    * @returns The first rejection result, or a pass result if all checks pass
    */
-  async evaluateAll(intent: TradeIntent, ctx: PolicyContext): Promise<CheckResult> {
+  async evaluateAll(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult> {
     for (const check of this.checks.values()) {
       const result = await check.evaluate(intent, ctx);
       if (result.status === 'reject') {
