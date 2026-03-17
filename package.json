@@ -21,6 +21,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@7kprotocol/sdk-ts": "^4.0.0",
     "@mysten/sui": "^2.8.0",
     "@sentry/node": "^10.43.0",
     "better-sqlite3": "^12.8.0",
