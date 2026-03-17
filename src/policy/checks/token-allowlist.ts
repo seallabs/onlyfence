@@ -2,15 +2,7 @@ import type { PolicyCheck } from '../check.js';
 import type { PolicyContext } from '../context.js';
 import type { ActionIntent } from '../../core/action-types.js';
 import type { CheckResult } from '../../types/result.js';
-
-/**
- * Extract the trailing symbol from a fully-qualified Sui coin type.
- * e.g. "0x2::sui::SUI" -> "SUI"
- */
-function extractTokenSymbol(coinType: string): string {
-  const parts = coinType.split('::');
-  return parts[parts.length - 1] ?? coinType;
-}
+import { extractTokenSymbol } from '../../utils/index.js';
 
 /**
  * Policy check that verifies both the source and destination tokens

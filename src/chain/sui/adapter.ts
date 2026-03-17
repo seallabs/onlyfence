@@ -7,6 +7,12 @@ import { resolveSymbol, getKnownDecimals } from './tokens.js';
 /** Default decimals for unknown Sui tokens. */
 const DEFAULT_DECIMALS = 9;
 
+/** Ed25519 signature scheme flag byte used by Sui. */
+const ED25519_SCHEME_FLAG = 0x00;
+
+/** Length of a serialized Sui Ed25519 signature: 1 (flag) + 64 (sig) + 32 (pubkey). */
+const SUI_ED25519_SIGNATURE_LENGTH = 97;
+
 /** Extract gas total from a GasCostSummary. */
 function computeGas(gasUsed: {
   computationCost: string;
@@ -78,10 +84,10 @@ export class SuiAdapter implements ChainAdapter {
     // 1. Sign the transaction bytes
     const rawSignature = await signer.sign(txBytes);
 
-    // 2. Construct 97-byte Sui serialized signature:
-    //    [0x00 (Ed25519 flag), ...rawSig(64 bytes), ...publicKey(32 bytes)]
-    const suiSignature = new Uint8Array(97);
-    suiSignature[0] = 0x00; // Ed25519 scheme flag
+    // 2. Construct Sui serialized signature:
+    //    [Ed25519 flag, ...rawSig(64 bytes), ...publicKey(32 bytes)]
+    const suiSignature = new Uint8Array(SUI_ED25519_SIGNATURE_LENGTH);
+    suiSignature[0] = ED25519_SCHEME_FLAG;
     suiSignature.set(rawSignature, 1);
     suiSignature.set(signer.publicKey, 65);
 

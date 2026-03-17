@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import type { Logger } from 'pino';
 import type { AppConfig } from '../types/config.js';
 import type { OracleClient } from '../oracle/client.js';
-import type { MevProtector } from '../core/mev-protector.js';
+import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
 import { openDatabase, DB_PATH } from '../db/connection.js';
 import { loadConfig, CONFIG_PATH } from '../config/loader.js';
 import { CoinGeckoOracle } from '../oracle/coingecko.js';
@@ -15,7 +15,6 @@ import { ChainAdapterFactory } from '../chain/factory.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
 import { SuiSwapBuilder } from '../chain/sui/builder/swap-builder.js';
-import { SuiNoOpMev } from '../chain/sui/sui-mev.js';
 import { getLogger } from '../logger/index.js';
 import { initSentry } from '../telemetry/sentry.js';
 
@@ -144,6 +143,6 @@ export function buildActionBuilderRegistry(): ActionBuilderRegistry {
  */
 export function buildMevProtectors(): Map<string, MevProtector> {
   const protectors = new Map<string, MevProtector>();
-  protectors.set('sui', new SuiNoOpMev());
+  protectors.set('sui', new NoOpMevProtector());
   return protectors;
 }

@@ -1,9 +1,7 @@
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import type { Signer } from '../types/result.js';
 import { loadKeystore } from './keystore.js';
-
-/** Default Sui derivation path per SLIP-0044. */
-const SUI_DERIVATION_PATH = "m/44'/784'/0'/0'/0'";
+import { SUI_DERIVATION_PATH } from './derivation.js';
 
 /**
  * Build a Signer from an Ed25519Keypair.

@@ -9,7 +9,16 @@
       "Bash(npm test:*)",
       "Bash(npm run:*)",
       "Bash(chmod:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Read(//private/tmp/**)",
+      "Bash(unzip -q /Users/otis/Documents/onlyfence/doc/OnlyFence.docx -d docx_extract)",
+      "Bash(unzip:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git stash:*)",
+      "Bash(ls:*)",
+      "Bash(node:*)",
+      "Bash(git:*)"
     ]
   }
 }
