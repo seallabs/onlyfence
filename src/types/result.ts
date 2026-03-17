@@ -21,36 +21,6 @@ export interface CheckResult {
 }
 
 /**
- * Parameters for requesting a swap quote from a chain adapter.
- */
-export interface SwapParams {
-  readonly fromToken: string;
-  readonly toToken: string;
-  readonly amount: bigint;
-  readonly slippage: number;
-  readonly walletAddress: string;
-}
-
-/**
- * Quote returned by a chain adapter's aggregator.
- */
-export interface SwapQuote {
-  readonly route: string;
-  readonly expectedOutput: bigint;
-  readonly priceImpact: number;
-  readonly protocol: string;
-}
-
-/**
- * Opaque transaction data produced by a chain adapter.
- */
-export interface TransactionData {
-  readonly chain: string;
-  readonly bytes: Uint8Array;
-  readonly metadata?: Record<string, unknown>;
-}
-
-/**
  * Result of a transaction simulation (dry-run).
  */
 export interface SimulationResult {
