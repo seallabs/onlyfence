@@ -400,4 +400,119 @@ describe('executePipeline', () => {
     expect(result.error).toContain('failed on-chain');
     expect(result.txDigest).toBe('TX_FAIL_123');
   });
+
+  it('records value_usd in trade log on success', async () => {
+    const intent = createSwapIntent();
+    const builder = createMockBuilder();
+    const chainAdapter = createMockChainAdapter();
+    const signer = createMockSigner();
+    const mevProtector = new NoOpMevProtector();
+
+    const input: PipelineInput = {
+      intent,
+      builder,
+      chainAdapter,
+      policyRegistry,
+      policyContext,
+      mevProtector,
+      tradeLog,
+      logger,
+      signer,
+      watchOnly: false,
+      tradeValueUsd: 42.5,
+    };
+
+    await executePipeline(input);
+
+    const trades = tradeLog.getRecentTrades('sui', 10);
+    expect(trades).toHaveLength(1);
+    expect(trades[0]!.value_usd).toBe(42.5);
+  });
+
+  it('records value_usd in trade log on rejection', async () => {
+    const intent = createSwapIntent();
+    const builder = createMockBuilder();
+    const chainAdapter = createMockChainAdapter();
+    const mevProtector = new NoOpMevProtector();
+
+    policyRegistry.register({
+      name: 'test_reject',
+      description: 'Always rejects',
+      evaluate: async () => ({
+        status: 'reject' as const,
+        reason: 'denied',
+        detail: 'Denied',
+      }),
+    });
+
+    const input: PipelineInput = {
+      intent,
+      builder,
+      chainAdapter,
+      policyRegistry,
+      policyContext,
+      mevProtector,
+      tradeLog,
+      logger,
+      watchOnly: false,
+      tradeValueUsd: 99.0,
+    };
+
+    await executePipeline(input);
+
+    const trades = tradeLog.getRecentTrades('sui', 10);
+    expect(trades).toHaveLength(1);
+    expect(trades[0]!.value_usd).toBe(99.0);
+  });
+
+  it('records value_usd in trade log on watch-only simulation', async () => {
+    const intent = createSwapIntent();
+    const builder = createMockBuilder();
+    const chainAdapter = createMockChainAdapter();
+    const mevProtector = new NoOpMevProtector();
+
+    const input: PipelineInput = {
+      intent,
+      builder,
+      chainAdapter,
+      policyRegistry,
+      policyContext,
+      mevProtector,
+      tradeLog,
+      logger,
+      watchOnly: true,
+      tradeValueUsd: 55.25,
+    };
+
+    await executePipeline(input);
+
+    const trades = tradeLog.getRecentTrades('sui', 10);
+    expect(trades).toHaveLength(1);
+    expect(trades[0]!.value_usd).toBe(55.25);
+  });
+
+  it('returns tradeValueUsd in PipelineResult on success', async () => {
+    const intent = createSwapIntent();
+    const builder = createMockBuilder();
+    const chainAdapter = createMockChainAdapter();
+    const signer = createMockSigner();
+    const mevProtector = new NoOpMevProtector();
+
+    const input: PipelineInput = {
+      intent,
+      builder,
+      chainAdapter,
+      policyRegistry,
+      policyContext,
+      mevProtector,
+      tradeLog,
+      logger,
+      signer,
+      watchOnly: false,
+      tradeValueUsd: 42.5,
+    };
+
+    const result = await executePipeline(input);
+    expect(result.tradeValueUsd).toBe(42.5);
+  });
 });
