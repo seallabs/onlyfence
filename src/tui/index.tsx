@@ -4,6 +4,7 @@ import type { AppComponents } from '../cli/bootstrap.js';
 import { loadConfig } from '../config/loader.js';
 import { initSentry } from '../telemetry/sentry.js';
 import { toErrorMessage } from '../utils/index.js';
+import { createUpdateChecker } from '../update/index.js';
 import { App } from './App.js';
 import { SetupApp } from './SetupApp.js';
 import { TelemetryPrompt } from './screens/TelemetryPrompt.js';
@@ -26,6 +27,9 @@ export async function launchTui(components?: AppComponents): Promise<void> {
   process.stdout.write(ENTER_ALT_SCREEN);
   process.stdout.write(CLEAR_SCREEN);
 
+  // Create the update checker once — shared across the entire TUI session.
+  const updateChecker = createUpdateChecker();
+
   try {
     if (components !== undefined) {
       // Bootstrap succeeded — check if telemetry prompt is needed
@@ -37,15 +41,15 @@ export async function launchTui(components?: AppComponents): Promise<void> {
           initSentry(refreshedConfig.telemetry);
         }
         const refreshed: AppComponents = { ...components, config: refreshedConfig };
-        const instance = render(<App components={refreshed} />);
+        const instance = render(<App components={refreshed} updateChecker={updateChecker} />);
         await instance.waitUntilExit();
       } else {
-        const instance = render(<App components={components} />);
+        const instance = render(<App components={components} updateChecker={updateChecker} />);
         await instance.waitUntilExit();
       }
     } else {
       // Bootstrap failed — run setup wizard first
-      await runSetupThenApp();
+      await runSetupThenApp(updateChecker);
     }
   } finally {
     process.stdout.write(EXIT_ALT_SCREEN);
@@ -74,7 +78,9 @@ async function showTelemetryPrompt(): Promise<void> {
  * Show the setup wizard, telemetry prompt, wait for completion,
  * then bootstrap and launch main app.
  */
-async function runSetupThenApp(): Promise<void> {
+async function runSetupThenApp(
+  updateChecker: ReturnType<typeof createUpdateChecker>,
+): Promise<void> {
   // Phase 1: Setup wizard
   await new Promise<void>((resolve) => {
     const instance = render(
@@ -101,7 +107,7 @@ async function runSetupThenApp(): Promise<void> {
   process.stdout.write(CLEAR_SCREEN);
 
   const components = bootstrap();
-  const instance = render(<App components={components} />);
+  const instance = render(<App components={components} updateChecker={updateChecker} />);
   await instance.waitUntilExit();
 }
 

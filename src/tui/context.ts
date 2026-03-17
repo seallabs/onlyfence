@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type Database from 'better-sqlite3';
 import type { AppConfig } from '../types/config.js';
+import type { UpdateStatus } from '../types/update.js';
 import type { OracleClient } from '../oracle/client.js';
 import type { TradeLog } from '../db/trade-log.js';
 import type { PolicyCheckRegistry } from '../policy/registry.js';
@@ -25,6 +26,7 @@ export interface TuiContextValue {
   readonly configError: string | null;
   readonly mode: 'navigate' | 'edit';
   readonly setMode: (mode: 'navigate' | 'edit') => void;
+  readonly updateStatus: UpdateStatus;
 }
 
 const TuiContext = createContext<TuiContextValue | null>(null);

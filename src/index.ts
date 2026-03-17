@@ -22,6 +22,9 @@ export type {
   GlobalConfig,
   AppConfig,
   TelemetryConfig,
+  UpdateConfig,
+  UpdateCache,
+  UpdateStatus,
 } from './types/index.js';
 
 // Policy engine
@@ -121,6 +124,28 @@ export {
   closeSentry,
   scrubSensitiveData,
 } from './telemetry/index.js';
+
+// Update
+export type {
+  UpdateSource,
+  UpdateCacheService,
+  UpdateChecker,
+  UpdateInstaller,
+} from './update/index.js';
+export {
+  CURRENT_VERSION,
+  UpdateSourceError,
+  GitHubReleasesSource,
+  FileUpdateCacheService,
+  UPDATE_CACHE_PATH,
+  DEFAULT_CACHE_TTL_MS,
+  DefaultUpdateChecker,
+  compareVersions,
+  ShellUpdateInstaller,
+  InstallError,
+  createUpdateChecker,
+  createUpdateInstaller,
+} from './update/index.js';
 
 // Utils
 export { toErrorMessage } from './utils/index.js';
