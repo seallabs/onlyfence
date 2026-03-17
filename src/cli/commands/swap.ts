@@ -1,14 +1,21 @@
 import type { Command } from 'commander';
+import type { Logger } from 'pino';
 import type { TradeIntent } from '../../types/intent.js';
 import type { PolicyContext } from '../../policy/context.js';
 import type { CheckResult } from '../../types/result.js';
 import type { AppComponents } from '../bootstrap.js';
+import type { ChainConfig } from '../../types/config.js';
+import type { ChainAdapter } from '../../chain/adapter.js';
+import type { TradeLog } from '../../db/trade-log.js';
+import type { PolicyCheckRegistry } from '../../policy/registry.js';
+import type { OracleClient } from '../../oracle/client.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { printJsonOutput } from '../output.js';
 import type { SuccessResponse, RejectionResponse, ErrorResponse } from '../output.js';
-import { toErrorMessage } from '../../utils/index.js';
+import { toErrorMessage, safeBigIntToNumber, parseBigIntAmount } from '../../utils/index.js';
 import { REJECTED_BY_KEY } from '../../policy/check.js';
 import { resolveTokenAddress } from '../../chain/index.js';
+import { withComponents } from '../with-components.js';
 
 /**
  * Register the `fence swap` command on the given program.
@@ -42,18 +49,8 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           output: string;
         },
       ) => {
-        let components: AppComponents;
-        try {
-          components = getComponents();
-        } catch (err: unknown) {
-          const errorOutput: ErrorResponse = {
-            status: 'error',
-            message: toErrorMessage(err),
-          };
-          printJsonOutput(errorOutput);
-          process.exitCode = 1;
-          return;
-        }
+        const components = withComponents(getComponents);
+        if (components === undefined) return;
 
         const { db, config, oracle, policyRegistry, chainAdapterFactory, tradeLog, logger } =
           components;
@@ -61,195 +58,44 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
         const log = logger.child({ command: 'swap' });
 
         try {
-          // Validate chain config exists
-          const chainConfig = config.chain[chainAlias];
-          if (chainConfig === undefined) {
-            throw new Error(
-              `No configuration found for chain "${chainAlias}". ` +
-                `Available chains: ${Object.keys(config.chain).join(', ')}`,
-            );
-          }
-
-          // Resolve CAIP-2 chain ID from adapter
-          const adapter = chainAdapterFactory.get(chainAlias);
-          const chainId = adapter.chainId;
-
-          // Parse amount to bigint
-          const amount = parseBigIntAmount(amountStr);
-
-          // Get wallet address (DB stores CAIP-2 chain IDs)
-          const wallet = getPrimaryWallet(db, chainId);
-          if (wallet === null) {
-            throw new Error(
-              `No primary wallet found for chain "${chainAlias}". Run "fence setup" first.`,
-            );
-          }
-
-          log.info(
-            { fromToken, toToken, amount: amountStr, chain: chainId },
-            'Swap command invoked',
-          );
-
-          // Build TradeIntent (chain uses CAIP-2 ID for DB consistency)
-          const intent: TradeIntent = {
-            chain: chainId,
-            action: 'swap',
-            fromToken: fromToken.toUpperCase(),
-            toToken: toToken.toUpperCase(),
-            amount,
-            walletAddress: wallet.address,
-          };
-
-          // Resolve USD price from oracle (handle failure per spec section 10)
-          let tradeValueUsd: number | undefined;
-          try {
-            const price = await oracle.getPrice(intent.fromToken);
-            tradeValueUsd = Number(intent.amount) * price;
-          } catch (err: unknown) {
-            console.warn(
-              `Warning: Oracle price unavailable for ${intent.fromToken}: ` +
-                `${toErrorMessage(err)}. ` +
-                `USD spending limits will not be enforced.`,
-            );
-            tradeValueUsd = undefined;
-          }
-
-          // Build policy context
-          const policyCtx: PolicyContext = {
-            config: chainConfig,
+          const { chainConfig, adapter, intent, tradeValueUsd } = await buildSwapIntent({
+            config,
+            chainAdapterFactory,
+            oracle,
             db,
+            log,
+            chainAlias,
+            fromToken,
+            toToken,
+            amountStr,
+          });
+
+          const policyResult = await runPolicies({
+            policyRegistry,
+            intent,
+            chainConfig,
             oracle,
             tradeLog,
-            ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
-          };
-
-          // Run policy pipeline
-          const policyResult: CheckResult = await policyRegistry.evaluateAll(intent, policyCtx);
+            tradeValueUsd,
+          });
 
           if (policyResult.status === 'reject') {
-            log.info({ reason: policyResult.reason }, 'Trade rejected by policy');
-            // Log rejection
-            tradeLog.logTrade({
-              chain: intent.chain,
-              wallet_address: intent.walletAddress,
-              action: intent.action,
-              from_token: intent.fromToken,
-              to_token: intent.toToken,
-              amount_in: intent.amount.toString(),
-              ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
-              policy_decision: 'rejected',
-              ...(policyResult.reason !== undefined
-                ? { rejection_reason: policyResult.reason }
-                : {}),
-              ...(policyResult.metadata?.[REJECTED_BY_KEY] !== undefined
-                ? {
-                    rejection_check:
-                      typeof policyResult.metadata[REJECTED_BY_KEY] === 'string'
-                        ? policyResult.metadata[REJECTED_BY_KEY]
-                        : 'unknown',
-                  }
-                : {}),
-            });
-
-            const rejectionOutput: RejectionResponse = {
-              status: 'rejected',
-              chain: intent.chain,
-              action: intent.action,
-              check:
-                typeof policyResult.metadata?.[REJECTED_BY_KEY] === 'string'
-                  ? policyResult.metadata[REJECTED_BY_KEY]
-                  : 'unknown',
-              reason: policyResult.reason ?? 'policy_rejected',
-              detail: policyResult.detail ?? 'Trade rejected by policy engine',
-              ...(policyResult.metadata !== undefined ? { metadata: policyResult.metadata } : {}),
-            };
-
-            printJsonOutput(rejectionOutput);
-            process.exitCode = 1;
+            handleRejection({ policyResult, intent, tradeLog, tradeValueUsd, log });
             return;
           }
 
-          // Policy approved — resolve coin types for DB storage
-          let fromCoinType: string | undefined;
-          let toCoinType: string | undefined;
-          try {
-            fromCoinType = resolveTokenAddress(intent.fromToken);
-            toCoinType = resolveTokenAddress(intent.toToken);
-          } catch (err: unknown) {
-            log.warn(
-              { err: toErrorMessage(err) },
-              'Token not in Sui registry — coin types will be omitted from DB',
-            );
-          }
-
-          // Attempt chain execution
-          const slippage = parseFloat(options.slippage);
-
-          const quote = await adapter.getSwapQuote({
-            fromToken: intent.fromToken,
-            toToken: intent.toToken,
-            amount: intent.amount,
-            slippage,
-            walletAddress: intent.walletAddress,
+          await executeAndLog({
+            adapter,
+            intent,
+            tradeLog,
+            tradeValueUsd,
+            slippage: options.slippage,
+            log,
           });
-
-          const txData = await adapter.buildSwapTx(quote);
-          const simResult = await adapter.simulateTx(txData);
-
-          if (!simResult.success) {
-            throw new Error(`Transaction simulation failed: ${simResult.error ?? 'unknown error'}`);
-          }
-
-          // For now, sign and submit requires a signer which needs keystore password
-          // This is a placeholder - the SuiAdapter methods throw "not implemented"
-          // In production, we would prompt for password, load keystore, and create signer
-          const txResult = await adapter.signAndSubmit(txData, {
-            address: intent.walletAddress,
-            sign: (_data: Uint8Array): Promise<Uint8Array> => Promise.resolve(new Uint8Array(64)),
-          });
-
-          // Log approved trade
-          tradeLog.logTrade({
-            chain: intent.chain,
-            wallet_address: intent.walletAddress,
-            action: intent.action,
-            from_token: intent.fromToken,
-            to_token: intent.toToken,
-            amount_in: intent.amount.toString(),
-            ...(txResult.amountOut !== undefined
-              ? { amount_out: txResult.amountOut.toString() }
-              : {}),
-            ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
-            tx_digest: txResult.txDigest,
-            gas_cost: txResult.gasUsed,
-            policy_decision: 'approved',
-            ...(fromCoinType !== undefined ? { from_coin_type: fromCoinType } : {}),
-            ...(toCoinType !== undefined ? { to_coin_type: toCoinType } : {}),
-          });
-
-          const successOutput: SuccessResponse = {
-            status: 'success',
-            chain: intent.chain,
-            action: intent.action,
-            txDigest: txResult.txDigest,
-            fromToken: intent.fromToken,
-            toToken: intent.toToken,
-            amountIn: intent.amount.toString(),
-            amountOut: txResult.amountOut?.toString() ?? '0',
-            valueUsd: tradeValueUsd ?? null,
-            gasCost: txResult.gasUsed,
-            route: quote.route,
-          };
-
-          log.info({ txDigest: txResult.txDigest }, 'Swap executed successfully');
-
-          printJsonOutput(successOutput);
         } catch (err: unknown) {
-          log.error({ err: toErrorMessage(err) }, 'Swap failed');
-          const errorOutput: ErrorResponse = {
-            status: 'error',
-            message: toErrorMessage(err),
-          };
+          const message = toErrorMessage(err);
+          log.error({ err: message }, 'Swap failed');
+          const errorOutput: ErrorResponse = { status: 'error', message };
           printJsonOutput(errorOutput);
           process.exitCode = 1;
         }
@@ -257,24 +103,251 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
     );
 }
 
+// ─── Extracted steps ────────────────────────────────────────────────
+
+interface BuildSwapIntentParams {
+  readonly config: AppComponents['config'];
+  readonly chainAdapterFactory: AppComponents['chainAdapterFactory'];
+  readonly oracle: OracleClient;
+  readonly db: AppComponents['db'];
+  readonly log: Logger;
+  readonly chainAlias: string;
+  readonly fromToken: string;
+  readonly toToken: string;
+  readonly amountStr: string;
+}
+
+interface SwapIntentResult {
+  readonly chainConfig: ChainConfig;
+  readonly adapter: ChainAdapter;
+  readonly intent: TradeIntent;
+  readonly tradeValueUsd: number | undefined;
+}
+
 /**
- * Parse a string amount to bigint. Supports integer and decimal notation.
- * Decimal values are truncated to integers (smallest unit).
- *
- * @param value - String representation of the amount
- * @returns Parsed bigint value
- * @throws Error if the value is not a valid number
+ * Validate inputs, resolve wallet, build TradeIntent, and resolve USD price.
  */
-function parseBigIntAmount(value: string): bigint {
-  const trimmed = value.trim();
-  if (!/^\d+(\.\d+)?$/.test(trimmed)) {
-    throw new Error(`Invalid amount "${value}": must be a positive number`);
+async function buildSwapIntent(params: BuildSwapIntentParams): Promise<SwapIntentResult> {
+  const {
+    config,
+    chainAdapterFactory,
+    oracle,
+    db,
+    log,
+    chainAlias,
+    fromToken,
+    toToken,
+    amountStr,
+  } = params;
+
+  const chainConfig = config.chain[chainAlias];
+  if (chainConfig === undefined) {
+    throw new Error(
+      `No configuration found for chain "${chainAlias}". ` +
+        `Available chains: ${Object.keys(config.chain).join(', ')}`,
+    );
   }
 
-  // If it contains a decimal, truncate to integer
-  const integerPart = trimmed.split('.')[0];
-  if (integerPart === undefined || integerPart === '') {
-    throw new Error(`Invalid amount "${value}": must be a positive number`);
+  const adapter = chainAdapterFactory.get(chainAlias);
+  const chainId = adapter.chainId;
+  const amount = parseBigIntAmount(amountStr);
+
+  const wallet = getPrimaryWallet(db, chainId);
+  if (wallet === null) {
+    throw new Error(`No primary wallet found for chain "${chainAlias}". Run "fence setup" first.`);
   }
-  return BigInt(integerPart);
+
+  log.info({ fromToken, toToken, amount: amountStr, chain: chainId }, 'Swap command invoked');
+
+  const intent: TradeIntent = {
+    chain: chainId,
+    action: 'swap',
+    fromToken: fromToken.toUpperCase(),
+    toToken: toToken.toUpperCase(),
+    amount,
+    walletAddress: wallet.address,
+  };
+
+  const tradeValueUsd = await resolveTradeValue(oracle, intent, log);
+
+  return { chainConfig, adapter, intent, tradeValueUsd };
+}
+
+/**
+ * Resolve USD value from oracle. Returns undefined on failure (non-fatal).
+ */
+async function resolveTradeValue(
+  oracle: OracleClient,
+  intent: TradeIntent,
+  log: Logger,
+): Promise<number | undefined> {
+  try {
+    const price = await oracle.getPrice(intent.fromToken);
+    return safeBigIntToNumber(intent.amount) * price;
+  } catch (err: unknown) {
+    log.warn(
+      { err: toErrorMessage(err), token: intent.fromToken },
+      'Oracle price unavailable — USD spending limits will not be enforced',
+    );
+    return undefined;
+  }
+}
+
+interface RunPoliciesParams {
+  readonly policyRegistry: PolicyCheckRegistry;
+  readonly intent: TradeIntent;
+  readonly chainConfig: ChainConfig;
+  readonly oracle: OracleClient;
+  readonly tradeLog: TradeLog;
+  readonly tradeValueUsd: number | undefined;
+}
+
+/**
+ * Evaluate all policy checks against the intent.
+ */
+async function runPolicies(params: RunPoliciesParams): Promise<CheckResult> {
+  const { policyRegistry, intent, chainConfig, oracle, tradeLog, tradeValueUsd } = params;
+
+  const policyCtx: PolicyContext = {
+    config: chainConfig,
+    oracle,
+    tradeLog,
+    ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
+  };
+
+  return policyRegistry.evaluateAll(intent, policyCtx);
+}
+
+interface HandleRejectionParams {
+  readonly policyResult: CheckResult;
+  readonly intent: TradeIntent;
+  readonly tradeLog: TradeLog;
+  readonly tradeValueUsd: number | undefined;
+  readonly log: Logger;
+}
+
+/**
+ * Log rejection to DB and print rejection JSON output.
+ */
+function handleRejection(params: HandleRejectionParams): void {
+  const { policyResult, intent, tradeLog, tradeValueUsd, log } = params;
+
+  log.info({ reason: policyResult.reason }, 'Trade rejected by policy');
+
+  const rejectedByRaw = policyResult.metadata?.[REJECTED_BY_KEY];
+  const rejectionCheck = typeof rejectedByRaw === 'string' ? rejectedByRaw : 'unknown';
+
+  tradeLog.logTrade({
+    chain: intent.chain,
+    wallet_address: intent.walletAddress,
+    action: intent.action,
+    from_token: intent.fromToken,
+    to_token: intent.toToken,
+    amount_in: intent.amount.toString(),
+    ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
+    policy_decision: 'rejected',
+    ...(policyResult.reason !== undefined ? { rejection_reason: policyResult.reason } : {}),
+    rejection_check: rejectionCheck,
+  });
+
+  const rejectionOutput: RejectionResponse = {
+    status: 'rejected',
+    chain: intent.chain,
+    action: intent.action,
+    check: rejectionCheck,
+    reason: policyResult.reason ?? 'policy_rejected',
+    detail: policyResult.detail ?? 'Trade rejected by policy engine',
+    ...(policyResult.metadata !== undefined ? { metadata: policyResult.metadata } : {}),
+  };
+
+  printJsonOutput(rejectionOutput);
+  process.exitCode = 1;
+}
+
+interface ExecuteAndLogParams {
+  readonly adapter: ChainAdapter;
+  readonly intent: TradeIntent;
+  readonly tradeLog: TradeLog;
+  readonly tradeValueUsd: number | undefined;
+  readonly slippage: string;
+  readonly log: Logger;
+}
+
+/**
+ * Execute the on-chain swap and log the result.
+ */
+async function executeAndLog(params: ExecuteAndLogParams): Promise<void> {
+  const { adapter, intent, tradeLog, tradeValueUsd, slippage, log } = params;
+
+  // Resolve coin types for DB storage (non-fatal if unknown)
+  let fromCoinType: string | undefined;
+  let toCoinType: string | undefined;
+  try {
+    fromCoinType = resolveTokenAddress(intent.fromToken);
+    toCoinType = resolveTokenAddress(intent.toToken);
+  } catch (err: unknown) {
+    log.debug(
+      { err: toErrorMessage(err), fromToken: intent.fromToken, toToken: intent.toToken },
+      'Token not in registry — coin types will be omitted from DB',
+    );
+  }
+
+  const slippageNum = parseFloat(slippage);
+
+  const quote = await adapter.getSwapQuote({
+    fromToken: intent.fromToken,
+    toToken: intent.toToken,
+    amount: intent.amount,
+    slippage: slippageNum,
+    walletAddress: intent.walletAddress,
+  });
+
+  const txData = await adapter.buildSwapTx(quote);
+  const simResult = await adapter.simulateTx(txData);
+
+  if (!simResult.success) {
+    throw new Error(`Transaction simulation failed: ${simResult.error ?? 'unknown error'}`);
+  }
+
+  // For now, sign and submit requires a signer which needs keystore password
+  // This is a placeholder - the SuiAdapter methods throw "not implemented"
+  // In production, we would prompt for password, load keystore, and create signer
+  const txResult = await adapter.signAndSubmit(txData, {
+    address: intent.walletAddress,
+    sign: (_data: Uint8Array): Promise<Uint8Array> => Promise.resolve(new Uint8Array(64)),
+  });
+
+  tradeLog.logTrade({
+    chain: intent.chain,
+    wallet_address: intent.walletAddress,
+    action: intent.action,
+    from_token: intent.fromToken,
+    to_token: intent.toToken,
+    amount_in: intent.amount.toString(),
+    ...(txResult.amountOut !== undefined ? { amount_out: txResult.amountOut.toString() } : {}),
+    ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
+    tx_digest: txResult.txDigest,
+    gas_cost: txResult.gasUsed,
+    policy_decision: 'approved',
+    ...(fromCoinType !== undefined ? { from_coin_type: fromCoinType } : {}),
+    ...(toCoinType !== undefined ? { to_coin_type: toCoinType } : {}),
+  });
+
+  const successOutput: SuccessResponse = {
+    status: 'success',
+    chain: intent.chain,
+    action: intent.action,
+    txDigest: txResult.txDigest,
+    fromToken: intent.fromToken,
+    toToken: intent.toToken,
+    amountIn: intent.amount.toString(),
+    amountOut: txResult.amountOut?.toString() ?? '0',
+    valueUsd: tradeValueUsd ?? null,
+    gasCost: txResult.gasUsed,
+    route: quote.route,
+  };
+
+  log.info({ txDigest: txResult.txDigest }, 'Swap executed successfully');
+
+  printJsonOutput(successOutput);
 }

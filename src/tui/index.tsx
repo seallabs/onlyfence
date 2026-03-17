@@ -5,6 +5,7 @@ import { loadConfig } from '../config/loader.js';
 import { initSentry } from '../telemetry/sentry.js';
 import { toErrorMessage } from '../utils/index.js';
 import { createUpdateChecker } from '../update/index.js';
+import { hasLogger, getLogger } from '../logger/index.js';
 import { App } from './App.js';
 import { SetupApp } from './SetupApp.js';
 import { TelemetryPrompt } from './screens/TelemetryPrompt.js';
@@ -26,6 +27,13 @@ const CLEAR_SCREEN = '\x1b[H\x1b[2J';
 export async function launchTui(components?: AppComponents): Promise<void> {
   process.stdout.write(ENTER_ALT_SCREEN);
   process.stdout.write(CLEAR_SCREEN);
+
+  // Ensure alternate screen is exited even on unexpected signals
+  const exitAltScreen = (): void => {
+    process.stdout.write(EXIT_ALT_SCREEN);
+  };
+  process.on('SIGINT', exitAltScreen);
+  process.on('SIGTERM', exitAltScreen);
 
   // Create the update checker once — shared across the entire TUI session.
   const updateChecker = createUpdateChecker();
@@ -52,7 +60,9 @@ export async function launchTui(components?: AppComponents): Promise<void> {
       await runSetupThenApp(updateChecker);
     }
   } finally {
-    process.stdout.write(EXIT_ALT_SCREEN);
+    process.off('SIGINT', exitAltScreen);
+    process.off('SIGTERM', exitAltScreen);
+    exitAltScreen();
   }
 }
 
@@ -99,8 +109,14 @@ async function runSetupThenApp(
     if (freshConfig.telemetry === undefined) {
       await showTelemetryPrompt();
     }
-  } catch {
+  } catch (err: unknown) {
     // Config may not load cleanly right after setup — skip telemetry prompt
+    if (hasLogger()) {
+      getLogger().warn(
+        { err: toErrorMessage(err) },
+        'Could not load config after setup — skipping telemetry prompt',
+      );
+    }
   }
 
   // Phase 3: Clear and launch main app

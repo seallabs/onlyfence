@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import type { AppComponents } from '../bootstrap.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { toErrorMessage } from '../../utils/index.js';
+import { withComponents } from '../with-components.js';
 
 /**
  * Register the `fence query` command group.
@@ -19,14 +20,8 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
     .description('Query token prices via oracle')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
     .action(async (tokens: string[], options: { output: string }) => {
-      let components: AppComponents;
-      try {
-        components = getComponents();
-      } catch (err: unknown) {
-        console.error(`Error: ${toErrorMessage(err)}`);
-        process.exitCode = 1;
-        return;
-      }
+      const components = withComponents(getComponents);
+      if (components === undefined) return;
 
       const { oracle } = components;
 
@@ -71,14 +66,8 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
     .option('-c, --chain <chain>', 'Target chain', 'sui')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
     .action(async (options: { chain: string; output: string }) => {
-      let components: AppComponents;
-      try {
-        components = getComponents();
-      } catch (err: unknown) {
-        console.error(`Error: ${toErrorMessage(err)}`);
-        process.exitCode = 1;
-        return;
-      }
+      const components = withComponents(getComponents);
+      if (components === undefined) return;
 
       const { db, chainAdapterFactory } = components;
       const chainAlias = options.chain;

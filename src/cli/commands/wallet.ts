@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import type { AppComponents } from '../bootstrap.js';
 import { listWallets } from '../../wallet/manager.js';
 import { toErrorMessage } from '../../utils/index.js';
+import { withComponents } from '../with-components.js';
 
 /**
  * Register the `fence wallet` command group.
@@ -18,14 +19,8 @@ export function registerWalletCommand(program: Command, getComponents: () => App
     .description('List all wallets')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
     .action((options: { output: string }) => {
-      let components: AppComponents;
-      try {
-        components = getComponents();
-      } catch (err: unknown) {
-        console.error(`Error: ${toErrorMessage(err)}`);
-        process.exitCode = 1;
-        return;
-      }
+      const components = withComponents(getComponents);
+      if (components === undefined) return;
 
       const { db } = components;
 

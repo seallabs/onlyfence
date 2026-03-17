@@ -13,6 +13,7 @@ export {
   encryptKeystoreData,
   decryptKeystoreData,
   DEFAULT_KEYSTORE_PATH,
+  MIN_PASSWORD_LENGTH,
 } from './keystore.js';
 
 export { deriveSuiKeypair, publicKeyToSuiAddress, SUI_DERIVATION_PATH } from './derivation.js';

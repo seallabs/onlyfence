@@ -96,6 +96,7 @@ async function resolveInstallDecision(): Promise<boolean> {
 
 /**
  * Prompt the user for a yes/no confirmation via readline.
+ * Resolves to false if the input stream closes unexpectedly.
  */
 function promptUserConfirmation(question: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -104,7 +105,15 @@ function promptUserConfirmation(question: string): Promise<boolean> {
       output: process.stdout,
     });
 
+    let answered = false;
+
+    rl.on('close', () => {
+      // stdin closed before user answered — treat as "no"
+      if (!answered) resolve(false);
+    });
+
     rl.question(question, (answer: string) => {
+      answered = true;
       rl.close();
       resolve(answer.trim().toLowerCase() === 'y');
     });

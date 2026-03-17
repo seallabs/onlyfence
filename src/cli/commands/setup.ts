@@ -6,6 +6,7 @@ import { initConfig, CONFIG_PATH } from '../../config/loader.js';
 import { ConfigAlreadyExistsError } from '../../config/schema.js';
 import { generateSetupWallet, importSetupWallet, saveSetupKeystore } from '../../wallet/setup.js';
 import type { SetupResult } from '../../wallet/setup.js';
+import { MIN_PASSWORD_LENGTH } from '../../wallet/keystore.js';
 
 /**
  * Register the `fence setup` command on the given program.
@@ -25,11 +26,12 @@ export function registerSetupCommand(program: Command): void {
     .description('Interactive wallet setup wizard')
     .action(async () => {
       const rl = createInterface({ input: stdin, output: stdout });
+      let db: ReturnType<typeof openDatabase> | undefined;
 
       try {
         // Step 1: Init DB
         console.log('Initializing database...');
-        const db = openDatabase(DB_PATH);
+        db = openDatabase(DB_PATH);
 
         // Step 2: Init default config if not exists
         try {
@@ -81,8 +83,8 @@ export function registerSetupCommand(program: Command): void {
         console.log('\nKeystore saved and encrypted.');
 
         console.log('\nSetup complete! You can now use `fence swap` to execute trades.');
-        db.close();
       } finally {
+        db?.close();
         rl.close();
       }
     });
@@ -98,8 +100,8 @@ async function promptPassword(
   prompt: string,
 ): Promise<string> {
   const password = await rl.question(prompt);
-  if (password.length === 0) {
-    throw new Error('Password must not be empty.');
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
   }
   return password;
 }

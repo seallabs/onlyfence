@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { UpdateStatus } from '../../types/update.js';
 import type { UpdateChecker } from '../../update/checker.js';
+import { hasLogger, getLogger } from '../../logger/index.js';
 
 /**
  * Hook that checks for updates on mount.
@@ -9,7 +10,7 @@ import type { UpdateChecker } from '../../update/checker.js';
  * 2. Only fires an async network fetch if the cache is stale/absent.
  * 3. Updates state when the fetch resolves.
  *
- * Never throws — network errors leave status unchanged from the cache read.
+ * Network errors are non-fatal — they leave status unchanged but are logged.
  */
 export function useUpdateCheck(checker: UpdateChecker, currentVersion: string): UpdateStatus {
   const [status, setStatus] = useState<UpdateStatus>(() => checker.checkFromCache(currentVersion));
@@ -30,8 +31,11 @@ export function useUpdateCheck(checker: UpdateChecker, currentVersion: string): 
           setStatus(result);
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         // Network failure in the TUI is non-fatal — leave status as 'unknown'.
+        if (hasLogger()) {
+          getLogger().debug({ err }, 'TUI update check failed (non-fatal)');
+        }
       });
 
     return () => {
