@@ -6,28 +6,59 @@ import { useTui } from '../context.js';
 import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
 import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
+import { formatSmallestUnit } from '../../chain/sui/tokens.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
 const PAGE_SIZE = 15;
 
+/** Extract the coin symbol from a full type path (e.g. "0x2::sui::SUI" -> "SUI"). */
+function coinSymbol(typeTag: string): string {
+  const parts = typeTag.split('::');
+  return parts[parts.length - 1] ?? typeTag;
+}
+
+function statusColor(row: TradeRow): string | undefined {
+  switch (row.policy_decision) {
+    case 'approved':
+      return theme.success;
+    case 'rejected':
+      return theme.error;
+    default:
+      return theme.warning;
+  }
+}
+
 const COLUMNS: readonly Column<TradeRow>[] = [
   { header: 'ID', width: 6, accessor: (r) => String(r.id) },
   { header: 'Time', width: 20, accessor: (r) => r.created_at },
+  { header: 'Chain', width: 6, accessor: (r) => r.chain },
   { header: 'Action', width: 8, accessor: (r) => r.action },
-  { header: 'From', width: 8, accessor: (r) => r.from_token },
-  { header: 'To', width: 8, accessor: (r) => r.to_token },
-  { header: 'Amount In', width: 14, accessor: (r) => r.amount_in },
+  { header: 'From', width: 8, accessor: (r) => coinSymbol(r.from_token) },
+  { header: 'To', width: 8, accessor: (r) => coinSymbol(r.to_token) },
+  {
+    header: 'Amount In',
+    width: 16,
+    accessor: (r) => formatSmallestUnit(r.amount_in, r.from_token),
+    align: 'right' as const,
+  },
   {
     header: 'Amount Out',
-    width: 14,
-    accessor: (r) => r.amount_out ?? '-',
+    width: 16,
+    accessor: (r) => (r.amount_out !== null ? formatSmallestUnit(r.amount_out, r.to_token) : '-'),
+    align: 'right' as const,
   },
   {
     header: 'USD',
     width: 12,
     accessor: (r) => (r.value_usd !== null ? `$${r.value_usd.toFixed(2)}` : '-'),
+    align: 'right' as const,
   },
-  { header: 'Status', width: 10, accessor: (r) => r.policy_decision },
+  {
+    header: 'Status',
+    width: 12,
+    accessor: (r) => r.policy_decision,
+    color: statusColor,
+  },
   {
     header: 'Tx Digest',
     width: 16,
@@ -119,8 +150,12 @@ export function TradeHistory(): ReactElement {
               <Text color={theme.eyes}>{`Protocol:  ${selected.protocol ?? '-'}`}</Text>
             </Box>
             <Box flexDirection="column" width="50%">
-              <Text color={theme.eyes}>{`Amount In:  ${selected.amount_in}`}</Text>
-              <Text color={theme.eyes}>{`Amount Out: ${selected.amount_out ?? '-'}`}</Text>
+              <Text
+                color={theme.eyes}
+              >{`Amount In:  ${formatSmallestUnit(selected.amount_in, selected.from_token)} ${coinSymbol(selected.from_token)}`}</Text>
+              <Text
+                color={theme.eyes}
+              >{`Amount Out: ${selected.amount_out !== null ? `${formatSmallestUnit(selected.amount_out, selected.to_token)} ${coinSymbol(selected.to_token)}` : '-'}`}</Text>
               <Text
                 color={theme.eyes}
               >{`USD Value:  ${selected.value_usd !== null ? `$${selected.value_usd.toFixed(2)}` : '-'}`}</Text>

@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Logger } from 'pino';
 import type Database from 'better-sqlite3';
 import type { ChainAdapter } from '../chain/adapter.js';
-import type { ActionBuilder, BuiltTransaction } from '../core/action-builder.js';
+import type { ActionBuilder, BuiltTransaction, FinishContext } from '../core/action-builder.js';
+import { parseSwapEvent } from '../chain/sui/7k/events.js';
 import type { ActionPreview, SwapIntent } from '../core/action-types.js';
 import type { Signer, SimulationResult, TxResult } from '../types/result.js';
 import type { ChainConfig } from '../types/config.js';
@@ -61,13 +62,54 @@ const mockBuiltTx: BuiltTransaction = {
   metadata: { source: 'test' },
 };
 
-function createMockBuilder(): ActionBuilder {
+/**
+ * Creates a mock builder with a real finish() implementation that
+ * parses swap events and logs trades — matching SuiSwapBuilder behavior.
+ */
+function createMockBuilder(tradeLog: TradeLog): ActionBuilder {
   return {
     builderId: 'test-builder',
     chain: 'sui',
     validate: vi.fn(),
     preview: vi.fn<[], Promise<ActionPreview>>().mockResolvedValue(mockPreview),
     build: vi.fn<[], Promise<BuiltTransaction>>().mockResolvedValue(mockBuiltTx),
+    finish(context: FinishContext): void {
+      const { intent, status, preview, rawResponse, txDigest, gasUsed, rejection } = context;
+      const tradeValueUsd = intent.action === 'swap' ? intent.tradeValueUsd : undefined;
+
+      if (intent.action !== 'swap') return;
+
+      // Parse amounts from events
+      let amountOut: string | undefined;
+      if (rawResponse !== undefined) {
+        const response = rawResponse as {
+          events?: readonly { type: string; parsedJson: unknown }[];
+        };
+        if (Array.isArray(response?.events)) {
+          const parsed = parseSwapEvent(response.events);
+          amountOut = parsed?.amountOut;
+        }
+      }
+      if (amountOut === undefined) {
+        amountOut = preview?.expectedOutput;
+      }
+
+      tradeLog.logTrade({
+        chain: intent.chain,
+        wallet_address: intent.walletAddress,
+        action: intent.action,
+        from_token: intent.params.coinTypeIn,
+        to_token: intent.params.coinTypeOut,
+        amount_in: intent.params.amountIn,
+        policy_decision: status,
+        ...(amountOut !== undefined ? { amount_out: amountOut } : {}),
+        ...(txDigest !== undefined ? { tx_digest: txDigest } : {}),
+        ...(gasUsed !== undefined ? { gas_cost: gasUsed } : {}),
+        ...(rejection?.reason !== undefined ? { rejection_reason: rejection.reason } : {}),
+        ...(rejection?.check !== undefined ? { rejection_check: rejection.check } : {}),
+        ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
+      });
+    },
   } as unknown as ActionBuilder;
 }
 
@@ -81,15 +123,33 @@ function createMockChainAdapter(overrides?: {
     buildTransactionBytes: vi
       .fn<[], Promise<Uint8Array>>()
       .mockResolvedValue(new Uint8Array([1, 2, 3])),
-    simulate: vi
-      .fn<[], Promise<SimulationResult>>()
-      .mockResolvedValue(overrides?.simulate ?? { success: true, gasEstimate: 5000 }),
+    simulate: vi.fn<[], Promise<SimulationResult>>().mockResolvedValue(
+      overrides?.simulate ?? {
+        success: true,
+        gasEstimate: 5000,
+        rawResponse: {
+          events: [
+            {
+              type: '0x17c0b1f7a6ad73f51268f16b8c06c049eecc2f28a270cdd29c06e3d2dea23302::settle::Swap',
+              parsedJson: { amount_in: '100000000', amount_out: '98120000' },
+            },
+          ],
+        },
+      },
+    ),
     signAndSubmit: vi.fn<[], Promise<TxResult>>().mockResolvedValue(
       overrides?.signAndSubmit ?? {
         txDigest: '0xdigest_success',
         status: 'success',
         gasUsed: 4800,
-        amountOut: BigInt('98120000'),
+        rawResponse: {
+          events: [
+            {
+              type: '0x17c0b1f7a6ad73f51268f16b8c06c049eecc2f28a270cdd29c06e3d2dea23302::settle::Swap',
+              parsedJson: { amount_in: '100000000', amount_out: '98120000' },
+            },
+          ],
+        },
       },
     ),
   } as unknown as ChainAdapter;
@@ -134,9 +194,9 @@ describe('Pipeline Integration Tests', () => {
     db.close();
   });
 
-  it('full success path: intent -> policy -> preview -> build -> simulate -> sign -> submit -> success', async () => {
+  it('full success path: intent -> policy -> preview -> build -> simulate -> sign -> submit -> finish', async () => {
     const intent = createSwapIntent();
-    const builder = createMockBuilder();
+    const builder = createMockBuilder(tradeLog);
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
     const signer = createMockSigner();
@@ -148,7 +208,6 @@ describe('Pipeline Integration Tests', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       signer,
       watchOnly: false,
@@ -158,18 +217,18 @@ describe('Pipeline Integration Tests', () => {
     expect(result.txDigest).toBe('0xdigest_success');
     expect(result.gasUsed).toBe(4800);
     expect(result.preview).toEqual(mockPreview);
-    expect(result.amountOut).toBe('98120000');
 
-    // Verify trade was logged
+    // Verify trade was logged with event-parsed amounts
     const trades = tradeLog.getRecentTrades('sui', 10);
     expect(trades).toHaveLength(1);
     expect(trades[0]?.policy_decision).toBe('approved');
     expect(trades[0]?.tx_digest).toBe('0xdigest_success');
+    expect(trades[0]?.amount_out).toBe('98120000');
   });
 
   it('watch-only path: stops after simulate and returns simulated with gasEstimate', async () => {
     const intent = createSwapIntent();
-    const builder = createMockBuilder();
+    const builder = createMockBuilder(tradeLog);
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
 
@@ -180,7 +239,6 @@ describe('Pipeline Integration Tests', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       watchOnly: true,
     });
@@ -192,15 +250,16 @@ describe('Pipeline Integration Tests', () => {
     // signAndSubmit should NOT have been called
     expect(chainAdapter.signAndSubmit).not.toHaveBeenCalled();
 
-    // Trade should still be logged
+    // Trade should still be logged with event-parsed amountOut
     const trades = tradeLog.getRecentTrades('sui', 10);
     expect(trades).toHaveLength(1);
     expect(trades[0]?.tx_digest).toBe('watch-only');
+    expect(trades[0]?.amount_out).toBe('98120000');
   });
 
   it('policy rejection: token not in allowlist returns rejected with check name', async () => {
     const intent = createSwapIntent({ coinTypeOut: '0xaaa::bbb::DOGE' });
-    const builder = createMockBuilder();
+    const builder = createMockBuilder(tradeLog);
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
 
@@ -211,7 +270,6 @@ describe('Pipeline Integration Tests', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       watchOnly: false,
     });
@@ -220,10 +278,10 @@ describe('Pipeline Integration Tests', () => {
     expect(result.rejectionCheck).toBe('token_allowlist');
     expect(result.rejectionReason).toContain('DOGE');
 
-    // Builder should NOT have been called
+    // Builder should NOT have been called for preview/build
     expect(builder.preview).not.toHaveBeenCalled();
 
-    // Trade should be logged as rejected
+    // Trade should be logged as rejected via builder.finish
     const trades = tradeLog.getRecentTrades('sui', 10);
     expect(trades).toHaveLength(1);
     expect(trades[0]?.policy_decision).toBe('rejected');
@@ -231,9 +289,9 @@ describe('Pipeline Integration Tests', () => {
 
   it('simulation failure: simulate returns success=false -> simulation_failed', async () => {
     const intent = createSwapIntent();
-    const builder = createMockBuilder();
+    const builder = createMockBuilder(tradeLog);
     const chainAdapter = createMockChainAdapter({
-      simulate: { success: false, gasEstimate: 0, error: 'InsufficientGas' },
+      simulate: { success: false, gasEstimate: 0, error: 'InsufficientGas', rawResponse: {} },
     });
     const mevProtector = new NoOpMevProtector();
     const signer = createMockSigner();
@@ -245,7 +303,6 @@ describe('Pipeline Integration Tests', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       signer,
       watchOnly: false,

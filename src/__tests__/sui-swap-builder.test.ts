@@ -31,11 +31,11 @@ vi.mock('@mysten/sui/transactions', () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-let SuiSwapBuilder: typeof import('../chain/sui/builder/swap-builder.js').SuiSwapBuilder;
+let SuiSwapBuilder: typeof import('../chain/sui/7k/swap.js').SuiSwapBuilder;
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  const mod = await import('../chain/sui/builder/swap-builder.js');
+  const mod = await import('../chain/sui/7k/swap.js');
   SuiSwapBuilder = mod.SuiSwapBuilder;
 });
 

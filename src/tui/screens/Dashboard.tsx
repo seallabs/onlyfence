@@ -6,6 +6,7 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
 import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
+import { formatSmallestUnit } from '../../chain/sui/tokens.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
 interface DashboardData {
@@ -14,18 +15,58 @@ interface DashboardData {
   readonly trades: readonly TradeRow[];
 }
 
+/** Extract the coin symbol from a full type path (e.g. "0x2::sui::SUI" -> "SUI"). */
+function coinSymbol(typeTag: string): string {
+  const parts = typeTag.split('::');
+  return parts[parts.length - 1] ?? typeTag;
+}
+
+/** Format an ISO timestamp to a compact "MM-DD HH:MM:SS" string. */
+function shortTime(iso: string): string {
+  // created_at is "YYYY-MM-DD HH:MM:SS"
+  return iso.slice(5, 19);
+}
+
+function statusColor(row: TradeRow): string | undefined {
+  switch (row.policy_decision) {
+    case 'approved':
+      return theme.success;
+    case 'rejected':
+      return theme.error;
+    default:
+      return theme.warning;
+  }
+}
+
 const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
-  { header: 'Time', width: 20, accessor: (r) => r.created_at },
-  { header: 'Action', width: 8, accessor: (r) => r.action },
-  { header: 'From', width: 8, accessor: (r) => r.from_token },
-  { header: 'To', width: 8, accessor: (r) => r.to_token },
-  { header: 'Amount', width: 14, accessor: (r) => r.amount_in },
+  { header: 'Time', width: 16, accessor: (r) => shortTime(r.created_at) },
+  { header: 'Chain', width: 6, accessor: (r) => r.chain },
+  { header: 'From', width: 8, accessor: (r) => coinSymbol(r.from_token) },
+  { header: 'To', width: 8, accessor: (r) => coinSymbol(r.to_token) },
+  {
+    header: 'Amount In',
+    width: 16,
+    accessor: (r) => formatSmallestUnit(r.amount_in, r.from_token),
+    align: 'right' as const,
+  },
+  {
+    header: 'Amount Out',
+    width: 16,
+    accessor: (r) => (r.amount_out !== null ? formatSmallestUnit(r.amount_out, r.to_token) : '-'),
+    align: 'right' as const,
+  },
   {
     header: 'USD',
     width: 12,
     accessor: (r) => (r.value_usd !== null ? `$${r.value_usd.toFixed(2)}` : '-'),
+    align: 'right' as const,
   },
-  { header: 'Status', width: 10, accessor: (r) => r.policy_decision },
+  {
+    header: 'Status',
+    width: 12,
+    accessor: (r) => r.policy_decision,
+    color: statusColor,
+  },
 ];
 
 const BAR_WIDTH = 40;

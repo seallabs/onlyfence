@@ -1,8 +1,8 @@
-import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { toBase64 } from '@mysten/bcs';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import type { BalanceResult, Signer, SimulationResult, TxResult } from '../../types/result.js';
 import type { ChainAdapter } from '../adapter.js';
-import type { BalanceResult, SimulationResult, TxResult, Signer } from '../../types/result.js';
-import { resolveSymbol, getKnownDecimals } from './tokens.js';
+import { getKnownDecimals, resolveSymbol } from './tokens.js';
 
 /** Default decimals for unknown Sui tokens. */
 const DEFAULT_DECIMALS = 9;
@@ -70,13 +70,14 @@ export class SuiAdapter implements ChainAdapter {
     const gasEstimate = computeGas(result.effects.gasUsed);
 
     if (result.effects.status.status === 'success') {
-      return { success: true, gasEstimate };
+      return { success: true, gasEstimate, rawResponse: result };
     }
 
     return {
       success: false,
       gasEstimate,
       error: JSON.stringify(result.effects.status),
+      rawResponse: result,
     };
   }
 
@@ -98,7 +99,7 @@ export class SuiAdapter implements ChainAdapter {
     const result = await this.client.executeTransactionBlock({
       transactionBlock: txBytes,
       signature: signatureBase64,
-      options: { showEffects: true },
+      options: { showEffects: true, showEvents: true },
     });
 
     // effects may be null/undefined when showEffects is not returned
@@ -108,6 +109,7 @@ export class SuiAdapter implements ChainAdapter {
         txDigest: result.digest,
         status: 'failure',
         gasUsed: 0,
+        rawResponse: result,
       };
     }
 
@@ -115,6 +117,7 @@ export class SuiAdapter implements ChainAdapter {
       txDigest: result.digest,
       status: effects.status.status === 'success' ? 'success' : 'failure',
       gasUsed: computeGas(effects.gasUsed),
+      rawResponse: result,
     };
   }
 }

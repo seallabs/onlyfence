@@ -1,21 +1,22 @@
 import type { Command } from 'commander';
-import type { SwapIntent, PipelineResult } from '../../core/action-types.js';
+import { resolveTokenAddress, scaleToSmallestUnit } from '../../chain/sui/tokens.js';
+import type { ActionBuilder } from '../../core/action-builder.js';
+import type { PipelineResult, SwapIntent, SwapPreview } from '../../core/action-types.js';
+import { NoOpMevProtector } from '../../core/mev-protector.js';
+import { executePipeline } from '../../core/transaction-pipeline.js';
 import type { PolicyContext } from '../../policy/context.js';
+import { toErrorMessage } from '../../utils/index.js';
+import { getPrimaryWallet } from '../../wallet/manager.js';
+import { resolveSuiSigner } from '../../wallet/signer.js';
 import type { AppComponents } from '../bootstrap.js';
 import type {
-  SuccessResponse,
-  RejectionResponse,
-  ErrorResponse,
-  SimulatedResponse,
   CliOutput,
+  ErrorResponse,
+  RejectionResponse,
+  SimulatedResponse,
+  SuccessResponse,
 } from '../output.js';
-import { getPrimaryWallet } from '../../wallet/manager.js';
 import { printJsonOutput } from '../output.js';
-import { toErrorMessage } from '../../utils/index.js';
-import { resolveTokenAddress, scaleToSmallestUnit } from '../../chain/sui/tokens.js';
-import { resolveSuiSigner } from '../../wallet/signer.js';
-import { executePipeline } from '../../core/transaction-pipeline.js';
-import { NoOpMevProtector } from '../../core/mev-protector.js';
 
 /** Shared fallback MEV protector for chains without a registered protector. */
 const FALLBACK_MEV_PROTECTOR = new NoOpMevProtector();
@@ -119,19 +120,6 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           // Build slippage in basis points
           const slippageBps = Math.round(parseFloat(options.slippage) * 100);
 
-          // Build SwapIntent
-          const intent: SwapIntent = {
-            chain,
-            action: 'swap',
-            walletAddress: wallet.address,
-            params: {
-              coinTypeIn,
-              coinTypeOut,
-              amountIn: scaledAmountIn,
-              slippageBps,
-            },
-          };
-
           // Resolve USD price from oracle (handle failure per spec section 10)
           let tradeValueUsd: number | undefined;
           try {
@@ -144,6 +132,20 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             );
             tradeValueUsd = undefined;
           }
+
+          // Build SwapIntent
+          const intent: SwapIntent = {
+            chain,
+            action: 'swap',
+            walletAddress: wallet.address,
+            params: {
+              coinTypeIn,
+              coinTypeOut,
+              amountIn: scaledAmountIn,
+              slippageBps,
+            },
+            tradeValueUsd,
+          };
 
           // Build policy context
           const policyCtx: PolicyContext = {
@@ -158,7 +160,10 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           const signer = watchOnly ? undefined : resolveSuiSigner(options.password);
 
           // Get builder from registry
-          const builder = actionBuilderRegistry.getDefault(chain, 'swap', intent);
+          const builder = actionBuilderRegistry.getDefault(chain, 'swap', intent) as ActionBuilder<
+            SwapIntent,
+            SwapPreview
+          >;
 
           // Get chain adapter
           const chainAdapter = chainAdapterFactory.get(chain);
@@ -174,15 +179,13 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             policyRegistry,
             policyContext: policyCtx,
             mevProtector,
-            tradeLog,
             logger: log,
             ...(signer !== undefined ? { signer } : {}),
             watchOnly,
-            ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
           });
 
           // Map PipelineResult to CliOutput + exit code
-          const output = mapPipelineResultToOutput(result, intent);
+          const output = mapPipelineResultToOutput(result, intent, tradeValueUsd);
           printJsonOutput(output.cliOutput);
           process.exitCode = output.exitCode;
         } catch (err: unknown) {
@@ -209,7 +212,11 @@ interface MappedOutput {
 /**
  * Map a PipelineResult to a CliOutput and process exit code.
  */
-function mapPipelineResultToOutput(result: PipelineResult, intent: SwapIntent): MappedOutput {
+function mapPipelineResultToOutput(
+  result: PipelineResult<SwapPreview>,
+  intent: SwapIntent,
+  tradeValueUsd?: number,
+): MappedOutput {
   switch (result.status) {
     case 'success': {
       const output: SuccessResponse = {
@@ -220,8 +227,8 @@ function mapPipelineResultToOutput(result: PipelineResult, intent: SwapIntent): 
         fromToken: intent.params.coinTypeIn,
         toToken: intent.params.coinTypeOut,
         amountIn: intent.params.amountIn,
-        amountOut: result.amountOut ?? result.preview?.expectedOutput ?? '0',
-        valueUsd: result.tradeValueUsd ?? null,
+        amountOut: result.preview?.expectedOutput ?? '0',
+        valueUsd: tradeValueUsd ?? null,
         gasCost: result.gasUsed ?? 0,
         route: result.preview?.provider ?? 'unknown',
       };

@@ -1,11 +1,14 @@
-import { MetaAg, EProvider } from '@7kprotocol/sdk-ts';
+import { EProvider, MetaAg } from '@7kprotocol/sdk-ts';
 import { Transaction, coinWithBalance } from '@mysten/sui/transactions';
 import type {
   ActionBuilder,
   BuiltTransaction,
-  ActionPreview,
+  FinishContext,
 } from '../../../core/action-builder.js';
-import type { SwapIntent } from '../../../core/action-types.js';
+import type { SwapIntent, SwapPreview } from '../../../core/action-types.js';
+import type { TradeLog } from '../../../db/trade-log.js';
+import type { SwapEventAmounts } from './events.js';
+import { parseSwapEvent } from './events.js';
 
 /** Shape of the best quote stored in preview.buildData */
 interface BestQuote {
@@ -26,15 +29,18 @@ interface BestQuote {
  *   - NaviSupplyBuilder    -> NAVI lending supply (future)
  *   - SuiLpDepositBuilder  -> LP deposit via LP Pro (future)
  *
- * Each builder owns: validate -> preview -> build for its operation type.
+ * Each builder owns: validate -> preview -> build -> finish for its operation type.
  * The pipeline doesn't know what kind of operation it is.
  */
-export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
+export class SuiSwapBuilder implements ActionBuilder<SwapIntent, SwapPreview> {
   readonly builderId = '7k-swap';
   readonly chain = 'sui';
   private readonly metaAg: MetaAg;
 
-  constructor(slippageBps = 100) {
+  constructor(
+    private readonly tradeLog: TradeLog,
+    slippageBps = 100,
+  ) {
     this.metaAg = new MetaAg({
       slippageBps,
       tipBps: 0,
@@ -59,7 +65,7 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
     }
   }
 
-  async preview(intent: SwapIntent): Promise<ActionPreview> {
+  async preview(intent: SwapIntent): Promise<SwapPreview> {
     const { coinTypeIn, coinTypeOut, amountIn } = intent.params;
 
     const quotes = await this.metaAg
@@ -90,6 +96,7 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
     const best = mapped.reduce((acc, q) => (BigInt(q.amountOut) > BigInt(acc.amountOut) ? q : acc));
 
     return {
+      action: 'swap',
       description: `Swap via ${best.provider}`,
       expectedOutput: best.amountOut,
       provider: best.provider,
@@ -97,7 +104,7 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
     };
   }
 
-  async build(intent: SwapIntent, preview: ActionPreview): Promise<BuiltTransaction> {
+  async build(intent: SwapIntent, preview: SwapPreview): Promise<BuiltTransaction> {
     const best = preview.buildData as BestQuote;
 
     const tx = new Transaction();
@@ -126,5 +133,44 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
         description: preview.description,
       },
     };
+  }
+
+  /**
+   * Post-execution hook: parse on-chain swap events and log the trade to DB.
+   *
+   * Called by the pipeline after rejection, watch-only simulation, or
+   * successful execution.
+   */
+  finish(context: FinishContext<SwapPreview>): void {
+    const { intent, status, preview, rawResponse, txDigest, gasUsed, rejection } = context;
+
+    if (intent.action !== 'swap') return;
+
+    // Parse actual amounts from on-chain events (source of truth)
+    const parsed = rawResponse !== undefined ? this.parseAmounts(rawResponse) : undefined;
+    const amountOut = parsed?.amountOut ?? preview?.expectedOutput;
+
+    this.tradeLog.logTrade({
+      chain: intent.chain,
+      wallet_address: intent.walletAddress,
+      action: intent.action,
+      from_token: intent.params.coinTypeIn,
+      to_token: intent.params.coinTypeOut,
+      amount_in: intent.params.amountIn,
+      policy_decision: status,
+      ...(amountOut !== undefined ? { amount_out: amountOut } : {}),
+      ...(txDigest !== undefined ? { tx_digest: txDigest } : {}),
+      ...(gasUsed !== undefined ? { gas_cost: gasUsed } : {}),
+      ...(rejection?.reason !== undefined ? { rejection_reason: rejection.reason } : {}),
+      ...(rejection?.check !== undefined ? { rejection_check: rejection.check } : {}),
+      ...(intent.tradeValueUsd !== undefined ? { trade_value_usd: intent.tradeValueUsd } : {}),
+    });
+  }
+
+  parseAmounts(rawResponse: unknown): SwapEventAmounts | undefined {
+    if (typeof rawResponse !== 'object' || rawResponse === null) return undefined;
+    const events = (rawResponse as Record<string, unknown>)['events'];
+    if (!Array.isArray(events)) return undefined;
+    return parseSwapEvent(events as { type: string; parsedJson: unknown }[]);
   }
 }

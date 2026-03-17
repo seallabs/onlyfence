@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import type { Logger } from 'pino';
-import type { ActionBuilder } from '../core/action-builder.js';
+import type { ActionBuilder, FinishContext } from '../core/action-builder.js';
 import type { ChainAdapter } from '../chain/adapter.js';
 import type { MevProtector } from '../core/mev-protector.js';
 import type { PolicyContext } from '../policy/context.js';
@@ -40,6 +40,7 @@ function createSwapIntent(overrides?: Partial<SwapIntent>): SwapIntent {
       amountIn: '1000000000',
       slippageBps: 100,
     },
+    tradeValueUsd: undefined,
     ...overrides,
   };
 }
@@ -64,6 +65,7 @@ function createMockBuilder(overrides?: Partial<ActionBuilder>): ActionBuilder {
       transaction: { kind: 'mock-tx' },
       metadata: { coinTypeIn: '0x2::sui::SUI', coinTypeOut: '0xdba3::usdc::USDC' },
     }),
+    finish: vi.fn(),
     ...overrides,
   };
 }
@@ -73,14 +75,16 @@ function createMockChainAdapter(overrides?: Partial<ChainAdapter>): ChainAdapter
     chain: 'sui',
     getBalance: vi.fn(),
     buildTransactionBytes: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
-    simulate: vi
-      .fn()
-      .mockResolvedValue({ success: true, gasEstimate: 5000 } satisfies SimulationResult),
+    simulate: vi.fn().mockResolvedValue({
+      success: true,
+      gasEstimate: 5000,
+      rawResponse: { events: [] },
+    } satisfies SimulationResult),
     signAndSubmit: vi.fn().mockResolvedValue({
       txDigest: 'TX_DIGEST_ABC',
       status: 'success',
       gasUsed: 4500,
-      amountOut: BigInt('3500000'),
+      rawResponse: { events: [] },
     } satisfies TxResult),
     ...overrides,
   };
@@ -94,28 +98,15 @@ function createMockSigner(): Signer {
   };
 }
 
-function createInMemoryTradeLog(): { tradeLog: TradeLog; db: Database.Database } {
-  const db = new Database(':memory:');
-  runMigrations(db);
-  const tradeLog = new TradeLog(db);
-  return { tradeLog, db };
-}
-
 describe('executePipeline', () => {
-  let tradeLog: TradeLog;
-  let db: Database.Database;
   let logger: Logger;
   let policyRegistry: PolicyCheckRegistry;
   let policyContext: PolicyContext;
 
   beforeEach(() => {
-    const mem = createInMemoryTradeLog();
-    tradeLog = mem.tradeLog;
-    db = mem.db;
-
-    // Insert a wallet row to satisfy the FOREIGN KEY on trades.wallet_address
-    const walletAddr = '0x' + 'a'.repeat(64);
-    db.prepare(`INSERT INTO wallets (chain, address) VALUES (?, ?)`).run('sui', walletAddr);
+    const db = new Database(':memory:');
+    runMigrations(db);
+    const tradeLog = new TradeLog(db);
 
     logger = createMockLogger();
     policyRegistry = new PolicyCheckRegistry();
@@ -127,7 +118,7 @@ describe('executePipeline', () => {
     };
   });
 
-  it('returns success when all steps pass', async () => {
+  it('returns success and calls builder.finish with correct context', async () => {
     const intent = createSwapIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
@@ -141,7 +132,6 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       signer,
       watchOnly: false,
@@ -152,20 +142,21 @@ describe('executePipeline', () => {
     expect(result.status).toBe('success');
     expect(result.txDigest).toBe('TX_DIGEST_ABC');
     expect(result.gasUsed).toBe(4500);
-    expect(result.amountOut).toBe('3500000');
     expect(result.preview).toBeDefined();
     expect(result.preview?.provider).toBe('7k-swap');
 
-    // Verify trade was logged
-    const trades = tradeLog.getRecentTrades('sui', 10);
-    expect(trades).toHaveLength(1);
-    expect(trades[0]!.policy_decision).toBe('approved');
-    expect(trades[0]!.tx_digest).toBe('TX_DIGEST_ABC');
-    expect(trades[0]!.from_token).toBe('0x2::sui::SUI');
-    expect(trades[0]!.to_token).toBe('0xdba3::usdc::USDC');
+    // Verify builder.finish was called with correct context
+    expect(builder.finish).toHaveBeenCalledOnce();
+    const ctx = (builder.finish as ReturnType<typeof vi.fn>).mock.calls[0]![0] as FinishContext;
+    expect(ctx.intent).toBe(intent);
+    expect(ctx.status).toBe('approved');
+    expect(ctx.txDigest).toBe('TX_DIGEST_ABC');
+    expect(ctx.gasUsed).toBe(4500);
+    expect(ctx.rawResponse).toEqual({ events: [] });
+    expect(ctx.preview).toBeDefined();
   });
 
-  it('returns rejected when policy rejects', async () => {
+  it('returns rejected and calls builder.finish with rejection context', async () => {
     const intent = createSwapIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
@@ -189,7 +180,6 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       watchOnly: false,
     };
@@ -200,14 +190,17 @@ describe('executePipeline', () => {
     expect(result.rejectionCheck).toBe('test_reject');
     expect(result.rejectionReason).toBe('SUI is not on the allowlist');
 
-    // Verify rejected trade was logged
-    const trades = tradeLog.getRecentTrades('sui', 10);
-    expect(trades).toHaveLength(1);
-    expect(trades[0]!.policy_decision).toBe('rejected');
-    expect(trades[0]!.rejection_check).toBe('test_reject');
+    // Verify builder.finish was called with rejection context
+    expect(builder.finish).toHaveBeenCalledOnce();
+    const ctx = (builder.finish as ReturnType<typeof vi.fn>).mock.calls[0]![0] as FinishContext;
+    expect(ctx.status).toBe('rejected');
+    expect(ctx.rejection).toEqual({
+      check: 'test_reject',
+      reason: 'SUI is not on the allowlist',
+    });
   });
 
-  it('returns simulation_failed when simulate fails', async () => {
+  it('returns simulation_failed when simulate fails (no finish call)', async () => {
     const intent = createSwapIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter({
@@ -218,6 +211,7 @@ describe('executePipeline', () => {
         success: false,
         gasEstimate: 0,
         error: 'InsufficientGas',
+        rawResponse: {},
       } satisfies SimulationResult),
       signAndSubmit: vi.fn(),
     });
@@ -230,7 +224,6 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       watchOnly: false,
     };
@@ -239,9 +232,11 @@ describe('executePipeline', () => {
 
     expect(result.status).toBe('simulation_failed');
     expect(result.error).toBe('InsufficientGas');
+    // finish should NOT be called for simulation failures
+    expect(builder.finish).not.toHaveBeenCalled();
   });
 
-  it('returns simulated when watchOnly is true', async () => {
+  it('returns simulated and calls builder.finish in watch-only mode', async () => {
     const intent = createSwapIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
@@ -254,7 +249,6 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       watchOnly: true,
     };
@@ -268,14 +262,16 @@ describe('executePipeline', () => {
     // signAndSubmit should NOT have been called
     expect(chainAdapter.signAndSubmit).not.toHaveBeenCalled();
 
-    // Verify trade was logged with watch-only digest
-    const trades = tradeLog.getRecentTrades('sui', 10);
-    expect(trades).toHaveLength(1);
-    expect(trades[0]!.tx_digest).toBe('watch-only');
-    expect(trades[0]!.policy_decision).toBe('approved');
+    // Verify builder.finish was called with watch-only context
+    expect(builder.finish).toHaveBeenCalledOnce();
+    const ctx = (builder.finish as ReturnType<typeof vi.fn>).mock.calls[0]![0] as FinishContext;
+    expect(ctx.status).toBe('approved');
+    expect(ctx.txDigest).toBe('watch-only');
+    expect(ctx.gasUsed).toBe(5000);
+    expect(ctx.rawResponse).toEqual({ events: [] });
   });
 
-  it('returns error when builder.validate throws', async () => {
+  it('returns error when builder.validate throws (no finish call)', async () => {
     const intent = createSwapIntent();
     const builder = createMockBuilder({
       builderId: '7k-swap',
@@ -285,6 +281,7 @@ describe('executePipeline', () => {
       }),
       preview: vi.fn(),
       build: vi.fn(),
+      finish: vi.fn(),
     });
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -296,7 +293,6 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       watchOnly: false,
     };
@@ -305,9 +301,11 @@ describe('executePipeline', () => {
 
     expect(result.status).toBe('error');
     expect(result.error).toBe('coinTypeIn and coinTypeOut must be different');
+    // finish should NOT be called on error
+    expect(builder.finish).not.toHaveBeenCalled();
   });
 
-  it('returns error when signer is missing for non-watch-only', async () => {
+  it('returns error when signer is missing for non-watch-only (no finish call)', async () => {
     const intent = createSwapIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
@@ -320,7 +318,6 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       watchOnly: false,
       // No signer provided
@@ -330,16 +327,18 @@ describe('executePipeline', () => {
 
     expect(result.status).toBe('error');
     expect(result.error).toContain('Signer is required');
+    // finish should NOT be called
+    expect(builder.finish).not.toHaveBeenCalled();
   });
 
-  it('returns error when signAndSubmit fails', async () => {
+  it('returns error when signAndSubmit fails (no finish call)', async () => {
     const intent = createSwapIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter({
       chain: 'sui',
       getBalance: vi.fn(),
       buildTransactionBytes: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
-      simulate: vi.fn().mockResolvedValue({ success: true, gasEstimate: 5000 }),
+      simulate: vi.fn().mockResolvedValue({ success: true, gasEstimate: 5000, rawResponse: {} }),
       signAndSubmit: vi.fn().mockRejectedValue(new Error('RPC timeout')),
     });
     const signer = createMockSigner();
@@ -352,7 +351,6 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       signer,
       watchOnly: false,
@@ -362,20 +360,23 @@ describe('executePipeline', () => {
 
     expect(result.status).toBe('error');
     expect(result.error).toBe('RPC timeout');
+    // finish should NOT be called on RPC error
+    expect(builder.finish).not.toHaveBeenCalled();
   });
 
-  it('returns error when signAndSubmit returns failure status', async () => {
+  it('returns error when signAndSubmit returns failure status (no finish call)', async () => {
     const intent = createSwapIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter({
       chain: 'sui',
       getBalance: vi.fn(),
       buildTransactionBytes: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
-      simulate: vi.fn().mockResolvedValue({ success: true, gasEstimate: 5000 }),
+      simulate: vi.fn().mockResolvedValue({ success: true, gasEstimate: 5000, rawResponse: {} }),
       signAndSubmit: vi.fn().mockResolvedValue({
         txDigest: 'TX_FAIL_123',
         status: 'failure',
         gasUsed: 3000,
+        rawResponse: {},
       } satisfies TxResult),
     });
     const signer = createMockSigner();
@@ -388,7 +389,6 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       signer,
       watchOnly: false,
@@ -399,10 +399,12 @@ describe('executePipeline', () => {
     expect(result.status).toBe('error');
     expect(result.error).toContain('failed on-chain');
     expect(result.txDigest).toBe('TX_FAIL_123');
+    // finish should NOT be called for on-chain failures
+    expect(builder.finish).not.toHaveBeenCalled();
   });
 
-  it('records value_usd in trade log on success', async () => {
-    const intent = createSwapIntent();
+  it('builder.finish receives intent with tradeValueUsd on success', async () => {
+    const intent = createSwapIntent({ tradeValueUsd: 42.5 });
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
     const signer = createMockSigner();
@@ -415,22 +417,19 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       signer,
       watchOnly: false,
-      tradeValueUsd: 42.5,
     };
 
     await executePipeline(input);
 
-    const trades = tradeLog.getRecentTrades('sui', 10);
-    expect(trades).toHaveLength(1);
-    expect(trades[0]!.value_usd).toBe(42.5);
+    const ctx = (builder.finish as ReturnType<typeof vi.fn>).mock.calls[0]![0] as FinishContext;
+    expect((ctx.intent as SwapIntent).tradeValueUsd).toBe(42.5);
   });
 
-  it('records value_usd in trade log on rejection', async () => {
-    const intent = createSwapIntent();
+  it('builder.finish receives intent with tradeValueUsd on rejection', async () => {
+    const intent = createSwapIntent({ tradeValueUsd: 99.0 });
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -452,21 +451,18 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       watchOnly: false,
-      tradeValueUsd: 99.0,
     };
 
     await executePipeline(input);
 
-    const trades = tradeLog.getRecentTrades('sui', 10);
-    expect(trades).toHaveLength(1);
-    expect(trades[0]!.value_usd).toBe(99.0);
+    const ctx = (builder.finish as ReturnType<typeof vi.fn>).mock.calls[0]![0] as FinishContext;
+    expect((ctx.intent as SwapIntent).tradeValueUsd).toBe(99.0);
   });
 
-  it('records value_usd in trade log on watch-only simulation', async () => {
-    const intent = createSwapIntent();
+  it('builder.finish receives intent with tradeValueUsd on watch-only', async () => {
+    const intent = createSwapIntent({ tradeValueUsd: 55.25 });
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -478,22 +474,29 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       watchOnly: true,
-      tradeValueUsd: 55.25,
     };
 
     await executePipeline(input);
 
-    const trades = tradeLog.getRecentTrades('sui', 10);
-    expect(trades).toHaveLength(1);
-    expect(trades[0]!.value_usd).toBe(55.25);
+    const ctx = (builder.finish as ReturnType<typeof vi.fn>).mock.calls[0]![0] as FinishContext;
+    expect((ctx.intent as SwapIntent).tradeValueUsd).toBe(55.25);
   });
 
-  it('returns tradeValueUsd in PipelineResult on success', async () => {
+  it('works when builder has no finish method', async () => {
     const intent = createSwapIntent();
-    const builder = createMockBuilder();
+    // Builder without finish
+    const builder: ActionBuilder = {
+      builderId: '7k-swap',
+      chain: 'sui',
+      validate: vi.fn(),
+      preview: vi.fn().mockResolvedValue(createMockPreview()),
+      build: vi.fn().mockResolvedValue({
+        transaction: { kind: 'mock-tx' },
+        metadata: {},
+      }),
+    };
     const chainAdapter = createMockChainAdapter();
     const signer = createMockSigner();
     const mevProtector = new NoOpMevProtector();
@@ -505,14 +508,13 @@ describe('executePipeline', () => {
       policyRegistry,
       policyContext,
       mevProtector,
-      tradeLog,
       logger,
       signer,
       watchOnly: false,
-      tradeValueUsd: 42.5,
     };
 
     const result = await executePipeline(input);
-    expect(result.tradeValueUsd).toBe(42.5);
+
+    expect(result.status).toBe('success');
   });
 });

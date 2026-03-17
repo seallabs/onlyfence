@@ -192,7 +192,7 @@ describe('SuiAdapter', () => {
       const call = mockExecuteTransactionBlock.mock.calls[0] as unknown[];
       const args = call[0] as Record<string, unknown>;
       expect(args['signature']).toBeDefined();
-      expect(args['options']).toEqual({ showEffects: true });
+      expect(args['options']).toEqual({ showEffects: true, showEvents: true });
     });
 
     it('returns failure status when transaction fails', async () => {

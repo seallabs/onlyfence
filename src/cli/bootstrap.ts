@@ -14,7 +14,7 @@ import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { ChainAdapterFactory } from '../chain/factory.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
-import { SuiSwapBuilder } from '../chain/sui/builder/swap-builder.js';
+import { SuiSwapBuilder } from '../chain/sui/7k/swap.js';
 import { getLogger } from '../logger/index.js';
 import { initSentry } from '../telemetry/sentry.js';
 import type { CoinMetadataService } from '../data/coin-metadata.js';
@@ -71,7 +71,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const cliEventLog = new CliEventLog(db);
   const policyRegistry = buildPolicyRegistry(config);
   const chainAdapterFactory = buildChainAdapterFactory();
-  const actionBuilderRegistry = buildActionBuilderRegistry();
+  const actionBuilderRegistry = buildActionBuilderRegistry(tradeLog);
   const mevProtectors = buildMevProtectors();
   const coinMetadataService = buildCoinMetadataService(db);
 
@@ -131,14 +131,15 @@ export function buildChainAdapterFactory(): ChainAdapterFactory {
  * Uses factory registration so builders are created lazily per-intent,
  * allowing intent-specific configuration (e.g., slippage).
  *
+ * @param tradeLog - Trade log instance for builders that log trades
  * @returns ActionBuilderRegistry with SuiSwapBuilder factory registered
  */
-export function buildActionBuilderRegistry(): ActionBuilderRegistry {
+export function buildActionBuilderRegistry(tradeLog: TradeLog): ActionBuilderRegistry {
   const registry = new ActionBuilderRegistry();
 
   registry.registerFactory('sui', 'swap', '7k', (intent) => {
     const slippageBps = intent.action === 'swap' ? intent.params.slippageBps : 100;
-    return new SuiSwapBuilder(slippageBps);
+    return new SuiSwapBuilder(tradeLog, slippageBps);
   });
 
   return registry;
