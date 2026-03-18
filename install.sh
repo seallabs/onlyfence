@@ -126,7 +126,7 @@ install_from_github_release() {
   case "$url" in
     file://*)
       local_path="${url#file://}"
-      cp "$local_path" "${tmpdir}/${tarball}" 2>/dev/null || { return 1; }
+      cp "$local_path" "${tmpdir}/${tarball}" || { error "Failed to copy ${local_path}"; return 1; }
       ;;
     *)
       download "$url" "${tmpdir}/${tarball}"
@@ -140,7 +140,7 @@ install_from_github_release() {
   info "Extracting to ${INSTALL_DIR}..."
 
   # Clean previous installation but preserve user data
-  rm -rf "${INSTALL_DIR}/lib" "${INSTALL_DIR}/node_modules" "${INSTALL_DIR}/runtime"
+  rm -rf "${INSTALL_DIR:?}/lib" "${INSTALL_DIR:?}/node_modules" "${INSTALL_DIR:?}/runtime"
   mkdir -p "${INSTALL_DIR}" "${BIN_DIR}"
 
   tar -xzf "${tmpdir}/${tarball}" -C "${INSTALL_DIR}"
@@ -208,7 +208,7 @@ setup_path() {
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 main() {
-  printf "\n${BOLD}OnlyFence Installer${RESET}\n\n"
+  printf "\n%sOnlyFence Installer%s\n\n" "$BOLD" "$RESET"
 
   os=$(detect_os)
   arch=$(detect_arch)
@@ -260,18 +260,33 @@ main() {
     esac
 
     # Auto-run setup on first install (skip if already set up or via ONLYFENCE_SKIP_SETUP)
-    if [ -z "$SKIP_SETUP" ] && [ ! -f "${INSTALL_DIR}/keystore" ] && { [ -t 0 ] || [ -e /dev/tty ]; }; then
-      printf "\n"
-      info "Starting setup wizard..."
-      printf "\n"
-      # Re-attach stdin to the terminal so interactive prompts work
-      # even when the installer was piped via curl | sh
-      "${BIN_DIR}/fence" setup </dev/tty
+    if [ -z "$SKIP_SETUP" ] && [ ! -f "${INSTALL_DIR}/keystore" ]; then
+      # Detect TTY: [ -e /dev/tty ] is not enough — on CI the node exists but cannot be opened.
+      has_tty=false
+      if [ -t 0 ]; then
+        has_tty=true
+      elif (exec </dev/tty) 2>/dev/null; then
+        has_tty=true
+      fi
+
+      if [ "$has_tty" = true ]; then
+        printf "\n"
+        info "Starting setup wizard..."
+        printf "\n"
+        # Re-attach stdin to the terminal so interactive prompts work
+        # even when the installer was piped via curl | sh
+        "${BIN_DIR}/fence" setup </dev/tty
+      else
+        info "No interactive terminal detected — skipping setup wizard."
+        printf "\n%sGet started:%s\n" "$BOLD" "$RESET"
+        printf "  fence setup        # Initialize wallet and config\n"
+        printf "  fence --help       # See all commands\n\n"
+      fi
     else
       if [ -f "${INSTALL_DIR}/keystore" ]; then
         ok "Existing wallet and config preserved."
       fi
-      printf "\n${BOLD}Get started:${RESET}\n"
+      printf "\n%sGet started:%s\n" "$BOLD" "$RESET"
       printf "  fence setup        # Re-run setup wizard\n"
       printf "  fence --help       # See all commands\n\n"
     fi

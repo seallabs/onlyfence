@@ -21,14 +21,14 @@ export function PolicyConfig(): ReactElement {
   const chainConfig = config.chain[activeChain];
 
   // Editable field values
-  const [rpc, setRpc] = useState(chainConfig?.rpc ?? '');
+  const [rpc, setRpc] = useState(chainConfig.rpc);
   const [maxSingleTrade, setMaxSingleTrade] = useState(
-    String(chainConfig?.limits?.max_single_trade ?? 200),
+    String(chainConfig.limits?.max_single_trade ?? 200),
   );
   const [max24hVolume, setMax24hVolume] = useState(
-    String(chainConfig?.limits?.max_24h_volume ?? 500),
+    String(chainConfig.limits?.max_24h_volume ?? 500),
   );
-  const [tokens, setTokens] = useState((chainConfig?.allowlist?.tokens ?? []).join(', '));
+  const [tokens, setTokens] = useState((chainConfig.allowlist?.tokens ?? []).join(', '));
 
   // UI state
   const [selectedField, setSelectedField] = useState(0);
@@ -39,10 +39,10 @@ export function PolicyConfig(): ReactElement {
   // Sync local state when config changes externally
   useEffect(() => {
     const cc = config.chain[activeChain];
-    setRpc(cc?.rpc ?? '');
-    setMaxSingleTrade(String(cc?.limits?.max_single_trade ?? 200));
-    setMax24hVolume(String(cc?.limits?.max_24h_volume ?? 500));
-    setTokens((cc?.allowlist?.tokens ?? []).join(', '));
+    setRpc(cc.rpc);
+    setMaxSingleTrade(String(cc.limits?.max_single_trade ?? 200));
+    setMax24hVolume(String(cc.limits?.max_24h_volume ?? 500));
+    setTokens((cc.allowlist?.tokens ?? []).join(', '));
     setDirty(false);
     setStatus(null);
   }, [config, activeChain]);
@@ -204,15 +204,15 @@ export function PolicyConfig(): ReactElement {
         <Text color={theme.body} bold>
           {'Current Config (on disk)'}
         </Text>
-        <Text color={theme.eyes}>{`RPC:              ${chainConfig?.rpc ?? '-'}`}</Text>
+        <Text color={theme.eyes}>{`RPC:              ${chainConfig.rpc}`}</Text>
         <Text color={theme.eyes}>
-          {`Max Single Trade: ${chainConfig?.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : '-'}`}
+          {`Max Single Trade: ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : '-'}`}
         </Text>
         <Text color={theme.eyes}>
-          {`Max 24h Volume:   ${chainConfig?.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : '-'}`}
+          {`Max 24h Volume:   ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : '-'}`}
         </Text>
         <Text color={theme.eyes}>
-          {`Tokens:           ${chainConfig?.allowlist?.tokens.join(', ') ?? '-'}`}
+          {`Tokens:           ${chainConfig.allowlist?.tokens.join(', ') ?? '-'}`}
         </Text>
       </Box>
 
