@@ -179,15 +179,7 @@ function validateTelemetryConfig(raw: Record<string, unknown>): TelemetryConfig 
     throw new ConfigValidationError('"enabled" must be a boolean', 'telemetry.enabled');
   }
 
-  const dsn = raw['dsn'];
-  if (dsn !== undefined && typeof dsn !== 'string') {
-    throw new ConfigValidationError('"dsn" must be a string if present', 'telemetry.dsn');
-  }
-
-  return {
-    enabled,
-    ...(typeof dsn === 'string' ? { dsn } : {}),
-  };
+  return { enabled };
 }
 
 function validateUpdateConfig(raw: Record<string, unknown>): UpdateConfig {

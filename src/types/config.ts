@@ -90,8 +90,6 @@ export interface GlobalConfig {
 export interface TelemetryConfig {
   /** Whether remote error reporting is enabled. Defaults to false. */
   readonly enabled: boolean;
-  /** Sentry DSN — required when enabled is true. */
-  readonly dsn?: string;
 }
 
 /**
