@@ -94,6 +94,7 @@ fi
 
 export ONLYFENCE_BASE_URL="file://${OUTPUT_DIR}"
 export ONLYFENCE_VERSION="${VERSION}"
+export ONLYFENCE_SKIP_SETUP=1  # Suppress auto-setup; tested separately below
 if [ -n "$INSTALL_DIR" ]; then
   export ONLYFENCE_INSTALL_DIR="${INSTALL_DIR}"
   export ONLYFENCE_SKIP_PATH_SETUP=1
@@ -114,6 +115,31 @@ if [ -x "$FENCE_BIN" ]; then
   echo "==> SUCCESS: fence v${FENCE_VERSION}"
 else
   echo "error: fence binary not found or not executable at ${FENCE_BIN}" >&2
+  exit 1
+fi
+
+# ─── Step 3b: Verify install.sh auto-launches setup ─────────────────────────
+# Run install.sh without SKIP_SETUP and capture output to confirm it attempts
+# to launch the setup wizard (without actually running it interactively).
+
+echo ""
+echo "==> Verifying installer auto-setup flow..."
+
+INSTALL_OUTPUT=$(
+  ONLYFENCE_SKIP_SETUP="" \
+  ONLYFENCE_BASE_URL="file://${OUTPUT_DIR}" \
+  ONLYFENCE_VERSION="${VERSION}" \
+  ONLYFENCE_INSTALL_DIR="${RESOLVED_DIR}" \
+  ONLYFENCE_SKIP_PATH_SETUP=1 \
+  sh "${PROJECT_ROOT}/install.sh" 2>&1 </dev/null || true
+)
+
+if echo "$INSTALL_OUTPUT" | grep -q "Starting setup wizard"; then
+  echo "==> PASS: installer auto-launches setup wizard"
+else
+  echo "error: installer does NOT auto-launch setup wizard after install" >&2
+  echo "       Output was:" >&2
+  echo "$INSTALL_OUTPUT" >&2
   exit 1
 fi
 

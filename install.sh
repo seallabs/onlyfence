@@ -6,6 +6,7 @@
 #   ONLYFENCE_INSTALL_DIR  - installation directory (default: ~/.onlyfence)
 #   ONLYFENCE_VERSION      - specific version to install (default: latest)
 #   ONLYFENCE_REPO         - GitHub repo (default: seallabs/onlyfence)
+#   ONLYFENCE_SKIP_SETUP   - skip auto-running fence setup after install (for testing)
 
 set -eu
 
@@ -16,6 +17,8 @@ BIN_DIR="${INSTALL_DIR}/bin"
 BASE_URL="${ONLYFENCE_BASE_URL:-}"
 # Skip writing PATH to shell profile (useful for testing)
 SKIP_PATH_SETUP="${ONLYFENCE_SKIP_PATH_SETUP:-}"
+# Skip auto-running fence setup after install (useful for testing)
+SKIP_SETUP="${ONLYFENCE_SKIP_SETUP:-}"
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -256,9 +259,19 @@ main() {
         ;;
     esac
 
-    printf "\n${BOLD}Get started:${RESET}\n"
-    printf "  fence setup        # Initialize wallet and config\n"
-    printf "  fence --help       # See all commands\n\n"
+    # Auto-run setup after install (skip in test/CI via ONLYFENCE_SKIP_SETUP)
+    if [ -z "$SKIP_SETUP" ] && { [ -t 0 ] || [ -e /dev/tty ]; }; then
+      printf "\n"
+      info "Starting setup wizard..."
+      printf "\n"
+      # Re-attach stdin to the terminal so interactive prompts work
+      # even when the installer was piped via curl | sh
+      "${BIN_DIR}/fence" setup </dev/tty
+    else
+      printf "\n${BOLD}Get started:${RESET}\n"
+      printf "  fence setup        # Initialize wallet and config\n"
+      printf "  fence --help       # See all commands\n\n"
+    fi
   else
     error "Installation failed — ${BIN_DIR}/fence not found."
     exit 1
