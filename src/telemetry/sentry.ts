@@ -1,23 +1,25 @@
 import * as Sentry from '@sentry/node';
-import type { TelemetryConfig } from '../types/config.js';
 import { scrubSensitiveData } from './scrubber.js';
 import { CURRENT_VERSION } from '../update/index.js';
+
+// TODO: Replace with actual Sentry DSN before release
+const SENTRY_DSN = 'https://TODO@o000000.ingest.us.sentry.io/0000000';
 
 let initialized = false;
 
 /**
  * Initialize Sentry error reporting if telemetry is enabled.
  *
- * Does nothing when `config.enabled` is false or `config.dsn` is absent.
+ * The DSN is embedded in the binary — users only control the `enabled` flag.
  * Sensitive data is stripped via `beforeSend` hook.
  */
-export function initSentry(config: TelemetryConfig): void {
-  if (!config.enabled || config.dsn === undefined) {
+export function initSentry(enabled: boolean): void {
+  if (!enabled) {
     return;
   }
 
   Sentry.init({
-    dsn: config.dsn,
+    dsn: SENTRY_DSN,
     beforeSend(event) {
       return scrubSensitiveData(event) as Sentry.ErrorEvent;
     },

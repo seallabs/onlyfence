@@ -45,9 +45,7 @@ export async function launchTui(components?: AppComponents): Promise<void> {
         await showTelemetryPrompt();
         // Reload only the config (avoid full re-bootstrap which re-opens DB)
         const refreshedConfig = loadConfig();
-        if (refreshedConfig.telemetry !== undefined) {
-          initSentry(refreshedConfig.telemetry);
-        }
+        initSentry(refreshedConfig.telemetry?.enabled ?? false);
         const refreshed: AppComponents = { ...components, config: refreshedConfig };
         const instance = render(<App components={refreshed} updateChecker={updateChecker} />);
         await instance.waitUntilExit();

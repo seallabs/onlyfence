@@ -6,8 +6,9 @@
 # Output: dist-standalone/onlyfence-v<version>-<os>-<arch>.tar.gz
 #
 # The tarball contains:
-#   lib/        — compiled JS (production dist)
+#   lib/          — compiled JS (production dist)
 #   node_modules/ — production dependencies (including native addons)
+#   runtime/node  — bundled Node.js binary (no system Node.js required)
 #   package.json  — version metadata
 
 set -euo pipefail
@@ -16,6 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 VERSION="${1:-$(node -e "console.log(require('./package.json').version)")}"
+NODE_VERSION="v25.0.0"
 
 # Detect platform
 case "$(uname -s)" in
@@ -53,14 +55,32 @@ cp -r "${PROJECT_ROOT}/dist" "${STAGING_DIR}/lib"
 echo "==> Installing production dependencies..."
 cp "${PROJECT_ROOT}/package.json" "${STAGING_DIR}/package.json"
 cp "${PROJECT_ROOT}/package-lock.json" "${STAGING_DIR}/package-lock.json" 2>/dev/null || true
+cp -r "${PROJECT_ROOT}/scripts" "${STAGING_DIR}/scripts"
 cd "$STAGING_DIR"
-npm install --production --ignore-scripts=false
+npm install --omit=dev --ignore-scripts=false
 
 # Step 5: Rebuild native addons for current platform
 echo "==> Rebuilding native addons..."
 npm rebuild better-sqlite3
 
-# Step 6: Remove unnecessary files to reduce size
+# Step 6: Download Node.js runtime
+echo "==> Downloading Node.js ${NODE_VERSION} for ${OS}-${ARCH}..."
+NODE_DIST_NAME="node-${NODE_VERSION}-${OS}-${ARCH}"
+NODE_URL="https://nodejs.org/dist/${NODE_VERSION}/${NODE_DIST_NAME}.tar.xz"
+
+NODE_TMP="${STAGING_DIR}/_node_tmp"
+mkdir -p "$NODE_TMP" "${STAGING_DIR}/runtime"
+
+curl -fsSL --retry 3 "$NODE_URL" | tar -xJ -C "$NODE_TMP"
+
+cp "${NODE_TMP}/${NODE_DIST_NAME}/bin/node" "${STAGING_DIR}/runtime/node"
+chmod +x "${STAGING_DIR}/runtime/node"
+rm -rf "$NODE_TMP"
+
+NODE_SIZE=$(du -h "${STAGING_DIR}/runtime/node" | cut -f1)
+echo "==> Bundled Node.js binary: ${NODE_SIZE}"
+
+# Step 7: Remove unnecessary files to reduce size
 echo "==> Pruning unnecessary files..."
 find "${STAGING_DIR}/node_modules" -type f \( \
   -name "*.md" -o \
@@ -85,7 +105,8 @@ find "${STAGING_DIR}/node_modules" -type d -name "docs" -exec rm -rf {} + 2>/dev
 find "${STAGING_DIR}/node_modules" -type d -name "example" -exec rm -rf {} + 2>/dev/null || true
 find "${STAGING_DIR}/node_modules" -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true
 
-# Remove devDependencies entries from staged package.json
+# Remove build scripts (only needed for postinstall) and devDependencies
+rm -rf "${STAGING_DIR}/scripts"
 node -e "
   const pkg = require('./package.json');
   delete pkg.devDependencies;
@@ -93,15 +114,16 @@ node -e "
   require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
 "
 
-# Step 7: Create tarball
+# Step 8: Create tarball
 echo "==> Creating ${TARBALL_NAME}..."
 cd "$STAGING_DIR"
 tar -czf "${OUTPUT_DIR}/${TARBALL_NAME}" \
   lib/ \
   node_modules/ \
+  runtime/ \
   package.json
 
-# Step 8: Report
+# Step 9: Report
 SIZE=$(du -h "${OUTPUT_DIR}/${TARBALL_NAME}" | cut -f1)
 echo "==> Done: ${OUTPUT_DIR}/${TARBALL_NAME} (${SIZE})"
 

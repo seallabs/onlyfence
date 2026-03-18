@@ -65,9 +65,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const logger = getLogger();
 
   // Initialize Sentry if telemetry is configured and enabled
-  if (config.telemetry !== undefined) {
-    initSentry(config.telemetry);
-  }
+  initSentry(config.telemetry?.enabled ?? false);
 
   const oracle = new CoinGeckoOracle();
   const tradeLog = new TradeLog(db);

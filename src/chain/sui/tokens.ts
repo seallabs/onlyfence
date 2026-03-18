@@ -127,6 +127,31 @@ export function scaleToSmallestUnit(humanAmount: string, decimals: number): stri
 }
 
 /**
+ * Format a raw smallest-unit amount string to a human-readable value
+ * given the number of decimal places.
+ *
+ * E.g., formatAmountWithDecimals("100500000000", 9) → "100.5"
+ *
+ * @param raw - Amount in smallest unit as a string
+ * @param decimals - Number of decimal places for the token
+ * @param maxFracDigits - Optional cap on fractional digits shown
+ */
+export function formatAmountWithDecimals(
+  raw: string,
+  decimals: number,
+  maxFracDigits?: number,
+): string {
+  if (decimals === 0) return raw;
+
+  const padded = raw.padStart(decimals + 1, '0');
+  const intPart = padded.slice(0, padded.length - decimals);
+  const frac = padded.slice(padded.length - decimals);
+  const trimmed = maxFracDigits !== undefined ? frac.slice(0, maxFracDigits) : frac;
+  const fracPart = trimmed.replace(/0+$/, '');
+  return fracPart.length > 0 ? `${intPart}.${fracPart}` : intPart;
+}
+
+/**
  * Format a smallest-unit amount string to a human-readable value.
  * E.g., formatSmallestUnit("100500000000", "0x2::sui::SUI") → "100.5"
  *
@@ -135,12 +160,7 @@ export function scaleToSmallestUnit(humanAmount: string, decimals: number): stri
 export function formatSmallestUnit(raw: string, coinType: string): string {
   const decimals = getKnownDecimals(coinType);
   if (decimals === undefined) return raw;
-  if (decimals === 0) return raw;
-
-  const padded = raw.padStart(decimals + 1, '0');
-  const intPart = padded.slice(0, padded.length - decimals);
-  const fracPart = padded.slice(padded.length - decimals).replace(/0+$/, '');
-  return fracPart.length > 0 ? `${intPart}.${fracPart}` : intPart;
+  return formatAmountWithDecimals(raw, decimals);
 }
 
 /**
