@@ -3,10 +3,9 @@ import Database from 'better-sqlite3';
 import type { Logger } from 'pino';
 import type { ActionBuilder, FinishContext } from '../core/action-builder.js';
 import type { ChainAdapter } from '../chain/adapter.js';
-import type { MevProtector } from '../core/mev-protector.js';
 import type { PolicyContext } from '../policy/context.js';
-import type { ActionPreview, SwapIntent } from '../core/action-types.js';
-import type { CheckResult, SimulationResult, TxResult, Signer } from '../types/result.js';
+import type { SwapPreview, SwapIntent } from '../core/action-types.js';
+import type { SimulationResult, TxResult, Signer } from '../types/result.js';
 import { NoOpMevProtector } from '../core/mev-protector.js';
 import { PolicyCheckRegistry } from '../policy/registry.js';
 import { TradeLog } from '../db/trade-log.js';
@@ -14,39 +13,11 @@ import { runMigrations } from '../db/migrations.js';
 import { executePipeline } from '../core/transaction-pipeline.js';
 import type { PipelineInput } from '../core/transaction-pipeline.js';
 import { REJECTED_BY_KEY } from '../policy/check.js';
+import { createMockLogger, createIntent } from './helpers.js';
 
-function createMockLogger(): Logger {
-  const logger = {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-    trace: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn(() => logger),
-    level: 'info',
-  } as unknown as Logger;
-  return logger;
-}
-
-function createSwapIntent(overrides?: Partial<SwapIntent>): SwapIntent {
+function createMockPreview(): SwapPreview {
   return {
-    chain: 'sui',
     action: 'swap',
-    walletAddress: '0x' + 'a'.repeat(64),
-    params: {
-      coinTypeIn: '0x2::sui::SUI',
-      coinTypeOut: '0xdba3::usdc::USDC',
-      amountIn: '1000000000',
-      slippageBps: 100,
-    },
-    tradeValueUsd: undefined,
-    ...overrides,
-  };
-}
-
-function createMockPreview(): ActionPreview {
-  return {
     description: 'Swap 1 SUI -> USDC',
     expectedOutput: '3500000',
     provider: '7k-swap',
@@ -92,7 +63,7 @@ function createMockChainAdapter(overrides?: Partial<ChainAdapter>): ChainAdapter
 
 function createMockSigner(): Signer {
   return {
-    address: '0x' + 'a'.repeat(64),
+    address: '0xabc',
     publicKey: new Uint8Array(32),
     sign: vi.fn().mockResolvedValue(new Uint8Array(64)),
   };
@@ -119,7 +90,7 @@ describe('executePipeline', () => {
   });
 
   it('returns success and calls builder.finish with correct context', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
     const signer = createMockSigner();
@@ -157,7 +128,7 @@ describe('executePipeline', () => {
   });
 
   it('returns rejected and calls builder.finish with rejection context', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -201,7 +172,7 @@ describe('executePipeline', () => {
   });
 
   it('returns simulation_failed when simulate fails (no finish call)', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter({
       chain: 'sui',
@@ -237,7 +208,7 @@ describe('executePipeline', () => {
   });
 
   it('returns simulated and calls builder.finish in watch-only mode', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -272,7 +243,7 @@ describe('executePipeline', () => {
   });
 
   it('returns error when builder.validate throws (no finish call)', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder({
       builderId: '7k-swap',
       chain: 'sui',
@@ -306,7 +277,7 @@ describe('executePipeline', () => {
   });
 
   it('returns error when signer is missing for non-watch-only (no finish call)', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -332,7 +303,7 @@ describe('executePipeline', () => {
   });
 
   it('returns error when signAndSubmit fails (no finish call)', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter({
       chain: 'sui',
@@ -365,7 +336,7 @@ describe('executePipeline', () => {
   });
 
   it('returns error when signAndSubmit returns failure status (no finish call)', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter({
       chain: 'sui',
@@ -404,7 +375,7 @@ describe('executePipeline', () => {
   });
 
   it('builder.finish receives intent with tradeValueUsd on success', async () => {
-    const intent = createSwapIntent({ tradeValueUsd: 42.5 });
+    const intent = createIntent({ tradeValueUsd: 42.5 });
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
     const signer = createMockSigner();
@@ -429,7 +400,7 @@ describe('executePipeline', () => {
   });
 
   it('builder.finish receives intent with tradeValueUsd on rejection', async () => {
-    const intent = createSwapIntent({ tradeValueUsd: 99.0 });
+    const intent = createIntent({ tradeValueUsd: 99.0 });
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -462,7 +433,7 @@ describe('executePipeline', () => {
   });
 
   it('builder.finish receives intent with tradeValueUsd on watch-only', async () => {
-    const intent = createSwapIntent({ tradeValueUsd: 55.25 });
+    const intent = createIntent({ tradeValueUsd: 55.25 });
     const builder = createMockBuilder();
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -485,7 +456,7 @@ describe('executePipeline', () => {
   });
 
   it('works when builder has no finish method', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     // Builder without finish
     const builder: ActionBuilder = {
       builderId: '7k-swap',

@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3';
+import { vi } from 'vitest';
+import type { Logger } from 'pino';
 import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import type { SwapIntent } from '../core/action-types.js';
 import type { TradeRecord } from '../db/trade-log.js';
@@ -6,6 +8,23 @@ import { TradeLog } from '../db/trade-log.js';
 import type { OracleClient } from '../oracle/client.js';
 import type { PolicyContext } from '../policy/context.js';
 import type { ChainConfig } from '../types/config.js';
+
+/**
+ * Create a mock Logger with all standard pino methods stubbed.
+ */
+export function createMockLogger(): Logger {
+  const logger = {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+    trace: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+    level: 'info',
+  } as unknown as Logger;
+  return logger;
+}
 
 /**
  * Create a mock OracleClient that returns a fixed price.

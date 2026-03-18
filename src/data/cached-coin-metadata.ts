@@ -1,5 +1,16 @@
 import type { CoinMetadata, CoinMetadataService } from './coin-metadata.js';
-import type { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
+import type { CoinMetadataRepository, CoinMetadataRow } from '../db/coin-metadata-repo.js';
+
+/** Map a CoinMetadata to a DB row shape. */
+function toMetadataRow(meta: CoinMetadata, chainId: string): CoinMetadataRow {
+  return {
+    coin_type: meta.coinType,
+    chain_id: chainId,
+    symbol: meta.symbol,
+    name: null,
+    decimals: meta.decimals,
+  };
+}
 
 /**
  * Decorator that wraps any CoinMetadataService with DB-backed persistence.
@@ -37,41 +48,29 @@ export class CachedCoinMetadataService implements CoinMetadataService {
     const meta = await this.inner.getMetadata(coinType, chain);
 
     // 3. Backfill DB
-    this.repo.upsert({
-      coin_type: meta.coinType,
-      chain_id: chain,
-      symbol: meta.symbol,
-      name: null,
-      decimals: meta.decimals,
-    });
+    this.repo.upsert(toMetadataRow(meta, chain));
 
     return meta;
   }
 
   async prefetch(coinTypes: readonly string[], chain = 'sui'): Promise<void> {
-    // 1. Find which are already cached
+    // 1. Find which are already cached in DB
     const cached = this.repo.getBulk(coinTypes, chain);
     const cachedSet = new Set(cached.map((r) => r.coin_type));
     const uncached = coinTypes.filter((ct) => !cachedSet.has(ct));
 
     if (uncached.length === 0) return;
 
-    // 2. Fetch uncached individually (getMetadata returns data directly)
-    const results: CoinMetadata[] = [];
+    // 2. Delegate bulk fetch to inner service (single batched API call)
+    await this.inner.prefetch(uncached, chain);
+
+    // 3. Retrieve resolved metadata and persist to DB
+    const rows: CoinMetadataRow[] = [];
     for (const coinType of uncached) {
       const meta = await this.inner.getMetadata(coinType, chain);
-      results.push(meta);
+      rows.push(toMetadataRow(meta, chain));
     }
 
-    // 3. Persist to DB
-    this.repo.upsertBulk(
-      results.map((m) => ({
-        coin_type: m.coinType,
-        chain_id: chain,
-        symbol: m.symbol,
-        name: null,
-        decimals: m.decimals,
-      })),
-    );
+    this.repo.upsertBulk(rows);
   }
 }

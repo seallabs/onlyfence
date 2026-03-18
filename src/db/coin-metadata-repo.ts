@@ -20,6 +20,7 @@ export class CoinMetadataRepository {
   private readonly getStmt: Statement;
   private readonly upsertStmt: Statement;
   private readonly upsertBulkTxn: Database.Transaction<(rows: readonly CoinMetadataRow[]) => void>;
+  private readonly getBulkCache = new Map<number, Statement>();
 
   constructor(private readonly db: Database.Database) {
     this.getStmt = db.prepare(
@@ -33,13 +34,7 @@ export class CoinMetadataRepository {
 
     this.upsertBulkTxn = db.transaction((rows: readonly CoinMetadataRow[]) => {
       for (const row of rows) {
-        this.upsertStmt.run({
-          coin_type: row.coin_type,
-          chain_id: row.chain_id,
-          symbol: row.symbol,
-          name: row.name,
-          decimals: row.decimals,
-        });
+        this.upsert(row);
       }
     });
   }
@@ -58,10 +53,15 @@ export class CoinMetadataRepository {
   getBulk(coinTypes: readonly string[], chain: string): CoinMetadataRow[] {
     if (coinTypes.length === 0) return [];
 
-    const placeholders = coinTypes.map(() => '?').join(', ');
-    const stmt = this.db.prepare(
-      `SELECT coin_type, chain_id, symbol, name, decimals FROM coin_metadata WHERE coin_type IN (${placeholders}) AND chain_id = ?`,
-    );
+    const arity = coinTypes.length;
+    let stmt = this.getBulkCache.get(arity);
+    if (stmt === undefined) {
+      const placeholders = coinTypes.map(() => '?').join(', ');
+      stmt = this.db.prepare(
+        `SELECT coin_type, chain_id, symbol, name, decimals FROM coin_metadata WHERE coin_type IN (${placeholders}) AND chain_id = ?`,
+      );
+      this.getBulkCache.set(arity, stmt);
+    }
     return stmt.all(...coinTypes, chain) as CoinMetadataRow[];
   }
 
@@ -69,13 +69,7 @@ export class CoinMetadataRepository {
    * Insert or replace a single coin metadata row.
    */
   upsert(row: CoinMetadataRow): void {
-    this.upsertStmt.run({
-      coin_type: row.coin_type,
-      chain_id: row.chain_id,
-      symbol: row.symbol,
-      name: row.name,
-      decimals: row.decimals,
-    });
+    this.upsertStmt.run(row);
   }
 
   /**

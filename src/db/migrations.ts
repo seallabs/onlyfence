@@ -15,8 +15,13 @@ const MIGRATIONS: readonly string[] = [
     address TEXT NOT NULL UNIQUE,
     derivation_path TEXT,
     is_primary INTEGER NOT NULL DEFAULT 0,
+    is_watch_only INTEGER NOT NULL DEFAULT 0,
+    alias TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
+
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_wallets_alias
+    ON wallets(alias)`,
 
   `CREATE TABLE IF NOT EXISTS trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,84 +98,4 @@ export function runMigrations(db: Database.Database): void {
   });
 
   runAll();
-
-  // ALTER TABLE migration — SQLite lacks IF NOT EXISTS for columns
-  try {
-    db.exec('ALTER TABLE wallets ADD COLUMN is_watch_only INTEGER NOT NULL DEFAULT 0');
-  } catch (err: unknown) {
-    if (err instanceof Error && err.message.includes('duplicate column name')) {
-      // Column already exists — safe to ignore
-    } else {
-      throw err;
-    }
-  }
-
-  // Add alias column (UNIQUE enforced via separate index — SQLite cannot ALTER TABLE ADD COLUMN with UNIQUE)
-  try {
-    db.exec('ALTER TABLE wallets ADD COLUMN alias TEXT');
-  } catch (err: unknown) {
-    if (err instanceof Error && err.message.includes('duplicate column name')) {
-      // Column already exists
-    } else {
-      throw err;
-    }
-  }
-
-  // Add from_coin_type / to_coin_type to trades (added after initial schema)
-  for (const col of ['from_coin_type', 'to_coin_type']) {
-    try {
-      db.exec(`ALTER TABLE trades ADD COLUMN ${col} TEXT`);
-    } catch (err: unknown) {
-      if (err instanceof Error && err.message.includes('duplicate column name')) {
-        // Column already exists
-      } else {
-        throw err;
-      }
-    }
-  }
-
-  // Rename 'chain' → 'chain_id' in all tables (SQLite >= 3.25.0)
-  for (const table of ['wallets', 'trades', 'coin_metadata'] as const) {
-    try {
-      db.exec(`ALTER TABLE ${table} RENAME COLUMN chain TO chain_id`);
-    } catch (err: unknown) {
-      if (err instanceof Error && err.message.includes('no such column')) {
-        // Column already renamed or was created as chain_id
-      } else {
-        throw err;
-      }
-    }
-  }
-
-  // Drop old index and recreate with chain_id (idempotent)
-  db.exec('DROP INDEX IF EXISTS idx_trades_chain_created');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_trades_chain_id_created ON trades(chain_id, created_at)');
-
-  // Enforce uniqueness via index
-  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_wallets_alias ON wallets(alias)');
-
-  // Backfill NULL aliases with auto-generated names
-  const rows = db
-    .prepare('SELECT id, chain_id, is_watch_only FROM wallets WHERE alias IS NULL')
-    .all() as { id: number; chain_id: string; is_watch_only: number }[];
-  for (const row of rows) {
-    const prefix = row.is_watch_only === 1 ? `${row.chain_id}-watch` : row.chain_id;
-    const count = db
-      .prepare("SELECT COUNT(*) as n FROM wallets WHERE alias LIKE ? || '-%'")
-      .get(prefix) as { n: number };
-    const alias = `${prefix}-${count.n + 1}`;
-    db.prepare('UPDATE wallets SET alias = ? WHERE id = ?').run(alias, row.id);
-  }
-
-  // Normalize chain values from short aliases to CAIP-2 format.
-  // Earlier versions stored 'sui' instead of 'sui:mainnet'.
-  const CHAIN_ALIAS_TO_CAIP2: Record<string, string> = {
-    sui: 'sui:mainnet',
-  };
-
-  for (const [alias, caip2] of Object.entries(CHAIN_ALIAS_TO_CAIP2)) {
-    db.prepare('UPDATE wallets SET chain_id = ? WHERE chain_id = ?').run(caip2, alias);
-    db.prepare('UPDATE trades SET chain_id = ? WHERE chain_id = ?').run(caip2, alias);
-    db.prepare('UPDATE coin_metadata SET chain_id = ? WHERE chain_id = ?').run(caip2, alias);
-  }
 }

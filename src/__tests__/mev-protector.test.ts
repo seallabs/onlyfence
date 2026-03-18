@@ -10,13 +10,13 @@ describe('NoOpMevProtector', () => {
   it('returns the input bytes unchanged (same reference)', async () => {
     const protector = new NoOpMevProtector();
     const bytes = new Uint8Array([1, 2, 3, 4]);
-    const result = await protector.protect(bytes, 'sui');
+    const result = await protector.protect(bytes, 'sui:mainnet');
     expect(result.bytes).toBe(bytes);
   });
 
   it('returns empty metadata', async () => {
     const protector = new NoOpMevProtector();
-    const result = await protector.protect(new Uint8Array([0]), 'sui');
+    const result = await protector.protect(new Uint8Array([0]), 'sui:mainnet');
     expect(result.metadata).toEqual({});
   });
 

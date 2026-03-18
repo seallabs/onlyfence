@@ -1,21 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SwapIntent, ActionPreview } from '../core/action-types.js';
+import type { SwapIntent, SwapPreview } from '../core/action-types.js';
 import type { ActionBuilder, BuiltTransaction } from '../core/action-builder.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
 
-function makeBuilder(chain: string): ActionBuilder<SwapIntent> {
+function makeBuilder(chain: string): ActionBuilder<SwapIntent, SwapPreview> {
   return {
     builderId: `${chain}-swap-builder`,
     chain,
     validate: vi.fn(),
-    preview: vi.fn<(intent: SwapIntent) => Promise<ActionPreview>>().mockResolvedValue({
+    preview: vi.fn<(intent: SwapIntent) => Promise<SwapPreview>>().mockResolvedValue({
+      action: 'swap',
       description: 'mock preview',
       expectedOutput: '100',
       provider: 'mock',
       buildData: null,
     }),
     build: vi
-      .fn<(intent: SwapIntent, preview: ActionPreview) => Promise<BuiltTransaction>>()
+      .fn<(intent: SwapIntent, preview: SwapPreview) => Promise<BuiltTransaction>>()
       .mockResolvedValue({
         transaction: {},
         metadata: {},
@@ -24,7 +25,7 @@ function makeBuilder(chain: string): ActionBuilder<SwapIntent> {
 }
 
 const SWAP_INTENT: SwapIntent = {
-  chain: 'sui',
+  chainId: 'sui:mainnet',
   action: 'swap',
   walletAddress: '0xabc',
   params: {
