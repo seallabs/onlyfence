@@ -6,6 +6,8 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
 import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
+import { formatSmallestUnit } from '../../chain/sui/tokens.js';
+import { extractTokenSymbol } from '../../utils/index.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
 interface DashboardData {
@@ -14,18 +16,52 @@ interface DashboardData {
   readonly trades: readonly TradeRow[];
 }
 
+/** Format an ISO timestamp to a compact "MM-DD HH:MM:SS" string. */
+function shortTime(iso: string): string {
+  // created_at is "YYYY-MM-DD HH:MM:SS"
+  return iso.slice(5, 19);
+}
+
+function statusColor(row: TradeRow): string | undefined {
+  switch (row.policy_decision) {
+    case 'approved':
+      return theme.success;
+    case 'rejected':
+      return theme.error;
+    default:
+      return theme.warning;
+  }
+}
+
 const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
-  { header: 'Time', width: 20, accessor: (r) => r.created_at },
-  { header: 'Action', width: 8, accessor: (r) => r.action },
-  { header: 'From', width: 8, accessor: (r) => r.from_token },
-  { header: 'To', width: 8, accessor: (r) => r.to_token },
-  { header: 'Amount', width: 14, accessor: (r) => r.amount_in },
+  { header: 'Time', width: 16, accessor: (r) => shortTime(r.created_at) },
+  { header: 'Chain', width: 6, accessor: (r) => r.chain_id },
+  { header: 'From', width: 8, accessor: (r) => extractTokenSymbol(r.from_token) },
+  { header: 'To', width: 8, accessor: (r) => extractTokenSymbol(r.to_token) },
+  {
+    header: 'Amount In',
+    width: 16,
+    accessor: (r) => formatSmallestUnit(r.amount_in, r.from_token),
+    align: 'right' as const,
+  },
+  {
+    header: 'Amount Out',
+    width: 16,
+    accessor: (r) => (r.amount_out !== null ? formatSmallestUnit(r.amount_out, r.to_token) : '-'),
+    align: 'right' as const,
+  },
   {
     header: 'USD',
     width: 12,
     accessor: (r) => (r.value_usd !== null ? `$${r.value_usd.toFixed(2)}` : '-'),
+    align: 'right' as const,
   },
-  { header: 'Status', width: 10, accessor: (r) => r.policy_decision },
+  {
+    header: 'Status',
+    width: 12,
+    accessor: (r) => r.policy_decision,
+    color: statusColor,
+  },
 ];
 
 const BAR_WIDTH = 40;
@@ -46,10 +82,10 @@ export function Dashboard(): ReactElement {
     };
   }, 5000);
 
-  const maxVolume = chainConfig?.limits?.max_24h_volume ?? 0;
+  const maxVolume = chainConfig.limits?.max_24h_volume ?? 0;
   const volumePercent = maxVolume > 0 ? Math.min((data.volume24h / maxVolume) * 100, 100) : 0;
   const filledWidth = Math.round((volumePercent / 100) * BAR_WIDTH);
-  const tokens = chainConfig?.allowlist?.tokens ?? [];
+  const tokens = chainConfig.allowlist?.tokens ?? [];
   const checks = policyRegistry.registeredChecks;
 
   return (
@@ -159,10 +195,10 @@ export function Dashboard(): ReactElement {
             {'Spending Limits'}
           </Text>
           <Text color={theme.eyes}>
-            {`Max Single Trade: ${chainConfig?.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : 'None'}`}
+            {`Max Single Trade: ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : 'None'}`}
           </Text>
           <Text color={theme.eyes}>
-            {`Max 24h Volume:   ${chainConfig?.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : 'None'}`}
+            {`Max 24h Volume:   ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : 'None'}`}
           </Text>
         </Box>
       </Box>

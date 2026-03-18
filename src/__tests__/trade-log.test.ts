@@ -34,7 +34,7 @@ describe('TradeLog', () => {
 
     it('should handle optional fields as null', () => {
       const id = tradeLog.logTrade({
-        chain: 'sui:mainnet',
+        chain_id: 'sui:mainnet',
         wallet_address: '0xabc',
         action: 'swap',
         from_token: 'SUI',
@@ -86,8 +86,8 @@ describe('TradeLog', () => {
     });
 
     it('should filter by chain', () => {
-      tradeLog.logTrade(createTradeRecord({ chain: 'sui:mainnet', value_usd: 100 }));
-      tradeLog.logTrade(createTradeRecord({ chain: 'evm', value_usd: 200 }));
+      tradeLog.logTrade(createTradeRecord({ chain_id: 'sui:mainnet', value_usd: 100 }));
+      tradeLog.logTrade(createTradeRecord({ chain_id: 'evm', value_usd: 200 }));
 
       expect(tradeLog.getRolling24hVolume('sui:mainnet')).toBe(100);
       expect(tradeLog.getRolling24hVolume('evm')).toBe(200);
@@ -141,12 +141,12 @@ describe('TradeLog', () => {
     });
 
     it('should filter by chain', () => {
-      tradeLog.logTrade(createTradeRecord({ chain: 'sui:mainnet' }));
-      tradeLog.logTrade(createTradeRecord({ chain: 'evm' }));
+      tradeLog.logTrade(createTradeRecord({ chain_id: 'sui:mainnet' }));
+      tradeLog.logTrade(createTradeRecord({ chain_id: 'evm' }));
 
       const suiTrades = tradeLog.getRecentTrades('sui:mainnet', 10);
       expect(suiTrades).toHaveLength(1);
-      expect(suiTrades[0]?.chain).toBe('sui:mainnet');
+      expect(suiTrades[0]?.chain_id).toBe('sui:mainnet');
     });
   });
 
@@ -158,7 +158,7 @@ describe('TradeLog', () => {
     it('should count all trades for a chain', () => {
       tradeLog.logTrade(createTradeRecord());
       tradeLog.logTrade(createTradeRecord({ tx_digest: '0x2' }));
-      tradeLog.logTrade(createTradeRecord({ chain: 'evm', tx_digest: '0x3' }));
+      tradeLog.logTrade(createTradeRecord({ chain_id: 'evm', tx_digest: '0x3' }));
 
       expect(tradeLog.getTradeCount('sui:mainnet')).toBe(2);
       expect(tradeLog.getTradeCount('evm')).toBe(1);

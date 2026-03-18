@@ -1,7 +1,8 @@
 import type { Command } from 'commander';
-import type { AppComponents } from '../bootstrap.js';
-import { getPrimaryWallet } from '../../wallet/manager.js';
+import type { Chain } from '../../core/action-types.js';
 import { toErrorMessage } from '../../utils/index.js';
+import { getPrimaryWallet } from '../../wallet/manager.js';
+import type { AppComponents } from '../bootstrap.js';
 import { withComponents } from '../with-components.js';
 
 /**
@@ -65,7 +66,7 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
     .description('Query wallet balance via chain adapter')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
-    .action(async (options: { chain: string; output: string }) => {
+    .action(async (options: { chain: Chain; output: string }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 

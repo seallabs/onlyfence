@@ -246,7 +246,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
             <Text color={theme.body} bold>
               {'Wallet Created'}
             </Text>
-            <Text color={theme.eyes}>{`  Chain:   ${walletResult.chain}`}</Text>
+            <Text color={theme.eyes}>{`  Chain:   ${walletResult.chainId}`}</Text>
             <Text color={theme.eyes}>{`  Address: ${walletResult.address}`}</Text>
             {walletResult.derivationPath !== null && (
               <Text color={theme.eyes}>{`  Path:    ${walletResult.derivationPath}`}</Text>

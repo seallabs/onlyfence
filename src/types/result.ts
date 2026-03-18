@@ -21,52 +21,30 @@ export interface CheckResult {
 }
 
 /**
- * Parameters for requesting a swap quote from a chain adapter.
- */
-export interface SwapParams {
-  readonly fromToken: string;
-  readonly toToken: string;
-  readonly amount: bigint;
-  readonly slippage: number;
-  readonly walletAddress: string;
-}
-
-/**
- * Quote returned by a chain adapter's aggregator.
- */
-export interface SwapQuote {
-  readonly route: string;
-  readonly expectedOutput: bigint;
-  readonly priceImpact: number;
-  readonly protocol: string;
-}
-
-/**
- * Opaque transaction data produced by a chain adapter.
- */
-export interface TransactionData {
-  readonly chain: string;
-  readonly bytes: Uint8Array;
-  readonly metadata?: Record<string, unknown>;
-}
-
-/**
  * Result of a transaction simulation (dry-run).
+ *
+ * Generic parameter `T` carries the chain-specific raw RPC response
+ * (e.g., `DryRunTransactionBlockResponse` on Sui). The pipeline can
+ * pass this to chain-specific event parsers without knowing the shape.
  */
-export interface SimulationResult {
+export interface SimulationResult<T = unknown> {
   readonly success: boolean;
   readonly gasEstimate: number;
   readonly error?: string;
+  readonly rawResponse: T;
 }
 
 /**
  * Result of a submitted and confirmed transaction.
+ *
+ * Generic parameter `T` carries the chain-specific raw RPC response
+ * (e.g., `SuiTransactionBlockResponse` on Sui).
  */
-export interface TxResult {
+export interface TxResult<T = unknown> {
   readonly txDigest: string;
   readonly status: 'success' | 'failure';
   readonly gasUsed: number;
-  readonly amountOut?: bigint;
+  readonly rawResponse: T;
 }
 
 /**
@@ -91,5 +69,6 @@ export interface TokenBalance {
  */
 export interface Signer {
   readonly address: string;
+  readonly publicKey: Uint8Array;
   sign(data: Uint8Array): Promise<Uint8Array>;
 }

@@ -2,9 +2,6 @@ export type { TradeIntent, TradeAction } from './intent.js';
 export type {
   CheckStatus,
   CheckResult,
-  SwapParams,
-  SwapQuote,
-  TransactionData,
   SimulationResult,
   TxResult,
   BalanceResult,

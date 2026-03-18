@@ -1,4 +1,4 @@
-import type { TradeIntent } from '../types/intent.js';
+import type { ActionIntent } from '../core/action-types.js';
 import type { CheckResult } from '../types/result.js';
 import type { PolicyContext } from './context.js';
 
@@ -10,7 +10,7 @@ export const REJECTED_BY_KEY = 'rejectedBy' as const;
 /**
  * Interface for a single policy check in the evaluation pipeline.
  *
- * Each check is an independent guardrail that evaluates a TradeIntent
+ * Each check is an independent guardrail that evaluates an ActionIntent
  * against a specific rule (e.g., token allowlist, spending limit).
  *
  * To add a new guardrail:
@@ -26,11 +26,11 @@ export interface PolicyCheck {
   readonly description: string;
 
   /**
-   * Evaluate a trade intent against this check's rules.
+   * Evaluate an action intent against this check's rules.
    *
-   * @param intent - The trade intent to evaluate
+   * @param intent - The action intent to evaluate
    * @param ctx - Context containing config, DB, oracle, etc.
    * @returns CheckResult indicating pass or reject with details
    */
-  evaluate(intent: TradeIntent, ctx: PolicyContext): Promise<CheckResult>;
+  evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult>;
 }

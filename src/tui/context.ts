@@ -1,11 +1,12 @@
-import { createContext, useContext } from 'react';
 import type Database from 'better-sqlite3';
+import { createContext, useContext } from 'react';
+import type { ChainAdapterFactory } from '../chain/factory.js';
+import type { Chain, ChainId } from '../core/action-types.js';
+import type { TradeLog } from '../db/trade-log.js';
+import type { OracleClient } from '../oracle/client.js';
+import type { PolicyCheckRegistry } from '../policy/registry.js';
 import type { AppConfig } from '../types/config.js';
 import type { UpdateStatus } from '../types/update.js';
-import type { OracleClient } from '../oracle/client.js';
-import type { TradeLog } from '../db/trade-log.js';
-import type { PolicyCheckRegistry } from '../policy/registry.js';
-import type { ChainAdapterFactory } from '../chain/factory.js';
 
 /**
  * Shared TUI context providing access to all application components.
@@ -22,9 +23,9 @@ export interface TuiContextValue {
   readonly chainAdapterFactory: ChainAdapterFactory;
   readonly config: AppConfig;
   /** Short chain alias for config key lookup (e.g., "sui") */
-  readonly activeChain: string;
+  readonly activeChain: Chain;
   /** CAIP-2 chain ID for DB queries (e.g., "sui:mainnet") */
-  readonly activeChainId: string;
+  readonly activeChainId: ChainId;
   readonly reloadConfig: () => void;
   readonly configError: string | null;
   readonly mode: 'navigate' | 'edit';

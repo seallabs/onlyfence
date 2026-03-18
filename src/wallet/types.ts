@@ -2,10 +2,12 @@
  * Information about a wallet stored in the OnlyFence database.
  */
 export interface WalletInfo {
-  readonly chain: string;
+  readonly chainId: string;
   readonly address: string;
   readonly derivationPath: string | null;
   readonly isPrimary: boolean;
+  readonly isWatchOnly: boolean;
+  readonly alias: string;
 }
 
 /**
@@ -40,9 +42,11 @@ export interface EncryptedKeystore {
  */
 export interface WalletRow {
   readonly id: number;
-  readonly chain: string;
+  readonly chain_id: string;
   readonly address: string;
   readonly derivation_path: string | null;
   readonly is_primary: number;
+  readonly is_watch_only: number;
+  readonly alias: string | null;
   readonly created_at: string;
 }

@@ -11,18 +11,23 @@ import type Database from 'better-sqlite3';
 const MIGRATIONS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS wallets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chain TEXT NOT NULL,
+    chain_id TEXT NOT NULL,
     address TEXT NOT NULL UNIQUE,
     derivation_path TEXT,
     is_primary INTEGER NOT NULL DEFAULT 0,
+    is_watch_only INTEGER NOT NULL DEFAULT 0,
+    alias TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
 
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_wallets_alias
+    ON wallets(alias)`,
+
   `CREATE TABLE IF NOT EXISTS trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chain TEXT NOT NULL,
+    chain_id TEXT NOT NULL,
     wallet_address TEXT NOT NULL,
-    action TEXT NOT NULL CHECK (action IN ('swap', 'lp_deposit', 'lp_withdraw')),
+    action TEXT NOT NULL CHECK (action IN ('swap', 'supply', 'lp_deposit', 'lp_withdraw')),
     protocol TEXT,
     pool TEXT,
     from_token TEXT NOT NULL,
@@ -41,8 +46,8 @@ const MIGRATIONS: readonly string[] = [
     FOREIGN KEY (wallet_address) REFERENCES wallets(address)
   )`,
 
-  `CREATE INDEX IF NOT EXISTS idx_trades_chain_created
-    ON trades(chain, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_trades_chain_id_created
+    ON trades(chain_id, created_at)`,
 
   `CREATE INDEX IF NOT EXISTS idx_trades_wallet_address
     ON trades(wallet_address)`,
@@ -64,6 +69,16 @@ const MIGRATIONS: readonly string[] = [
 
   `CREATE INDEX IF NOT EXISTS idx_cli_events_command_created
     ON cli_events(command, created_at)`,
+
+  `CREATE TABLE IF NOT EXISTS coin_metadata (
+    coin_type   TEXT    NOT NULL,
+    chain_id    TEXT    NOT NULL,
+    symbol      TEXT    NOT NULL,
+    name        TEXT,
+    decimals    INTEGER NOT NULL,
+    updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (coin_type, chain_id)
+  )`,
 ];
 
 /**

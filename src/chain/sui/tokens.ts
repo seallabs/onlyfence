@@ -1,3 +1,6 @@
+import BigNumber from 'bignumber.js';
+import { extractTokenSymbol } from '../../utils/index.js';
+
 /**
  * Sui mainnet coin type addresses for well-known tokens.
  *
@@ -57,6 +60,87 @@ export function resolveTokenAddress(symbol: string): string {
     );
   }
   return address;
+}
+
+/**
+ * Known decimals for well-known Sui tokens, keyed by fully-qualified coin type.
+ */
+export const SUI_KNOWN_DECIMALS: Readonly<Record<string, number>> = Object.fromEntries(
+  (
+    [
+      ['SUI', 9],
+      ['USDC', 6],
+      ['USDT', 6],
+      ['DEEP', 6],
+      ['BLUE', 9],
+      ['WAL', 9],
+    ] as const
+  ).map(([symbol, decimals]) => {
+    const coinType = SUI_TOKEN_MAP[symbol];
+    if (coinType === undefined) {
+      throw new Error(`SUI_KNOWN_DECIMALS: missing token map entry for "${symbol}"`);
+    }
+    return [coinType, decimals] as const;
+  }),
+);
+
+/**
+ * Resolve a coin type to its human-readable symbol.
+ * Falls back to extracting the last segment of the coin type (e.g., "SUI" from "0x2::sui::SUI").
+ */
+export function resolveSymbol(coinType: string): string {
+  const known = COIN_TYPE_TO_SYMBOL.get(coinType);
+  if (known !== undefined) return known;
+  return extractTokenSymbol(coinType);
+}
+
+/**
+ * Get known decimals for a coin type, or undefined if not in the registry.
+ */
+export function getKnownDecimals(coinType: string): number | undefined {
+  return SUI_KNOWN_DECIMALS[coinType];
+}
+
+/**
+ * Scale a human-readable amount to the token's smallest unit.
+ * E.g., scaleToSmallestUnit("100.5", 9) → "100500000000" (100.5 * 10^9)
+ *
+ * The caller is responsible for providing the correct decimals value
+ * (from remote API, cache, or local fallback). This decouples scaling
+ * from decimal resolution.
+ *
+ * @param humanAmount - Human-readable amount string (e.g., "100.5")
+ * @param decimals - Number of decimal places for the token
+ * @returns The amount in the token's smallest unit as a string
+ * @throws if the amount is not a valid positive number
+ */
+export function scaleToSmallestUnit(humanAmount: string, decimals: number): string {
+  const float = parseFloat(humanAmount);
+  if (isNaN(float) || float <= 0) {
+    throw new Error(`Invalid amount "${humanAmount}": must be a positive number`);
+  }
+  const scaled = BigNumber(float)
+    .times(10 ** decimals)
+    .integerValue(BigNumber.ROUND_FLOOR)
+    .toString();
+  return scaled;
+}
+
+/**
+ * Format a smallest-unit amount string to a human-readable value.
+ * E.g., formatSmallestUnit("100500000000", "0x2::sui::SUI") → "100.5"
+ *
+ * Falls back to the raw string when decimals are unknown.
+ */
+export function formatSmallestUnit(raw: string, coinType: string): string {
+  const decimals = getKnownDecimals(coinType);
+  if (decimals === undefined) return raw;
+  if (decimals === 0) return raw;
+
+  const padded = raw.padStart(decimals + 1, '0');
+  const intPart = padded.slice(0, padded.length - decimals);
+  const fracPart = padded.slice(padded.length - decimals).replace(/0+$/, '');
+  return fracPart.length > 0 ? `${intPart}.${fracPart}` : intPart;
 }
 
 /**

@@ -1,19 +1,27 @@
 import type Database from 'better-sqlite3';
 import type { Logger } from 'pino';
-import type { AppConfig } from '../types/config.js';
-import type { OracleClient } from '../oracle/client.js';
-import { openDatabase, DB_PATH } from '../db/connection.js';
-import { loadConfig, CONFIG_PATH } from '../config/loader.js';
-import { CoinGeckoOracle } from '../oracle/coingecko.js';
-import { TradeLog } from '../db/trade-log.js';
-import { CliEventLog } from '../db/cli-events.js';
-import { PolicyCheckRegistry } from '../policy/registry.js';
-import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
-import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { ChainAdapterFactory } from '../chain/factory.js';
+import { SuiSwapBuilder } from '../chain/sui/7k/swap.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
+import { SUI_KNOWN_DECIMALS } from '../chain/sui/tokens.js';
+import { CONFIG_PATH, loadConfig } from '../config/loader.js';
+import { ActionBuilderRegistry } from '../core/action-builder.js';
+import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
+import { CachedCoinMetadataService } from '../data/cached-coin-metadata.js';
+import type { CoinMetadataService } from '../data/coin-metadata.js';
+import { NoodlesCoinMetadataService } from '../data/coin-metadata.js';
+import { CliEventLog } from '../db/cli-events.js';
+import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
+import { DB_PATH, openDatabase } from '../db/connection.js';
+import { TradeLog } from '../db/trade-log.js';
 import { getLogger } from '../logger/index.js';
+import type { OracleClient } from '../oracle/client.js';
+import { CoinGeckoOracle } from '../oracle/coingecko.js';
+import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
+import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
+import { PolicyCheckRegistry } from '../policy/registry.js';
 import { initSentry } from '../telemetry/sentry.js';
+import type { AppConfig } from '../types/config.js';
 
 /**
  * All initialized application components returned by bootstrap.
@@ -26,6 +34,9 @@ export interface AppComponents {
   readonly cliEventLog: CliEventLog;
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
+  readonly actionBuilderRegistry: ActionBuilderRegistry;
+  readonly mevProtectors: Map<string, MevProtector>;
+  readonly coinMetadataService: CoinMetadataService;
   readonly logger: Logger;
 
   /** Close the database and release resources. Safe to call multiple times. */
@@ -63,6 +74,9 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const cliEventLog = new CliEventLog(db);
   const policyRegistry = buildPolicyRegistry(config);
   const chainAdapterFactory = buildChainAdapterFactory();
+  const actionBuilderRegistry = buildActionBuilderRegistry(tradeLog);
+  const mevProtectors = buildMevProtectors();
+  const coinMetadataService = buildCoinMetadataService(db);
 
   let closed = false;
 
@@ -86,6 +100,9 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     cliEventLog,
     policyRegistry,
     chainAdapterFactory,
+    actionBuilderRegistry,
+    mevProtectors,
+    coinMetadataService,
     logger,
     close,
   };
@@ -115,8 +132,59 @@ export function buildPolicyRegistry(_config: AppConfig): PolicyCheckRegistry {
  *
  * @returns ChainAdapterFactory with SuiAdapter registered
  */
+/** Default Sui mainnet RPC endpoint. */
+const SUI_MAINNET_RPC = 'https://fullnode.mainnet.sui.io:443';
+
 export function buildChainAdapterFactory(): ChainAdapterFactory {
   const factory = new ChainAdapterFactory();
-  factory.register(new SuiAdapter());
+  factory.register(new SuiAdapter(process.env['SUI_RPC_URL'] ?? SUI_MAINNET_RPC));
   return factory;
+}
+
+/**
+ * Build an ActionBuilderRegistry with all supported builders registered.
+ *
+ * Uses factory registration so builders are created lazily per-intent,
+ * allowing intent-specific configuration (e.g., slippage).
+ *
+ * @param tradeLog - Trade log instance for builders that log trades
+ * @returns ActionBuilderRegistry with SuiSwapBuilder factory registered
+ */
+export function buildActionBuilderRegistry(tradeLog: TradeLog): ActionBuilderRegistry {
+  const registry = new ActionBuilderRegistry();
+
+  registry.registerFactory('sui', 'swap', '7k', (intent) => {
+    const slippageBps = intent.action === 'swap' ? intent.params.slippageBps : 100;
+    return new SuiSwapBuilder(tradeLog, slippageBps);
+  });
+
+  return registry;
+}
+
+/**
+ * Build a map of MEV protectors keyed by chain identifier.
+ *
+ * @returns Map of chain -> MevProtector
+ */
+export function buildMevProtectors(): Map<string, MevProtector> {
+  const protectors = new Map<string, MevProtector>();
+  protectors.set('sui', new NoOpMevProtector());
+  return protectors;
+}
+
+/**
+ * Build a CoinMetadataService with DB-backed caching.
+ *
+ * Wraps the Noodles API service with a local SQLite cache so coin metadata
+ * (decimals, symbol) is persisted across CLI invocations. Falls back to
+ * SUI_KNOWN_DECIMALS for well-known tokens when the API is unreachable.
+ *
+ * @param db - SQLite database connection (for the coin_metadata cache table)
+ * @returns CoinMetadataService instance with DB caching
+ */
+export function buildCoinMetadataService(db: Database.Database): CoinMetadataService {
+  const apiKey = process.env['NOODLES_API_KEY'];
+  const inner = new NoodlesCoinMetadataService(SUI_KNOWN_DECIMALS, apiKey);
+  const repo = new CoinMetadataRepository(db);
+  return new CachedCoinMetadataService(repo, inner);
 }

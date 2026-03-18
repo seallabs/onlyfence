@@ -24,7 +24,8 @@ export function registerSetupCommand(program: Command): void {
   program
     .command('setup')
     .description('Interactive wallet setup wizard')
-    .action(async () => {
+    .option('-a, --alias <alias>', 'Custom alias for the wallet')
+    .action(async (options: { alias?: string }) => {
       const rl = createInterface({ input: stdin, output: stdout });
       let db: ReturnType<typeof openDatabase> | undefined;
 
@@ -54,19 +55,19 @@ export function registerSetupCommand(program: Command): void {
 
         if (choice.toLowerCase() === 'i') {
           const mnemonic = await rl.question('Enter your BIP-39 mnemonic phrase: ');
-          result = importSetupWallet(db, mnemonic);
+          result = importSetupWallet(db, mnemonic, options.alias);
 
           console.log('\nWallet imported successfully!');
-          console.log(`  Chain:   ${result.chain}`);
+          console.log(`  Chain:   ${result.chainId}`);
           console.log(`  Address: ${result.address}`);
         } else {
-          result = generateSetupWallet(db);
+          result = generateSetupWallet(db, options.alias);
 
           console.log('\n--- IMPORTANT: Back up your mnemonic phrase! ---');
           console.log(`Mnemonic: ${result.mnemonic}`);
           console.log('--- Keep this safe. You will NOT see it again. ---\n');
 
-          console.log(`  Chain:   ${result.chain}`);
+          console.log(`  Chain:   ${result.chainId}`);
           console.log(`  Address: ${result.address}`);
           console.log(`  Path:    ${result.derivationPath ?? 'N/A'}`);
         }

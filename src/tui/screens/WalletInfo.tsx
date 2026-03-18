@@ -9,7 +9,7 @@ import { listWallets } from '../../wallet/manager.js';
 import type { WalletInfo as WalletInfoType } from '../../wallet/types.js';
 
 const WALLET_COLUMNS: readonly Column<WalletInfoType>[] = [
-  { header: 'Chain', width: 10, accessor: (r) => r.chain },
+  { header: 'Chain', width: 10, accessor: (r) => r.chainId },
   { header: 'Address', width: 50, accessor: (r) => r.address },
   { header: 'Derivation Path', width: 25, accessor: (r) => r.derivationPath ?? '-' },
   { header: 'Primary', width: 10, accessor: (r) => (r.isPrimary ? 'Yes' : 'No') },
@@ -50,7 +50,7 @@ export function WalletInfo(): ReactElement {
           {wallets.map((w) => (
             <Box key={w.address} flexDirection="column" marginBottom={1}>
               <Text color={theme.eyes}>
-                {`${w.chain.toUpperCase()} ${w.isPrimary ? '(Primary)' : ''}`}
+                {`${w.chainId.toUpperCase()} ${w.isPrimary ? '(Primary)' : ''}`}
               </Text>
               <Text color={theme.muted}>{`  Address: ${w.address}`}</Text>
               <Text color={theme.muted}>{`  Path:    ${w.derivationPath ?? 'Imported'}`}</Text>

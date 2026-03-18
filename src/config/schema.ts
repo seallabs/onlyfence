@@ -1,9 +1,9 @@
 import type {
+  AllowlistConfig,
   AppConfig,
   ChainConfig,
-  AllowlistConfig,
-  LimitsConfig,
   GlobalConfig,
+  LimitsConfig,
   TelemetryConfig,
   UpdateConfig,
 } from '../types/config.js';

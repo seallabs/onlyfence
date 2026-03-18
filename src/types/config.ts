@@ -1,3 +1,5 @@
+import type { Chain } from '../core/action-types.js';
+
 /**
  * Token allowlist configuration for a chain.
  * Only tokens in this list are permitted for trading.
@@ -105,7 +107,7 @@ export interface UpdateConfig {
  */
 export interface AppConfig {
   /** Per-chain configuration keyed by chain name */
-  readonly chain: Record<string, ChainConfig>;
+  readonly chain: Record<Chain, ChainConfig>;
 
   /** Global settings (post-MVP) */
   readonly global?: GlobalConfig;

@@ -54,7 +54,14 @@ describe('PolicyCheckRegistry', () => {
     registry.register(new TokenAllowlistCheck());
     registry.register(new SpendingLimitCheck());
 
-    const intent = createIntent({ fromToken: 'SCAM' });
+    const intent = createIntent({
+      params: {
+        coinTypeIn: '0xdead::scam::SCAM',
+        coinTypeOut: '0xdba3::usdc::USDC',
+        amountIn: '100',
+        slippageBps: 100,
+      },
+    });
     const ctx = createContext(fullConfig, db, 100);
     const result = await registry.evaluateAll(intent, ctx);
 

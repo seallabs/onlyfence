@@ -1,19 +1,11 @@
-import type {
-  BalanceResult,
-  SwapParams,
-  SwapQuote,
-  TransactionData,
-  SimulationResult,
-  TxResult,
-  Signer,
-} from '../types/result.js';
+import type { Chain, ChainId } from '../core/action-types.js';
+import type { BalanceResult, Signer, SimulationResult, TxResult } from '../types/result.js';
 
 /**
  * Interface for chain-specific adapters that handle blockchain interactions.
  *
  * Each supported blockchain implements this interface to provide:
  * - Balance queries
- * - Swap quote fetching (via aggregators)
  * - Transaction building, simulation, signing, and submission
  *
  * MVP: SuiAdapter (via 7K Aggregator)
@@ -21,10 +13,10 @@ import type {
  */
 export interface ChainAdapter {
   /** Short chain name used as config key and factory key (e.g., "sui", "ethereum") */
-  readonly chain: string;
+  readonly chain: Chain;
 
   /** CAIP-2 chain identifier for DB storage and diagnostics (e.g., "sui:mainnet", "eip155:1") */
-  readonly chainId: string;
+  readonly chainId: ChainId;
 
   /**
    * Get token balances for an address.
@@ -35,35 +27,28 @@ export interface ChainAdapter {
   getBalance(address: string): Promise<BalanceResult>;
 
   /**
-   * Fetch a swap quote from the chain's aggregator.
+   * Build a transaction into serialized bytes.
    *
-   * @param params - Swap parameters including tokens, amount, slippage
-   * @returns Swap quote with route, expected output, and price impact
+   * @param transaction - Chain-specific transaction object
+   * @returns Serialized transaction bytes ready for simulation or signing
    */
-  getSwapQuote(params: SwapParams): Promise<SwapQuote>;
-
-  /**
-   * Build an unsigned transaction from a swap quote.
-   *
-   * @param quote - The swap quote to build a transaction for
-   * @returns Serialized transaction data ready for simulation or signing
-   */
-  buildSwapTx(quote: SwapQuote): Promise<TransactionData>;
+  buildTransactionBytes(transaction: unknown): Promise<Uint8Array>;
 
   /**
    * Simulate (dry-run) a transaction without submitting it.
    *
-   * @param txData - The transaction to simulate
+   * @param txBytes - Serialized transaction bytes
+   * @param sender - Address of the transaction sender
    * @returns Simulation result including success status and gas estimate
    */
-  simulateTx(txData: TransactionData): Promise<SimulationResult>;
+  simulate(txBytes: Uint8Array, sender: string): Promise<SimulationResult>;
 
   /**
    * Sign and submit a transaction to the blockchain.
    *
-   * @param txData - The transaction to sign and submit
+   * @param txBytes - Serialized transaction bytes
    * @param signer - Signer with the private key
    * @returns Transaction result including digest, status, and gas used
    */
-  signAndSubmit(txData: TransactionData, signer: Signer): Promise<TxResult>;
+  signAndSubmit(txBytes: Uint8Array, signer: Signer): Promise<TxResult>;
 }

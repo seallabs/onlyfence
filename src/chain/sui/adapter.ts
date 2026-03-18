@@ -1,107 +1,134 @@
+import { toBase64 } from '@mysten/bcs';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import type { BalanceResult, Signer, SimulationResult, TxResult } from '../../types/result.js';
 import type { ChainAdapter } from '../adapter.js';
-import type {
-  BalanceResult,
-  SwapParams,
-  SwapQuote,
-  TransactionData,
-  SimulationResult,
-  TxResult,
-  Signer,
-} from '../../types/result.js';
+import { getKnownDecimals, resolveSymbol } from './tokens.js';
+
+/** Default decimals for unknown Sui tokens. */
+const DEFAULT_DECIMALS = 9;
+
+/** Ed25519 signature scheme flag byte used by Sui. */
+const ED25519_SCHEME_FLAG = 0x00;
+
+/** Length of a serialized Sui Ed25519 signature: 1 (flag) + 64 (sig) + 32 (pubkey). */
+const SUI_ED25519_SIGNATURE_LENGTH = 97;
+
+/** Extract gas total from a GasCostSummary. */
+function computeGas(gasUsed: {
+  computationCost: string;
+  storageCost: string;
+  storageRebate: string;
+}): number {
+  return (
+    Number(gasUsed.computationCost) + Number(gasUsed.storageCost) - Number(gasUsed.storageRebate)
+  );
+}
 
 /**
  * Sui blockchain adapter implementing the ChainAdapter interface.
  *
- * MVP integration uses:
- * - Sui RPC (via @mysten/sui) for balance queries, simulation, and tx submission
- * - 7K Aggregator API for swap routing and quote fetching
+ * Uses the JSON-RPC client from `@mysten/sui` for balance queries,
+ * transaction simulation, and transaction submission.
  *
- * This is currently a placeholder — all methods throw "not implemented" errors.
- * The structure is ready for drop-in implementation of each method.
+ * Constructor creates an owned `SuiJsonRpcClient` instance (no singleton).
  */
 /** CAIP-2 chain identifier for Sui mainnet. */
 export const SUI_CHAIN_ID = 'sui:mainnet' as const;
 
 export class SuiAdapter implements ChainAdapter {
   readonly chain = 'sui' as const;
+  private readonly client: SuiJsonRpcClient;
   readonly chainId = SUI_CHAIN_ID;
 
-  // TODO: Add these fields when implementing:
-  // private readonly suiClient: SuiClient;
-  // private readonly aggregatorBaseUrl: string;
-  // private readonly rpcUrl: string;
-  //
-  // constructor(config: { rpcUrl: string; aggregatorBaseUrl?: string }) {
-  //   this.suiClient = new SuiClient({ url: config.rpcUrl });
-  //   this.aggregatorBaseUrl = config.aggregatorBaseUrl ?? 'https://api.7k.ag';
-  //   this.rpcUrl = config.rpcUrl;
-  // }
-
-  /**
-   * Query Sui RPC for native SUI balance and token balances.
-   *
-   * TODO: Implementation steps:
-   * 1. Call suiClient.getBalance() for native SUI
-   * 2. Call suiClient.getAllBalances() for all coin types
-   * 3. Map coin types to known token symbols via SUI_TOKEN_MAP
-   * 4. Return BalanceResult with all token balances and decimals
-   */
-  getBalance(_address: string): Promise<BalanceResult> {
-    return Promise.reject(new Error('SuiAdapter.getBalance not implemented'));
+  constructor(rpcUrl: string, network: 'mainnet' | 'testnet' = 'mainnet') {
+    this.client = new SuiJsonRpcClient({ url: rpcUrl, network });
   }
 
-  /**
-   * Fetch a swap quote from the 7K Aggregator API.
-   *
-   * TODO: Implementation steps:
-   * 1. Resolve token symbols to coin type addresses via SUI_TOKEN_MAP
-   * 2. Call 7K Aggregator API: GET /v1/quote with fromToken, toToken, amount, slippage
-   * 3. Parse response for route, expectedOutput, priceImpact
-   * 4. Return SwapQuote with protocol set to the aggregator's chosen DEX
-   */
-  getSwapQuote(_params: SwapParams): Promise<SwapQuote> {
-    return Promise.reject(new Error('SuiAdapter.getSwapQuote not implemented'));
+  async getBalance(address: string): Promise<BalanceResult> {
+    const balances = await this.client.getAllBalances({ owner: address });
+
+    return {
+      address,
+      balances: balances.map((b) => {
+        const decimals = getKnownDecimals(b.coinType) ?? DEFAULT_DECIMALS;
+        return {
+          token: resolveSymbol(b.coinType),
+          amount: BigInt(b.totalBalance),
+          decimals,
+        };
+      }),
+    };
   }
 
-  /**
-   * Build an unsigned Programmable Transaction Block (PTB) from a swap quote.
-   *
-   * TODO: Implementation steps:
-   * 1. Use the 7K Aggregator's build-tx endpoint or SDK to construct the PTB
-   * 2. Serialize the TransactionBlock to bytes
-   * 3. Attach chain metadata (coin types, amounts) for logging
-   * 4. Return TransactionData with serialized bytes
-   */
-  buildSwapTx(_quote: SwapQuote): Promise<TransactionData> {
-    return Promise.reject(new Error('SuiAdapter.buildSwapTx not implemented'));
+  async buildTransactionBytes(transaction: unknown): Promise<Uint8Array> {
+    if (
+      typeof transaction !== 'object' ||
+      transaction === null ||
+      typeof (transaction as Record<string, unknown>)['build'] !== 'function'
+    ) {
+      throw new Error('Expected a Sui Transaction object with a build() method');
+    }
+    const tx = transaction as { build(opts: { client: SuiJsonRpcClient }): Promise<Uint8Array> };
+    return tx.build({ client: this.client });
   }
 
-  /**
-   * Dry-run a transaction against Sui RPC to validate before submission.
-   *
-   * TODO: Implementation steps:
-   * 1. Deserialize TransactionData.bytes back into a TransactionBlock
-   * 2. Call suiClient.dryRunTransactionBlock() with the transaction bytes
-   * 3. Check the effects for success/failure status
-   * 4. Extract gas cost estimate from the dry-run result
-   * 5. Return SimulationResult with success status and gasEstimate
-   */
-  simulateTx(_txData: TransactionData): Promise<SimulationResult> {
-    return Promise.reject(new Error('SuiAdapter.simulateTx not implemented'));
+  async simulate(txBytes: Uint8Array, _sender: string): Promise<SimulationResult> {
+    // Network/RPC errors propagate — only dry-run logic failures return { success: false }.
+    const result = await this.client.dryRunTransactionBlock({
+      transactionBlock: txBytes,
+    });
+
+    const gasEstimate = computeGas(result.effects.gasUsed);
+
+    if (result.effects.status.status === 'success') {
+      return { success: true, gasEstimate, rawResponse: result };
+    }
+
+    return {
+      success: false,
+      gasEstimate,
+      error: JSON.stringify(result.effects.status),
+      rawResponse: result,
+    };
   }
 
-  /**
-   * Sign a transaction and submit it to the Sui network.
-   *
-   * TODO: Implementation steps:
-   * 1. Deserialize TransactionData.bytes back into a TransactionBlock
-   * 2. Sign the transaction bytes using the provided Signer
-   * 3. Call suiClient.executeTransactionBlock() with signed bytes
-   * 4. Wait for confirmation and extract the transaction digest
-   * 5. Parse effects for actual gas used and output amounts
-   * 6. Return TxResult with txDigest, status, gasUsed, and amountOut
-   */
-  signAndSubmit(_txData: TransactionData, _signer: Signer): Promise<TxResult> {
-    return Promise.reject(new Error('SuiAdapter.signAndSubmit not implemented'));
+  async signAndSubmit(txBytes: Uint8Array, signer: Signer): Promise<TxResult> {
+    // 1. Sign the transaction bytes
+    const rawSignature = await signer.sign(txBytes);
+
+    // 2. Construct Sui serialized signature:
+    //    [Ed25519 flag, ...rawSig(64 bytes), ...publicKey(32 bytes)]
+    const suiSignature = new Uint8Array(SUI_ED25519_SIGNATURE_LENGTH);
+    suiSignature[0] = ED25519_SCHEME_FLAG;
+    suiSignature.set(rawSignature, 1);
+    suiSignature.set(signer.publicKey, 65);
+
+    // 3. Base64-encode the signature
+    const signatureBase64 = toBase64(suiSignature);
+
+    // 4. Submit the transaction
+    const result = await this.client.executeTransactionBlock({
+      transactionBlock: txBytes,
+      signature: signatureBase64,
+      options: { showEffects: true, showEvents: true },
+    });
+
+    // effects may be null/undefined when showEffects is not returned
+    const effects = result.effects;
+    if (effects === null || effects === undefined) {
+      return {
+        txDigest: result.digest,
+        status: 'failure',
+        gasUsed: 0,
+        rawResponse: result,
+      };
+    }
+
+    return {
+      txDigest: result.digest,
+      status: effects.status.status === 'success' ? 'success' : 'failure',
+      gasUsed: computeGas(effects.gasUsed),
+      rawResponse: result,
+    };
   }
 }
