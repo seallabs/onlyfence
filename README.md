@@ -107,14 +107,19 @@ That's it. No account needed. No sign-up. No credit card.
 <!-- TODO: [GIF] Terminal recording of the install script running — show the output messages and success -->
 
 <details>
-<summary><strong>Other ways to install</strong></summary>
+<summary><strong>Install a specific version</strong></summary>
 
-**Using npm** (if you already have Node.js):
 ```sh
-npm install -g onlyfence
+curl -fsSL https://raw.githubusercontent.com/seallabs/onlyfence/main/install.sh | ONLYFENCE_VERSION=0.1.0 sh
 ```
 
-**Manual install** (from source):
+</details>
+
+<details>
+<summary><strong>Build from source</strong></summary>
+
+Requires Node.js >= 25.
+
 ```sh
 git clone https://github.com/seallabs/onlyfence.git
 cd onlyfence
@@ -123,30 +128,10 @@ npm install && npm run build
 
 </details>
 
-<details>
-<summary><strong>Don't have Node.js?</strong></summary>
-
-OnlyFence needs Node.js 23 or higher. If the installer says Node.js is missing, install it first:
-
-**macOS:**
-```sh
-brew install node
-```
-
-**Linux (Ubuntu/Debian):**
-```sh
-curl -fsSL https://fnm.vercel.app/install | sh
-fnm install 23
-```
-
-Then run the OnlyFence install command again.
-
-</details>
-
 ### Requirements
 
 - **macOS** (Intel or Apple Silicon) or **Linux** (x64 or ARM64)
-- **Node.js 23+** (the installer will tell you if it's missing)
+- No other dependencies — Node.js runtime is bundled
 
 ---
 

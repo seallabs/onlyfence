@@ -68,10 +68,6 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "25"
-
       - name: Test install script with downloaded artifacts
         run: |
           # Stage tarballs to simulate a GitHub release
@@ -132,26 +128,5 @@ jobs:
 
             Or install a specific version:
             ```sh
-            ONLYFENCE_VERSION=${{ github.ref_name }} curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | ONLYFENCE_VERSION=${{ github.ref_name }} sh
             ```
-
-            Or via npm:
-            ```sh
-            npm install -g onlyfence@${{ github.ref_name }}
-            ```
-
-      - name: Publish to npm (stable releases only)
-        if: "!contains(github.ref_name, '-')"
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
-          npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        continue-on-error: true
-
-      - name: Skip npm publish for pre-release
-        if: "contains(github.ref_name, '-')"
-        run: |
-          echo "Pre-release version detected (${{ github.ref_name }}). Skipping npm publish."
-          echo "GitHub Release created successfully. Team members can install via:"
-          echo "  ONLYFENCE_VERSION=${{ github.ref_name }} curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh"
