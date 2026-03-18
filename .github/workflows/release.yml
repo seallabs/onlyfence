@@ -19,7 +19,7 @@ jobs:
           - os: ubuntu-24.04-arm
             target_os: linux
             target_arch: arm64
-          - os: macos-15-large
+          - os: macos-15-intel
             target_os: darwin
             target_arch: x64
           - os: macos-latest
