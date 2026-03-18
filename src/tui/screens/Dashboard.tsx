@@ -3,10 +3,15 @@ import type { ReactElement } from 'react';
 import { theme } from '../theme.js';
 import { useTui } from '../context.js';
 import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
+import { useAsyncAutoRefresh } from '../hooks/useAsyncAutoRefresh.js';
 import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
-import { formatSmallestUnit } from '../../chain/sui/tokens.js';
+import {
+  formatAmountWithDecimals,
+  formatSmallestUnit,
+  resolveSymbol,
+} from '../../chain/sui/tokens.js';
 import { extractTokenSymbol } from '../../utils/index.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
@@ -14,6 +19,11 @@ interface DashboardData {
   readonly walletAddress: string | null;
   readonly volume24h: number;
   readonly trades: readonly TradeRow[];
+}
+
+interface BalanceDisplayRow {
+  readonly symbol: string;
+  readonly balance: string;
 }
 
 /** Format an ISO timestamp to a compact "MM-DD HH:MM:SS" string. */
@@ -64,10 +74,16 @@ const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
   },
 ];
 
+const BALANCE_COLUMNS: readonly Column<BalanceDisplayRow>[] = [
+  { header: 'Token', width: 10, accessor: (r) => r.symbol },
+  { header: 'Balance', width: 24, accessor: (r) => r.balance, align: 'right' as const },
+];
+
 const BAR_WIDTH = 40;
 
 export function Dashboard(): ReactElement {
-  const { db, config, activeChain, activeChainId, policyRegistry, tradeLog } = useTui();
+  const { db, config, activeChain, activeChainId, policyRegistry, tradeLog, chainAdapterFactory } =
+    useTui();
 
   const chainConfig = config.chain[activeChain];
 
@@ -81,6 +97,26 @@ export function Dashboard(): ReactElement {
       trades,
     };
   }, 5000);
+
+  const {
+    data: balances,
+    loading: balanceLoading,
+    error: balanceError,
+  } = useAsyncAutoRefresh<readonly BalanceDisplayRow[]>(
+    async () => {
+      if (data.walletAddress === null) return [];
+      const adapter = chainAdapterFactory.get(activeChain);
+      const result = await adapter.getBalance(data.walletAddress);
+      return result.balances
+        .filter((b) => b.amount > 0n)
+        .map((b) => ({
+          symbol: resolveSymbol(b.token),
+          balance: formatAmountWithDecimals(b.amount.toString(), b.decimals, 4),
+        }));
+    },
+    [],
+    30000,
+  );
 
   const maxVolume = chainConfig.limits?.max_24h_volume ?? 0;
   const volumePercent = maxVolume > 0 ? Math.min((data.volume24h / maxVolume) * 100, 100) : 0;
@@ -135,7 +171,37 @@ export function Dashboard(): ReactElement {
         </Box>
       </Box>
 
-      {/* Row 2: 24h Volume */}
+      {/* Row 2: Account Balance */}
+      <Box
+        flexDirection="column"
+        borderStyle="single"
+        borderColor={theme.shadow}
+        paddingX={1}
+        marginTop={1}
+      >
+        <Text color={theme.body} bold>
+          {'Account Balance'}
+        </Text>
+        {data.walletAddress === null ? (
+          <Text color={theme.muted} italic>
+            {'No wallet configured'}
+          </Text>
+        ) : balanceLoading ? (
+          <Text color={theme.muted} italic>
+            {'Loading balances...'}
+          </Text>
+        ) : balanceError !== null ? (
+          <Text color={theme.error}>{`Error: ${balanceError}`}</Text>
+        ) : balances.length === 0 ? (
+          <Text color={theme.muted} italic>
+            {'No token balances'}
+          </Text>
+        ) : (
+          <Table columns={BALANCE_COLUMNS} data={balances} />
+        )}
+      </Box>
+
+      {/* Row 3: 24h Volume */}
       <Box
         flexDirection="column"
         borderStyle="single"
@@ -157,7 +223,7 @@ export function Dashboard(): ReactElement {
         </Box>
       </Box>
 
-      {/* Row 3: Allowed Tokens + Spending Limits */}
+      {/* Row 4: Allowed Tokens + Spending Limits */}
       <Box marginTop={1}>
         <Box
           flexDirection="column"
@@ -203,7 +269,7 @@ export function Dashboard(): ReactElement {
         </Box>
       </Box>
 
-      {/* Row 4: Recent Trades */}
+      {/* Row 5: Recent Trades */}
       <Box
         flexDirection="column"
         borderStyle="single"

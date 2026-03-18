@@ -12,7 +12,9 @@ set -eu
 REPO="${ONLYFENCE_REPO:-seallabs/onlyfence}"
 INSTALL_DIR="${ONLYFENCE_INSTALL_DIR:-$HOME/.onlyfence}"
 BIN_DIR="${INSTALL_DIR}/bin"
-NODE_MIN_VERSION=20
+NODE_MIN_VERSION=23
+# Override base URL for local testing (e.g. http://localhost:8888 or file:///path/to)
+BASE_URL="${ONLYFENCE_BASE_URL:-}"
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -117,14 +119,27 @@ install_from_github_release() {
   arch="$3"
 
   tarball="onlyfence-v${version}-${os}-${arch}.tar.gz"
-  url="https://github.com/${REPO}/releases/download/v${version}/${tarball}"
+  if [ -n "$BASE_URL" ]; then
+    url="${BASE_URL}/${tarball}"
+  else
+    url="https://github.com/${REPO}/releases/download/v${version}/${tarball}"
+  fi
 
   info "Downloading OnlyFence v${version} for ${os}-${arch}..."
 
   tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"' EXIT
 
-  download "$url" "${tmpdir}/${tarball}"
+  # Support file:// URLs by copying directly
+  case "$url" in
+    file://*)
+      local_path="${url#file://}"
+      cp "$local_path" "${tmpdir}/${tarball}" 2>/dev/null || { return 1; }
+      ;;
+    *)
+      download "$url" "${tmpdir}/${tarball}"
+      ;;
+  esac
 
   if [ ! -s "${tmpdir}/${tarball}" ]; then
     return 1
@@ -254,6 +269,10 @@ main() {
   # Resolve version
   version="${ONLYFENCE_VERSION:-}"
   if [ -z "$version" ]; then
+    if [ -n "$BASE_URL" ]; then
+      error "ONLYFENCE_VERSION is required when using ONLYFENCE_BASE_URL"
+      exit 1
+    fi
     info "Resolving latest version..."
     version=$(get_latest_version) || true
   fi
