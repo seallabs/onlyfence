@@ -183,7 +183,11 @@ describe('SuiAdapter', () => {
       const txBytes = new Uint8Array([10, 20, 30]);
       const result = await adapter.signAndSubmit(txBytes, signer);
 
-      expect(signer.sign).toHaveBeenCalledWith(txBytes);
+      // signer.sign is called with the blake2b intent digest, not raw txBytes
+      expect(signer.sign).toHaveBeenCalledTimes(1);
+      const signArg = (signer.sign as ReturnType<typeof vi.fn>).mock.calls[0]![0] as Uint8Array;
+      expect(signArg).toBeInstanceOf(Uint8Array);
+      expect(signArg).toHaveLength(32); // blake2b digest is 32 bytes
       expect(result.txDigest).toBe('txDigest123');
       expect(result.status).toBe('success');
       expect(result.gasUsed).toBe(2700); // 2000 + 1000 - 300

@@ -1,5 +1,7 @@
 import { toBase64 } from '@mysten/bcs';
+import { messageWithIntent } from '@mysten/sui/cryptography';
 import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import { blake2b } from '@noble/hashes/blake2.js';
 import type { BalanceResult, Signer, SimulationResult, TxResult } from '../../types/result.js';
 import type { ChainAdapter } from '../adapter.js';
 import { getKnownDecimals, resolveSymbol } from './tokens.js';
@@ -93,20 +95,24 @@ export class SuiAdapter implements ChainAdapter {
   }
 
   async signAndSubmit(txBytes: Uint8Array, signer: Signer): Promise<TxResult> {
-    // 1. Sign the transaction bytes
-    const rawSignature = await signer.sign(txBytes);
+    // 1. Compute intent-prefixed digest (Sui verifies signatures against this)
+    const intentMessage = messageWithIntent('TransactionData', txBytes);
+    const digest = blake2b(intentMessage, { dkLen: 32 });
 
-    // 2. Construct Sui serialized signature:
+    // 2. Sign the digest
+    const rawSignature = await signer.sign(digest);
+
+    // 3. Construct Sui serialized signature:
     //    [Ed25519 flag, ...rawSig(64 bytes), ...publicKey(32 bytes)]
     const suiSignature = new Uint8Array(SUI_ED25519_SIGNATURE_LENGTH);
     suiSignature[0] = ED25519_SCHEME_FLAG;
     suiSignature.set(rawSignature, 1);
     suiSignature.set(signer.publicKey, 65);
 
-    // 3. Base64-encode the signature
+    // 4. Base64-encode the signature
     const signatureBase64 = toBase64(suiSignature);
 
-    // 4. Submit the transaction
+    // 5. Submit the transaction
     const result = await this.client.executeTransactionBlock({
       transactionBlock: txBytes,
       signature: signatureBase64,

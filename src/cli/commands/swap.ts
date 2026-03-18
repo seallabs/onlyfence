@@ -13,7 +13,8 @@ import { executePipeline } from '../../core/transaction-pipeline.js';
 import type { PolicyContext } from '../../policy/context.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
-import { resolveSuiSigner } from '../../wallet/signer.js';
+import { loadSessionKeyBytes } from '../../wallet/session.js';
+import { buildSuiSigner } from '../../chain/sui/signer.js';
 import type { AppComponents } from '../bootstrap.js';
 import type {
   CliOutput,
@@ -46,7 +47,6 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
     .description('Execute a swap with policy enforcement')
     .option('-s, --slippage <percent>', 'Slippage tolerance in percent', '0.5')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
-    .option('-p, --password <password>', 'Keystore password for signing')
     .option('-o, --output <format>', 'Output format (json)', 'json')
     .action(
       async (
@@ -56,7 +56,6 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
         options: {
           slippage: string;
           chain: Chain;
-          password?: string;
           output: string;
         },
       ) => {
@@ -147,8 +146,8 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
           };
 
-          // Resolve signer if not watch-only
-          const signer = watchOnly ? undefined : resolveSuiSigner(options.password);
+          // Resolve signer from active session if not watch-only
+          const signer = watchOnly ? undefined : buildSuiSigner(loadSessionKeyBytes(chainId));
 
           // Get builder from registry
           const builder = actionBuilderRegistry.getDefault(chain, 'swap', intent) as ActionBuilder<

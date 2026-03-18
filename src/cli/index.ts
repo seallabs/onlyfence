@@ -11,6 +11,8 @@ import {
   registerWalletCommand,
   registerStatsCommand,
   registerUpdateCommand,
+  registerUnlockCommand,
+  registerLockCommand,
 } from './commands/index.js';
 import { withTiming } from './middleware.js';
 import { toErrorMessage } from '../utils/index.js';
@@ -93,6 +95,8 @@ export function createProgram(): { program: Command; cleanup: () => void } {
   registerWalletCommand(program, getComponents);
   registerStatsCommand(program, getComponents);
   registerUpdateCommand(program, checker, createUpdateInstaller(), CURRENT_VERSION);
+  registerUnlockCommand(program);
+  registerLockCommand(program);
 
   // Default action: launch interactive TUI when no subcommand is given.
   // If bootstrap fails (first run), the TUI shows a setup wizard.

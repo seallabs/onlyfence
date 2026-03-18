@@ -5,3 +5,5 @@ export { registerConfigCommand } from './config.js';
 export { registerWalletCommand } from './wallet.js';
 export { registerStatsCommand } from './stats.js';
 export { registerUpdateCommand } from './update.js';
+export { registerUnlockCommand } from './unlock.js';
+export { registerLockCommand } from './lock.js';

@@ -38,6 +38,28 @@ export interface EncryptedKeystore {
 }
 
 /**
+ * Session data stored in ~/.onlyfence/session.
+ *
+ * Created by `fence unlock`, consumed by `fence swap`, destroyed by `fence lock`.
+ * The session key is a random value — it is NOT the keystore password.
+ */
+export interface SessionData {
+  readonly version: number;
+  /** Hex-encoded 32-byte random session key */
+  readonly session_key: string;
+  /** Hex-encoded AES-256-GCM ciphertext of the raw private key */
+  readonly encrypted_blob: string;
+  /** Hex-encoded 12-byte AES-GCM initialization vector */
+  readonly iv: string;
+  /** Hex-encoded 16-byte AES-GCM authentication tag */
+  readonly tag: string;
+  /** Chain identifier used in keystore lookup (e.g., 'sui:mainnet') */
+  readonly chain: string;
+  /** ISO 8601 timestamp when the session expires */
+  readonly expires_at: string;
+}
+
+/**
  * Row shape returned from the wallets SQLite table.
  */
 export interface WalletRow {
