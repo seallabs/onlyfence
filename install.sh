@@ -259,8 +259,8 @@ main() {
         ;;
     esac
 
-    # Auto-run setup after install (skip in test/CI via ONLYFENCE_SKIP_SETUP)
-    if [ -z "$SKIP_SETUP" ] && { [ -t 0 ] || [ -e /dev/tty ]; }; then
+    # Auto-run setup on first install (skip if already set up or via ONLYFENCE_SKIP_SETUP)
+    if [ -z "$SKIP_SETUP" ] && [ ! -f "${INSTALL_DIR}/keystore" ] && { [ -t 0 ] || [ -e /dev/tty ]; }; then
       printf "\n"
       info "Starting setup wizard..."
       printf "\n"
@@ -268,8 +268,11 @@ main() {
       # even when the installer was piped via curl | sh
       "${BIN_DIR}/fence" setup </dev/tty
     else
+      if [ -f "${INSTALL_DIR}/keystore" ]; then
+        ok "Existing wallet and config preserved."
+      fi
       printf "\n${BOLD}Get started:${RESET}\n"
-      printf "  fence setup        # Initialize wallet and config\n"
+      printf "  fence setup        # Re-run setup wizard\n"
       printf "  fence --help       # See all commands\n\n"
     fi
   else

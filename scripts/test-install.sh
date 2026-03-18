@@ -118,30 +118,60 @@ else
   exit 1
 fi
 
-# ─── Step 3b: Verify install.sh auto-launches setup ─────────────────────────
-# Run install.sh without SKIP_SETUP and capture output to confirm it attempts
+# ─── Step 3b: Verify install.sh auto-launches setup on first install ─────────
+# Run install.sh without SKIP_SETUP and with no keystore to confirm it attempts
 # to launch the setup wizard (without actually running it interactively).
 
 echo ""
-echo "==> Verifying installer auto-setup flow..."
+echo "==> Verifying installer auto-setup flow (first install)..."
 
-INSTALL_OUTPUT=$(
+# Use a clean dir with no keystore to simulate first install
+FRESH_DIR=$(mktemp -d)
+FRESH_OUTPUT=$(
   ONLYFENCE_SKIP_SETUP="" \
   ONLYFENCE_BASE_URL="file://${OUTPUT_DIR}" \
   ONLYFENCE_VERSION="${VERSION}" \
-  ONLYFENCE_INSTALL_DIR="${RESOLVED_DIR}" \
+  ONLYFENCE_INSTALL_DIR="${FRESH_DIR}" \
   ONLYFENCE_SKIP_PATH_SETUP=1 \
   sh "${PROJECT_ROOT}/install.sh" 2>&1 </dev/null || true
 )
 
-if echo "$INSTALL_OUTPUT" | grep -q "Starting setup wizard"; then
-  echo "==> PASS: installer auto-launches setup wizard"
+if echo "$FRESH_OUTPUT" | grep -q "Starting setup wizard"; then
+  echo "==> PASS: installer auto-launches setup wizard on first install"
 else
-  echo "error: installer does NOT auto-launch setup wizard after install" >&2
+  echo "error: installer does NOT auto-launch setup wizard on first install" >&2
   echo "       Output was:" >&2
-  echo "$INSTALL_OUTPUT" >&2
+  echo "$FRESH_OUTPUT" >&2
+  rm -rf "$FRESH_DIR"
   exit 1
 fi
+
+# ─── Step 3c: Verify install.sh skips setup on re-install ───────────────────
+# Simulate a re-install by creating a keystore file in the install dir.
+
+echo "==> Verifying installer skips setup on re-install..."
+
+touch "${FRESH_DIR}/keystore"
+REINSTALL_OUTPUT=$(
+  ONLYFENCE_SKIP_SETUP="" \
+  ONLYFENCE_BASE_URL="file://${OUTPUT_DIR}" \
+  ONLYFENCE_VERSION="${VERSION}" \
+  ONLYFENCE_INSTALL_DIR="${FRESH_DIR}" \
+  ONLYFENCE_SKIP_PATH_SETUP=1 \
+  sh "${PROJECT_ROOT}/install.sh" 2>&1 </dev/null || true
+)
+
+if echo "$REINSTALL_OUTPUT" | grep -q "Existing wallet and config preserved"; then
+  echo "==> PASS: installer skips setup on re-install"
+else
+  echo "error: installer should skip setup when keystore exists (re-install)" >&2
+  echo "       Output was:" >&2
+  echo "$REINSTALL_OUTPUT" >&2
+  rm -rf "$FRESH_DIR"
+  exit 1
+fi
+
+rm -rf "$FRESH_DIR"
 
 # ─── Step 4: Run setup or command interactively ──────────────────────────────
 
