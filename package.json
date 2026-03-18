@@ -19,6 +19,7 @@
     "test": "bunx vitest run",
     "test:watch": "bunx vitest",
     "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/patch-bluefin-esm.js",
     "prepare": "husky"
   },
   "dependencies": {
@@ -27,7 +28,7 @@
     "@cetusprotocol/aggregator-sdk": "^1.4.5",
     "@flowx-finance/sdk": "^1.15.0",
     "@mysten/sui": "1.45.0",
-    "@pythnetwork/pyth-sui-js": "2.1.0",
+    "@pythnetwork/pyth-sui-js": "^2.2.0",
     "@sentry/node": "^10.43.0",
     "better-sqlite3": "^12.8.0",
     "bignumber.js": "^10.0.2",
@@ -60,6 +61,9 @@
       "eslint --max-warnings 0 --no-warn-ignored",
       "prettier --check"
     ]
+  },
+  "overrides": {
+    "@bluefin-exchange/bluefin7k-aggregator-sdk": "$@bluefin-exchange/bluefin7k-aggregator-sdk"
   },
   "engines": {
     "node": ">=23.0.0"

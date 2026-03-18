@@ -44,23 +44,10 @@ export type ActionIntent = SwapIntent | SupplyIntent;
 /** Pipeline result status */
 export type PipelineStatus = 'success' | 'simulated' | 'rejected' | 'simulation_failed' | 'error';
 
-/** Preview returned by ActionBuilder.preview() */
-export interface ActionPreviewBase {
-  readonly action: DeFiAction;
-}
-export interface SwapPreview extends ActionPreviewBase {
-  readonly action: 'swap';
-  readonly description: string;
-  readonly expectedOutput: string;
-  readonly provider: string;
-  readonly priceImpact?: number;
-  readonly buildData: unknown;
-}
-
 /** Result returned by executePipeline */
-export interface PipelineResult<Preview extends ActionPreviewBase = ActionIntentBase> {
+export interface PipelineResult {
   readonly status: PipelineStatus;
-  readonly preview?: Preview;
+  readonly metadata?: Record<string, unknown>;
   readonly txDigest?: string;
   readonly gasUsed?: number;
   readonly error?: string;

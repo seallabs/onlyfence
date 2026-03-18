@@ -1,26 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SwapIntent, SwapPreview } from '../core/action-types.js';
+import type { SwapIntent } from '../core/action-types.js';
 import type { ActionBuilder, BuiltTransaction } from '../core/action-builder.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
 
-function makeBuilder(chain: string): ActionBuilder<SwapIntent, SwapPreview> {
+function makeBuilder(chain: string): ActionBuilder<SwapIntent> {
   return {
     builderId: `${chain}-swap-builder`,
     chain,
     validate: vi.fn(),
-    preview: vi.fn<(intent: SwapIntent) => Promise<SwapPreview>>().mockResolvedValue({
-      action: 'swap',
-      description: 'mock preview',
-      expectedOutput: '100',
-      provider: 'mock',
-      buildData: null,
+    build: vi.fn<(intent: SwapIntent) => Promise<BuiltTransaction>>().mockResolvedValue({
+      transaction: {},
+      metadata: {},
     }),
-    build: vi
-      .fn<(intent: SwapIntent, preview: SwapPreview) => Promise<BuiltTransaction>>()
-      .mockResolvedValue({
-        transaction: {},
-        metadata: {},
-      }),
   };
 }
 

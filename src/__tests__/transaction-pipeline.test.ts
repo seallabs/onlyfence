@@ -4,7 +4,7 @@ import type { Logger } from 'pino';
 import type { ActionBuilder, FinishContext } from '../core/action-builder.js';
 import type { ChainAdapter } from '../chain/adapter.js';
 import type { PolicyContext } from '../policy/context.js';
-import type { SwapPreview, SwapIntent } from '../core/action-types.js';
+import type { SwapIntent } from '../core/action-types.js';
 import type { SimulationResult, TxResult, Signer } from '../types/result.js';
 import { NoOpMevProtector } from '../core/mev-protector.js';
 import { PolicyCheckRegistry } from '../policy/registry.js';
@@ -12,29 +12,24 @@ import { TradeLog } from '../db/trade-log.js';
 import { runMigrations } from '../db/migrations.js';
 import { executePipeline } from '../core/transaction-pipeline.js';
 import type { PipelineInput } from '../core/transaction-pipeline.js';
-import { REJECTED_BY_KEY } from '../policy/check.js';
 import { createMockLogger, createIntent } from './helpers.js';
 
-function createMockPreview(): SwapPreview {
-  return {
-    action: 'swap',
-    description: 'Swap 1 SUI -> USDC',
-    expectedOutput: '3500000',
-    provider: '7k-swap',
-    priceImpact: 0.01,
-    buildData: { tx: 'mock' },
-  };
-}
+const MOCK_METADATA = {
+  action: 'swap',
+  description: 'Swap 1 SUI -> USDC',
+  expectedOutput: '3500000',
+  provider: '7k-swap',
+  priceImpact: 0.01,
+};
 
 function createMockBuilder(overrides?: Partial<ActionBuilder>): ActionBuilder {
   return {
     builderId: '7k-swap',
     chain: 'sui',
     validate: vi.fn(),
-    preview: vi.fn().mockResolvedValue(createMockPreview()),
     build: vi.fn().mockResolvedValue({
       transaction: { kind: 'mock-tx' },
-      metadata: { coinTypeIn: '0x2::sui::SUI', coinTypeOut: '0xdba3::usdc::USDC' },
+      metadata: MOCK_METADATA,
     }),
     finish: vi.fn(),
     ...overrides,
@@ -113,8 +108,8 @@ describe('executePipeline', () => {
     expect(result.status).toBe('success');
     expect(result.txDigest).toBe('TX_DIGEST_ABC');
     expect(result.gasUsed).toBe(4500);
-    expect(result.preview).toBeDefined();
-    expect(result.preview?.provider).toBe('7k-swap');
+    expect(result.metadata).toBeDefined();
+    expect(result.metadata?.['provider']).toBe('7k-swap');
 
     // Verify builder.finish was called with correct context
     expect(builder.finish).toHaveBeenCalledOnce();
@@ -124,7 +119,7 @@ describe('executePipeline', () => {
     expect(ctx.txDigest).toBe('TX_DIGEST_ABC');
     expect(ctx.gasUsed).toBe(4500);
     expect(ctx.rawResponse).toEqual({ events: [] });
-    expect(ctx.preview).toBeDefined();
+    expect(ctx.metadata).toBeDefined();
   });
 
   it('returns rejected and calls builder.finish with rejection context', async () => {
@@ -227,7 +222,7 @@ describe('executePipeline', () => {
     const result = await executePipeline(input);
 
     expect(result.status).toBe('simulated');
-    expect(result.preview).toBeDefined();
+    expect(result.metadata).toBeDefined();
     expect(result.gasUsed).toBe(5000);
 
     // signAndSubmit should NOT have been called
@@ -250,7 +245,6 @@ describe('executePipeline', () => {
       validate: vi.fn().mockImplementation(() => {
         throw new Error('coinTypeIn and coinTypeOut must be different');
       }),
-      preview: vi.fn(),
       build: vi.fn(),
       finish: vi.fn(),
     });
@@ -462,7 +456,6 @@ describe('executePipeline', () => {
       builderId: '7k-swap',
       chain: 'sui',
       validate: vi.fn(),
-      preview: vi.fn().mockResolvedValue(createMockPreview()),
       build: vi.fn().mockResolvedValue({
         transaction: { kind: 'mock-tx' },
         metadata: {},

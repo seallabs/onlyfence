@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3';
 import type { ChainAdapter } from '../chain/adapter.js';
 import type { ActionBuilder, BuiltTransaction, FinishContext } from '../core/action-builder.js';
 import { parseSwapEvent } from '../chain/sui/7k/events.js';
-import type { SwapPreview, SwapIntent } from '../core/action-types.js';
+import type { SwapIntent } from '../core/action-types.js';
 import type { Signer, SimulationResult, TxResult } from '../types/result.js';
 import type { ChainConfig } from '../types/config.js';
 import type { PolicyContext } from '../policy/context.js';
@@ -25,18 +25,17 @@ const chainConfig: ChainConfig = {
   limits: { max_single_trade: 1000, max_24h_volume: 5000 },
 };
 
-const mockPreview: SwapPreview = {
+const MOCK_METADATA: Record<string, unknown> = {
   action: 'swap',
   description: 'Swap 100 SUI -> USDC',
   expectedOutput: '98120000',
   provider: '7k',
   priceImpact: 0.01,
-  buildData: { tx: 'mock-build-data' },
 };
 
 const mockBuiltTx: BuiltTransaction = {
   transaction: { kind: 'mock-tx' },
-  metadata: { source: 'test' },
+  metadata: MOCK_METADATA,
 };
 
 /**
@@ -48,10 +47,9 @@ function createMockBuilder(tradeLog: TradeLog): ActionBuilder {
     builderId: 'test-builder',
     chainId: 'sui:mainnet',
     validate: vi.fn(),
-    preview: vi.fn<[], Promise<ActionPreview>>().mockResolvedValue(mockPreview),
     build: vi.fn<[], Promise<BuiltTransaction>>().mockResolvedValue(mockBuiltTx),
     finish(context: FinishContext): void {
-      const { intent, status, preview, rawResponse, txDigest, gasUsed, rejection } = context;
+      const { intent, status, metadata, rawResponse, txDigest, gasUsed, rejection } = context;
       const tradeValueUsd = intent.action === 'swap' ? intent.tradeValueUsd : undefined;
 
       if (intent.action !== 'swap') return;
@@ -68,7 +66,8 @@ function createMockBuilder(tradeLog: TradeLog): ActionBuilder {
         }
       }
       if (amountOut === undefined) {
-        amountOut = preview?.expectedOutput;
+        const expectedOutput = metadata?.['expectedOutput'];
+        amountOut = typeof expectedOutput === 'string' ? expectedOutput : undefined;
       }
 
       tradeLog.logTrade({
@@ -171,7 +170,7 @@ describe('Pipeline Integration Tests', () => {
     db.close();
   });
 
-  it('full success path: intent -> policy -> preview -> build -> simulate -> sign -> submit -> finish', async () => {
+  it('full success path: intent -> policy -> build -> simulate -> sign -> submit -> finish', async () => {
     const intent = createIntent();
     const builder = createMockBuilder(tradeLog);
     const chainAdapter = createMockChainAdapter();
@@ -193,7 +192,7 @@ describe('Pipeline Integration Tests', () => {
     expect(result.status).toBe('success');
     expect(result.txDigest).toBe('0xdigest_success');
     expect(result.gasUsed).toBe(4800);
-    expect(result.preview).toEqual(mockPreview);
+    expect(result.metadata).toEqual(MOCK_METADATA);
 
     // Verify trade was logged with event-parsed amounts
     const trades = tradeLog.getRecentTrades('sui:mainnet', 10);
@@ -222,7 +221,7 @@ describe('Pipeline Integration Tests', () => {
 
     expect(result.status).toBe('simulated');
     expect(result.gasUsed).toBe(5000);
-    expect(result.preview).toEqual(mockPreview);
+    expect(result.metadata).toEqual(MOCK_METADATA);
 
     // signAndSubmit should NOT have been called
     expect(chainAdapter.signAndSubmit).not.toHaveBeenCalled();
@@ -255,8 +254,8 @@ describe('Pipeline Integration Tests', () => {
     expect(result.rejectionCheck).toBe('token_allowlist');
     expect(result.rejectionReason).toContain('DOGE');
 
-    // Builder should NOT have been called for preview/build
-    expect(builder.preview).not.toHaveBeenCalled();
+    // Builder should NOT have been called for build
+    expect(builder.build).not.toHaveBeenCalled();
 
     // Trade should be logged as rejected via builder.finish
     const trades = tradeLog.getRecentTrades('sui:mainnet', 10);

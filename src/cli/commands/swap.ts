@@ -1,13 +1,7 @@
 import type { Command } from 'commander';
 import { resolveTokenAddress, scaleToSmallestUnit } from '../../chain/sui/tokens.js';
 import type { ActionBuilder } from '../../core/action-builder.js';
-import type {
-  Chain,
-  ChainId,
-  PipelineResult,
-  SwapIntent,
-  SwapPreview,
-} from '../../core/action-types.js';
+import type { Chain, ChainId, PipelineResult, SwapIntent } from '../../core/action-types.js';
 import { NoOpMevProtector } from '../../core/mev-protector.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
 import type { PolicyContext } from '../../policy/context.js';
@@ -150,10 +144,11 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           const signer = watchOnly ? undefined : buildSuiSigner(loadSessionKeyBytes(chainId));
 
           // Get builder from registry
-          const builder = actionBuilderRegistry.getDefault(chain, 'swap', intent) as ActionBuilder<
-            SwapIntent,
-            SwapPreview
-          >;
+          const builder = actionBuilderRegistry.getDefault(
+            chain,
+            'swap',
+            intent,
+          ) as ActionBuilder<SwapIntent>;
 
           // Get chain adapter
           const chainAdapter = chainAdapterFactory.get(chain);
@@ -203,10 +198,12 @@ interface MappedOutput {
  * Map a PipelineResult to a CliOutput and process exit code.
  */
 function mapPipelineResultToOutput(
-  result: PipelineResult<SwapPreview>,
+  result: PipelineResult,
   intent: SwapIntent,
   tradeValueUsd?: number,
 ): MappedOutput {
+  const meta = result.metadata;
+
   switch (result.status) {
     case 'success': {
       const output: SuccessResponse = {
@@ -217,15 +214,16 @@ function mapPipelineResultToOutput(
         fromToken: intent.params.coinTypeIn,
         toToken: intent.params.coinTypeOut,
         amountIn: intent.params.amountIn,
-        amountOut: result.preview?.expectedOutput ?? '0',
+        amountOut: (meta?.['expectedOutput'] as string | undefined) ?? '0',
         valueUsd: tradeValueUsd ?? null,
         gasCost: result.gasUsed ?? 0,
-        route: result.preview?.provider ?? 'unknown',
+        route: (meta?.['provider'] as string | undefined) ?? 'unknown',
       };
       return { cliOutput: output, exitCode: 0 };
     }
 
     case 'simulated': {
+      const priceImpact = meta?.['priceImpact'] as number | undefined;
       const output: SimulatedResponse = {
         status: 'simulated',
         chain: intent.chainId,
@@ -233,11 +231,9 @@ function mapPipelineResultToOutput(
         fromToken: intent.params.coinTypeIn,
         toToken: intent.params.coinTypeOut,
         amountIn: intent.params.amountIn,
-        expectedOutput: result.preview?.expectedOutput ?? '0',
-        provider: result.preview?.provider ?? 'unknown',
-        ...(result.preview?.priceImpact !== undefined
-          ? { priceImpact: result.preview.priceImpact }
-          : {}),
+        expectedOutput: (meta?.['expectedOutput'] as string | undefined) ?? '0',
+        provider: (meta?.['provider'] as string | undefined) ?? 'unknown',
+        ...(priceImpact !== undefined ? { priceImpact } : {}),
         gasEstimate: result.gasUsed ?? 0,
       };
       return { cliOutput: output, exitCode: 0 };

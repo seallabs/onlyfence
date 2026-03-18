@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { SwapIntent, SwapPreview } from '../core/action-types.js';
+import type { SwapIntent } from '../core/action-types.js';
 
 // Mock MetaAg
 const mockQuote = vi.fn();
@@ -101,8 +101,8 @@ describe('SuiSwapBuilder', () => {
     });
   });
 
-  describe('preview', () => {
-    it('returns ActionPreview with expectedOutput and provider', async () => {
+  describe('build', () => {
+    it('fetches quotes, selects best, and returns BuiltTransaction with metadata', async () => {
       const fakeQuote = {
         provider: 'cetus',
         amountIn: '1000000000',
@@ -113,18 +113,25 @@ describe('SuiSwapBuilder', () => {
         id: 'q1',
       };
       mockQuote.mockResolvedValue([fakeQuote]);
+      mockSwap.mockResolvedValue('coin-out-arg');
 
       const mockTradeLog = {
         logTrade: vi.fn(),
       } as unknown as import('../db/trade-log.js').TradeLog;
       const builder = new SuiSwapBuilder(mockTradeLog);
-      const intent = makeSwapIntent();
-      const preview = await builder.preview(intent);
+      const result = await builder.build(makeSwapIntent());
 
-      expect(preview.expectedOutput).toBe('2490000');
-      expect(preview.provider).toBe('cetus');
-      expect(preview.description).toContain('cetus');
-      expect(preview.buildData).toBeDefined();
+      expect(result.transaction).toBeDefined();
+      expect(result.metadata).toEqual(
+        expect.objectContaining({
+          action: 'swap',
+          expectedOutput: '2490000',
+          provider: 'cetus',
+          amountIn: '1000000000',
+          description: 'Swap via cetus',
+        }),
+      );
+      expect(mockTransferObjects).toHaveBeenCalled();
     });
 
     it('selects the best quote by amountOut', async () => {
@@ -146,16 +153,17 @@ describe('SuiSwapBuilder', () => {
         id: 'q2',
       };
       mockQuote.mockResolvedValue([quote1, quote2]);
+      mockSwap.mockResolvedValue('coin-out-arg');
 
       const mockTradeLog = {
         logTrade: vi.fn(),
       } as unknown as import('../db/trade-log.js').TradeLog;
       const builder = new SuiSwapBuilder(mockTradeLog);
-      const preview = await builder.preview(makeSwapIntent());
+      const result = await builder.build(makeSwapIntent());
 
       // quote2 has higher amountOut (2600000 > 2490000/2500000)
-      expect(preview.provider).toBe('bluefin7k');
-      expect(preview.expectedOutput).toBe('2600000');
+      expect(result.metadata['provider']).toBe('bluefin7k');
+      expect(result.metadata['expectedOutput']).toBe('2600000');
     });
 
     it('throws when no quotes available', async () => {
@@ -165,7 +173,7 @@ describe('SuiSwapBuilder', () => {
         logTrade: vi.fn(),
       } as unknown as import('../db/trade-log.js').TradeLog;
       const builder = new SuiSwapBuilder(mockTradeLog);
-      await expect(builder.preview(makeSwapIntent())).rejects.toThrow('No swap quotes available');
+      await expect(builder.build(makeSwapIntent())).rejects.toThrow('No swap quotes available');
     });
 
     it('throws on network error from quote', async () => {
@@ -175,47 +183,7 @@ describe('SuiSwapBuilder', () => {
         logTrade: vi.fn(),
       } as unknown as import('../db/trade-log.js').TradeLog;
       const builder = new SuiSwapBuilder(mockTradeLog);
-      await expect(builder.preview(makeSwapIntent())).rejects.toThrow('Failed to fetch swap quote');
-    });
-  });
-
-  describe('build', () => {
-    it('returns BuiltTransaction with transaction and metadata', async () => {
-      const fakeQuote = {
-        provider: 'cetus',
-        amountIn: '1000000000',
-        amountOut: '2500000',
-        coinTypeIn: '0x2::sui::SUI',
-        coinTypeOut: '0xdba3::usdc::USDC',
-        id: 'q1',
-      };
-
-      const preview: SwapPreview = {
-        action: 'swap',
-        description: 'Swap via cetus',
-        expectedOutput: '2500000',
-        provider: 'cetus',
-        buildData: fakeQuote,
-      };
-
-      mockSwap.mockResolvedValue('coin-out-arg');
-
-      const mockTradeLog = {
-        logTrade: vi.fn(),
-      } as unknown as import('../db/trade-log.js').TradeLog;
-      const builder = new SuiSwapBuilder(mockTradeLog);
-      const result = await builder.build(makeSwapIntent(), preview);
-
-      expect(result.transaction).toBeDefined();
-      expect(result.metadata).toEqual(
-        expect.objectContaining({
-          action: 'swap',
-          provider: 'cetus',
-          amountIn: '1000000000',
-          amountOut: '2500000',
-        }),
-      );
-      expect(mockTransferObjects).toHaveBeenCalled();
+      await expect(builder.build(makeSwapIntent())).rejects.toThrow('Failed to fetch swap quote');
     });
   });
 });
