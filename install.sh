@@ -15,6 +15,8 @@ BIN_DIR="${INSTALL_DIR}/bin"
 NODE_MIN_VERSION=23
 # Override base URL for local testing (e.g. http://localhost:8888 or file:///path/to)
 BASE_URL="${ONLYFENCE_BASE_URL:-}"
+# Skip writing PATH to shell profile (useful for testing)
+SKIP_PATH_SETUP="${ONLYFENCE_SKIP_PATH_SETUP:-}"
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -178,7 +180,7 @@ install_from_npm() {
   # Install to a temporary location, then move
   cd "$tmpdir"
   npm init -y >/dev/null 2>&1
-  npm install --production onlyfence@"${1:-latest}" 2>&1 | tail -1
+  npm install --omit=dev onlyfence@"${1:-latest}" 2>&1 | tail -1
 
   # Copy the installed package to our install dir
   rm -rf "${INSTALL_DIR}/lib" "${INSTALL_DIR}/node_modules"
@@ -306,7 +308,9 @@ main() {
   fi
 
   # Setup PATH
-  setup_path
+  if [ -z "$SKIP_PATH_SETUP" ]; then
+    setup_path
+  fi
 
   # Verify
   printf "\n"

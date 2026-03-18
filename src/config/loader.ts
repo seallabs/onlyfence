@@ -10,8 +10,9 @@ import { CONFIG_FILE_HEADER } from './utils.js';
 
 /**
  * Default directory for OnlyFence configuration and data.
+ * Override with ONLYFENCE_HOME env var for development/testing.
  */
-export const ONLYFENCE_DIR = join(homedir(), '.onlyfence');
+export const ONLYFENCE_DIR = process.env['ONLYFENCE_HOME'] ?? join(homedir(), '.onlyfence');
 
 /**
  * Default path to the TOML configuration file.

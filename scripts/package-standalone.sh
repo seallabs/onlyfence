@@ -53,8 +53,9 @@ cp -r "${PROJECT_ROOT}/dist" "${STAGING_DIR}/lib"
 echo "==> Installing production dependencies..."
 cp "${PROJECT_ROOT}/package.json" "${STAGING_DIR}/package.json"
 cp "${PROJECT_ROOT}/package-lock.json" "${STAGING_DIR}/package-lock.json" 2>/dev/null || true
+cp -r "${PROJECT_ROOT}/scripts" "${STAGING_DIR}/scripts"
 cd "$STAGING_DIR"
-npm install --production --ignore-scripts=false
+npm install --omit=dev --ignore-scripts=false
 
 # Step 5: Rebuild native addons for current platform
 echo "==> Rebuilding native addons..."
@@ -85,7 +86,8 @@ find "${STAGING_DIR}/node_modules" -type d -name "docs" -exec rm -rf {} + 2>/dev
 find "${STAGING_DIR}/node_modules" -type d -name "example" -exec rm -rf {} + 2>/dev/null || true
 find "${STAGING_DIR}/node_modules" -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true
 
-# Remove devDependencies entries from staged package.json
+# Remove build scripts (only needed for postinstall) and devDependencies
+rm -rf "${STAGING_DIR}/scripts"
 node -e "
   const pkg = require('./package.json');
   delete pkg.devDependencies;

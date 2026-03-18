@@ -2,11 +2,28 @@ import type { Command } from 'commander';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { openDatabase, DB_PATH } from '../../db/connection.js';
-import { initConfig, CONFIG_PATH } from '../../config/loader.js';
+import { initConfig, updateConfigFile, loadConfig, CONFIG_PATH } from '../../config/loader.js';
 import { ConfigAlreadyExistsError } from '../../config/schema.js';
 import { generateSetupWallet, importSetupWallet, saveSetupKeystore } from '../../wallet/setup.js';
 import type { SetupResult } from '../../wallet/setup.js';
 import { MIN_PASSWORD_LENGTH } from '../../wallet/keystore.js';
+import { CURRENT_VERSION } from '../../update/version.js';
+import {
+  printLogo,
+  step,
+  info,
+  success,
+  warn,
+  error,
+  box,
+  bold,
+  cyan,
+  dim,
+  yellow,
+  green,
+} from '../style.js';
+
+const TOTAL_STEPS = 5;
 
 /**
  * Register the `fence setup` command on the given program.
@@ -30,79 +47,239 @@ export function registerSetupCommand(program: Command): void {
       let db: ReturnType<typeof openDatabase> | undefined;
 
       try {
+        printLogo(CURRENT_VERSION);
+
         // Step 1: Init DB
-        console.log('Initializing database...');
+        step(1, TOTAL_STEPS, 'Initialize Database');
         db = openDatabase(DB_PATH);
+        success(`Database ready at ${dim(DB_PATH)}`);
 
         // Step 2: Init default config if not exists
+        step(2, TOTAL_STEPS, 'Configure');
         try {
           initConfig(CONFIG_PATH, false);
-          console.log(`Default config created at ${CONFIG_PATH}`);
+          success(`Default config created at ${dim(CONFIG_PATH)}`);
         } catch (err: unknown) {
           if (err instanceof ConfigAlreadyExistsError) {
-            console.log(`Config already exists at ${CONFIG_PATH}`);
+            info(`Config already exists at ${dim(CONFIG_PATH)}`);
           } else {
             throw err;
           }
         }
 
-        // Step 3: Ask generate or import
+        // Step 3: Wallet setup
+        step(3, TOTAL_STEPS, 'Wallet Setup');
+
         const choice = await rl.question(
-          'Would you like to (g)enerate a new wallet or (i)mport an existing one? [g/i]: ',
+          `  ${cyan('?')} Would you like to ${bold('(g)enerate')} a new wallet or ${bold('(i)mport')} an existing one? ${dim('[g/i]')}: `,
         );
 
         let result: SetupResult;
 
         if (choice.toLowerCase() === 'i') {
-          const mnemonic = await rl.question('Enter your BIP-39 mnemonic phrase: ');
+          const mnemonic = await rl.question(`  ${cyan('?')} Enter your BIP-39 mnemonic phrase: `);
           result = importSetupWallet(db, mnemonic, options.alias);
 
-          console.log('\nWallet imported successfully!');
-          console.log(`  Chain:   ${result.chainId}`);
-          console.log(`  Address: ${result.address}`);
+          success('Wallet imported successfully!');
+          console.log('');
+          box([`${bold('Chain')}    ${result.chainId}`, `${bold('Address')}  ${result.address}`]);
         } else {
           result = generateSetupWallet(db, options.alias);
 
-          console.log('\n--- IMPORTANT: Back up your mnemonic phrase! ---');
-          console.log(`Mnemonic: ${result.mnemonic}`);
-          console.log('--- Keep this safe. You will NOT see it again. ---\n');
+          success('New wallet generated!');
+          console.log('');
 
-          console.log(`  Chain:   ${result.chainId}`);
-          console.log(`  Address: ${result.address}`);
-          console.log(`  Path:    ${result.derivationPath ?? 'N/A'}`);
+          // Mnemonic warning box
+          box(
+            [
+              bold(yellow('⚠  BACK UP YOUR MNEMONIC PHRASE')),
+              '',
+              green(result.mnemonic),
+              '',
+              dim('Write it down and store it somewhere safe.'),
+              dim('You will NOT see this again.'),
+            ],
+            yellow,
+          );
+
+          console.log('');
+          box([
+            `${bold('Chain')}    ${result.chainId}`,
+            `${bold('Address')}  ${result.address}`,
+            `${bold('Path')}     ${result.derivationPath ?? 'N/A'}`,
+          ]);
         }
 
+        // Detach readline before password prompts — its keypress listeners
+        // echo characters even in raw mode. Pause + remove listeners to stop
+        // echo, then resume stdin for raw-mode password input.
+        rl.pause();
+        stdin.removeAllListeners('keypress');
+        stdin.resume();
+
         // Step 4: Encrypt and save keystore
-        const password = await promptPassword(rl, '\nEnter a password to encrypt your keystore: ');
-        const confirmPassword = await promptPassword(rl, 'Confirm password: ');
+        step(4, TOTAL_STEPS, 'Encrypt Keystore');
+
+        const password = await promptPasswordWithRetry(
+          `  ${cyan('?')} Enter a password to encrypt your keystore: `,
+        );
+        const confirmPassword = await promptPasswordWithRetry(`  ${cyan('?')} Confirm password: `);
 
         if (password !== confirmPassword) {
           throw new Error('Passwords do not match.');
         }
 
         saveSetupKeystore(result, password);
-        console.log('\nKeystore saved and encrypted.');
+        success('Keystore saved and encrypted.');
 
-        console.log('\nSetup complete! You can now use `fence swap` to execute trades.');
+        // Step 5: Telemetry opt-in (only if not already configured)
+        const config = loadConfig(CONFIG_PATH);
+        if (config.telemetry === undefined) {
+          step(5, TOTAL_STEPS, 'Anonymous Error Reporting');
+          console.log('');
+          console.log(`  OnlyFence can report anonymous crash data to help improve the tool.`);
+          console.log(
+            `  ${dim('No wallet addresses, keys, balances, or trade data will be sent.')}`,
+          );
+          console.log('');
+
+          const telemetryChoice = await promptYesNo(
+            `  ${cyan('?')} Enable anonymous error reporting? ${dim('[y/N]')}: `,
+          );
+          const enabled = telemetryChoice === 'y';
+
+          updateConfigFile((raw) => {
+            raw['telemetry'] = { enabled };
+          });
+
+          if (enabled) {
+            success('Error reporting enabled. Thank you!');
+          } else {
+            info('Error reporting disabled.');
+          }
+          info(`You can change this later in ${dim('config.toml [telemetry]')}`);
+        }
+
+        // Completion banner
+        console.log('');
+        box(
+          [
+            bold(green('Setup complete!')),
+            '',
+            `Run ${cyan('fence swap')} to execute trades.`,
+            `Run ${cyan('fence --help')} for all commands.`,
+          ],
+          green,
+        );
+        console.log('');
+      } catch (err: unknown) {
+        error(err instanceof Error ? err.message : String(err));
+        throw err;
       } finally {
         db?.close();
         rl.close();
+        stdin.pause();
       }
     });
 }
 
 /**
- * Prompt for a password input. Note: in a real terminal app you would
- * disable echo; readline/promises does not support that natively,
- * so we use a standard prompt.
+ * Prompt for a single-key y/n input using raw stdin.
+ * Returns the lowercase key pressed ('y' or 'n').
+ * Any key other than y/Y defaults to 'n'.
  */
-async function promptPassword(
-  rl: ReturnType<typeof createInterface>,
-  prompt: string,
-): Promise<string> {
-  const password = await rl.question(prompt);
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
+async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
+  const wasRaw = stdin.isRaw;
+  stdin.setRawMode(true);
+  stdout.write(prompt);
+
+  const answer = await new Promise<'y' | 'n'>((resolve) => {
+    const onData = (key: Buffer): void => {
+      const ch = key.toString('utf8');
+
+      if (ch === '\x03') {
+        // Ctrl+C
+        stdin.removeListener('data', onData);
+        stdin.setRawMode(wasRaw);
+        stdout.write('\n');
+        process.exit(130);
+      }
+
+      stdin.removeListener('data', onData);
+      stdin.setRawMode(wasRaw);
+
+      if (ch.toLowerCase() === 'y') {
+        stdout.write('y\n');
+        resolve('y');
+      } else {
+        stdout.write('n\n');
+        resolve('n');
+      }
+    };
+
+    stdin.on('data', onData);
+  });
+
+  return answer;
+}
+
+/**
+ * Prompt for a password with retry on validation failure.
+ * Loops until the user provides a valid password.
+ */
+async function promptPasswordWithRetry(prompt: string): Promise<string> {
+  for (;;) {
+    const password = await promptPassword(prompt);
+    if (password.length >= MIN_PASSWORD_LENGTH) {
+      return password;
+    }
+    warn(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
   }
+}
+
+/**
+ * Prompt for a password input with echo disabled so the password
+ * is not visible in the terminal.
+ *
+ * Raw mode is enabled BEFORE writing the prompt to prevent
+ * the terminal from echoing the first keystroke in plain text.
+ */
+async function promptPassword(prompt: string): Promise<string> {
+  const wasRaw = stdin.isRaw;
+  stdin.setRawMode(true);
+  stdout.write(prompt);
+
+  const password = await new Promise<string>((resolve) => {
+    let buf = '';
+    const onData = (key: Buffer): void => {
+      const ch = key.toString('utf8');
+
+      if (ch === '\r' || ch === '\n') {
+        stdin.removeListener('data', onData);
+        stdin.setRawMode(wasRaw);
+        stdout.write('\n');
+        resolve(buf);
+      } else if (ch === '\x7f' || ch === '\b') {
+        // Backspace
+        if (buf.length > 0) {
+          buf = buf.slice(0, -1);
+          stdout.write('\b \b');
+        }
+      } else if (ch === '\x03') {
+        // Ctrl+C
+        stdin.removeListener('data', onData);
+        stdin.setRawMode(wasRaw);
+        stdout.write('\n');
+        process.exit(130);
+      } else if (!ch.startsWith('\x1b')) {
+        // Ignore escape sequences (arrow keys, etc.)
+        buf += ch;
+        stdout.write('•');
+      }
+    };
+
+    stdin.on('data', onData);
+  });
+
   return password;
 }
