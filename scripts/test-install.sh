@@ -118,58 +118,45 @@ else
   exit 1
 fi
 
-# ─── Step 3b: Verify install.sh auto-launches setup on first install ─────────
-# Run install.sh without SKIP_SETUP and with no keystore to confirm it attempts
-# to launch the setup wizard (without actually running it interactively).
+# ─── Step 3b: Verify installer setup behavior ──────────────────────────────
+# Helper to run install.sh with no TTY and check output for expected message.
+run_install_expect() {
+  local install_dir="$1" expected="$2" label="$3"
+  local output
+  output=$(
+    ONLYFENCE_SKIP_SETUP="" \
+    ONLYFENCE_BASE_URL="file://${OUTPUT_DIR}" \
+    ONLYFENCE_VERSION="${VERSION}" \
+    ONLYFENCE_INSTALL_DIR="${install_dir}" \
+    ONLYFENCE_SKIP_PATH_SETUP=1 \
+    sh "${PROJECT_ROOT}/install.sh" 2>&1 </dev/null || true
+  )
+  if echo "$output" | grep -q "$expected"; then
+    echo "==> PASS: ${label}"
+  else
+    echo "error: ${label}" >&2
+    echo "       Expected: ${expected}" >&2
+    echo "       Output was:" >&2
+    echo "$output" >&2
+    rm -rf "$install_dir"
+    exit 1
+  fi
+}
 
+# First install with no TTY: setup should be skipped (no terminal detected)
 echo ""
-echo "==> Verifying installer auto-setup flow (first install)..."
-
-# Use a clean dir with no keystore to simulate first install
+echo "==> Verifying installer setup flow (first install, no TTY)..."
 FRESH_DIR=$(mktemp -d)
-FRESH_OUTPUT=$(
-  ONLYFENCE_SKIP_SETUP="" \
-  ONLYFENCE_BASE_URL="file://${OUTPUT_DIR}" \
-  ONLYFENCE_VERSION="${VERSION}" \
-  ONLYFENCE_INSTALL_DIR="${FRESH_DIR}" \
-  ONLYFENCE_SKIP_PATH_SETUP=1 \
-  sh "${PROJECT_ROOT}/install.sh" 2>&1 </dev/null || true
-)
+run_install_expect "$FRESH_DIR" \
+  "No interactive terminal detected" \
+  "installer detects no TTY and skips setup on first install"
 
-if echo "$FRESH_OUTPUT" | grep -q "Starting setup wizard"; then
-  echo "==> PASS: installer auto-launches setup wizard on first install"
-else
-  echo "error: installer does NOT auto-launch setup wizard on first install" >&2
-  echo "       Output was:" >&2
-  echo "$FRESH_OUTPUT" >&2
-  rm -rf "$FRESH_DIR"
-  exit 1
-fi
-
-# ─── Step 3c: Verify install.sh skips setup on re-install ───────────────────
-# Simulate a re-install by creating a keystore file in the install dir.
-
+# Re-install with keystore: setup should be skipped (already set up)
 echo "==> Verifying installer skips setup on re-install..."
-
 touch "${FRESH_DIR}/keystore"
-REINSTALL_OUTPUT=$(
-  ONLYFENCE_SKIP_SETUP="" \
-  ONLYFENCE_BASE_URL="file://${OUTPUT_DIR}" \
-  ONLYFENCE_VERSION="${VERSION}" \
-  ONLYFENCE_INSTALL_DIR="${FRESH_DIR}" \
-  ONLYFENCE_SKIP_PATH_SETUP=1 \
-  sh "${PROJECT_ROOT}/install.sh" 2>&1 </dev/null || true
-)
-
-if echo "$REINSTALL_OUTPUT" | grep -q "Existing wallet and config preserved"; then
-  echo "==> PASS: installer skips setup on re-install"
-else
-  echo "error: installer should skip setup when keystore exists (re-install)" >&2
-  echo "       Output was:" >&2
-  echo "$REINSTALL_OUTPUT" >&2
-  rm -rf "$FRESH_DIR"
-  exit 1
-fi
+run_install_expect "$FRESH_DIR" \
+  "Existing wallet and config preserved" \
+  "installer skips setup when keystore exists (re-install)"
 
 rm -rf "$FRESH_DIR"
 
@@ -185,7 +172,7 @@ elif [ -n "$RUN_CMD" ]; then
   echo ""
   echo "==> Launching 'fence ${RUN_CMD}' (data dir: ${RESOLVED_DIR})..."
   echo ""
-  ONLYFENCE_HOME="${RESOLVED_DIR}" "$FENCE_BIN" ${RUN_CMD}
+  ONLYFENCE_HOME="${RESOLVED_DIR}" "$FENCE_BIN" "${RUN_CMD}"
 fi
 
 # ─── Step 5: Cleanup ─────────────────────────────────────────────────────────

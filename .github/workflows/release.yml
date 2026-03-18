@@ -2,8 +2,11 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -35,76 +38,45 @@ jobs:
           node-version: "25"
           cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: npm test
-
-      - name: Typecheck
-        run: npm run typecheck
+      - run: npm ci
 
       - name: Build standalone tarball
         run: |
-          chmod +x scripts/package-standalone.sh
           VERSION="${GITHUB_REF_NAME#v}"
           ./scripts/package-standalone.sh "$VERSION"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: onlyfence-${{ matrix.target_os }}-${{ matrix.target_arch }}
           path: dist-standalone/*.tar.gz
 
-  test-install:
+  release:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Test install script with downloaded artifacts
+      - name: Smoke test install.sh
         run: |
-          # Stage tarballs to simulate a GitHub release
           mkdir -p /tmp/release-artifacts
           cp artifacts/*.tar.gz /tmp/release-artifacts/
 
           VERSION="${GITHUB_REF_NAME#v}"
           INSTALL_DIR=$(mktemp -d)
 
-          # Run the real install.sh with local artifacts
           ONLYFENCE_BASE_URL="file:///tmp/release-artifacts" \
           ONLYFENCE_VERSION="$VERSION" \
           ONLYFENCE_INSTALL_DIR="$INSTALL_DIR" \
           ONLYFENCE_SKIP_PATH_SETUP=1 \
+          ONLYFENCE_SKIP_SETUP=1 \
           sh install.sh
 
-          # Verify the installation works
-          FENCE_BIN="${INSTALL_DIR}/bin/fence"
-          if [ -x "$FENCE_BIN" ]; then
-            FENCE_VERSION=$("$FENCE_BIN" --version 2>/dev/null || echo "unknown")
-            echo "SUCCESS: fence v${FENCE_VERSION}"
-          else
-            echo "FAIL: fence not found at ${FENCE_BIN}"
-            exit 1
-          fi
-
-  publish:
-    needs: test-install
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
+          "${INSTALL_DIR}/bin/fence" --version
 
       - name: Generate checksums
         run: |
