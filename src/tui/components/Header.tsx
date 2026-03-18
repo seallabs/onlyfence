@@ -2,6 +2,7 @@ import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
 import { theme } from '../theme.js';
 import { LogoSmall } from './Logo.js';
+import { CURRENT_VERSION } from '../../update/index.js';
 
 const CHANGELOG = [
   {
@@ -54,7 +55,7 @@ export function Header({ activeTab }: HeaderProps): ReactElement {
                 OnlyFence
               </Text>
               <Text dimColor>AI Trading Guardrails</Text>
-              <Text dimColor>v0.1.0</Text>
+              <Text dimColor>{`v${CURRENT_VERSION}`}</Text>
             </Box>
           </Box>
         </Box>

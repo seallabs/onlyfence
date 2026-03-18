@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { generateMnemonic, validateMnemonic, mnemonicToSeedSync } from 'bip39';
 import { deriveSuiKeypair, SUI_DERIVATION_PATH } from './derivation.js';
+import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import type { WalletInfo, WalletRow } from './types.js';
 
 /**
@@ -79,7 +80,7 @@ export function generateWallet(db: Database.Database, alias?: string): GenerateW
 
   const suiKeypair = deriveSuiKeypair(Buffer.from(seed));
   const suiWallet: WalletInfo = {
-    chain: 'sui',
+    chainId: SUI_CHAIN_ID,
     address: suiKeypair.address,
     derivationPath: SUI_DERIVATION_PATH,
     isPrimary: true,
@@ -124,7 +125,7 @@ export function importFromMnemonic(
   const resolvedAlias = alias ?? generateAlias(db, 'sui', false);
 
   const wallet: WalletInfo = {
-    chain: 'sui',
+    chainId: SUI_CHAIN_ID,
     address: suiKeypair.address,
     derivationPath: SUI_DERIVATION_PATH,
     isPrimary: true,
@@ -172,7 +173,7 @@ export function registerWalletAddress(
   const resolvedAlias = alias ?? generateAlias(db, chain, isWatchOnly);
 
   const wallet: WalletInfo = {
-    chain,
+    chainId: chain,
     address,
     derivationPath: null,
     isPrimary,
@@ -206,7 +207,7 @@ export function listWallets(db: Database.Database): WalletInfo[] {
  * @returns The primary wallet info, or null if none is set
  */
 export function getPrimaryWallet(db: Database.Database, chain: string): WalletInfo | null {
-  const stmt = db.prepare('SELECT * FROM wallets WHERE is_primary = 1 AND chain = ?');
+  const stmt = db.prepare('SELECT * FROM wallets WHERE is_primary = 1 AND chain_id = ?');
   const row = stmt.get(chain) as WalletRow | undefined;
 
   if (row === undefined) {
@@ -245,7 +246,7 @@ export function switchWallet(db: Database.Database, alias: string): void {
     throw new Error(`No wallet found with alias "${alias}"`);
   }
   // Unset all primaries for this chain
-  db.prepare('UPDATE wallets SET is_primary = 0 WHERE chain = ?').run(wallet.chain);
+  db.prepare('UPDATE wallets SET is_primary = 0 WHERE chain_id = ?').run(wallet.chainId);
   // Set this wallet as primary
   db.prepare('UPDATE wallets SET is_primary = 1 WHERE alias = ?').run(alias);
 }
@@ -285,13 +286,13 @@ export function renameAlias(db: Database.Database, oldAlias: string, newAlias: s
  */
 function insertWallet(db: Database.Database, wallet: WalletInfo): void {
   const stmt = db.prepare(`
-    INSERT INTO wallets (chain, address, derivation_path, is_primary, is_watch_only, alias)
-    VALUES (@chain, @address, @derivation_path, @is_primary, @is_watch_only, @alias)
+    INSERT INTO wallets (chain_id, address, derivation_path, is_primary, is_watch_only, alias)
+    VALUES (@chain_id, @address, @derivation_path, @is_primary, @is_watch_only, @alias)
   `);
 
   try {
     stmt.run({
-      chain: wallet.chain,
+      chain_id: wallet.chainId,
       address: wallet.address,
       derivation_path: wallet.derivationPath,
       is_primary: wallet.isPrimary ? 1 : 0,
@@ -311,13 +312,13 @@ function insertWallet(db: Database.Database, wallet: WalletInfo): void {
  */
 function rowToWalletInfo(row: WalletRow): WalletInfo {
   return {
-    chain: row.chain,
+    chainId: row.chain_id,
     address: row.address,
     derivationPath: row.derivation_path,
     isPrimary: row.is_primary === 1,
     isWatchOnly: row.is_watch_only === 1,
     alias:
       row.alias ??
-      `${row.is_watch_only === 1 ? `${row.chain}-watch` : row.chain}-fallback-${row.id}`,
+      `${row.is_watch_only === 1 ? `${row.chain_id}-watch` : row.chain_id}-fallback-${row.id}`,
   };
 }

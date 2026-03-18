@@ -32,9 +32,13 @@ function computeGas(gasUsed: {
  *
  * Constructor creates an owned `SuiJsonRpcClient` instance (no singleton).
  */
+/** CAIP-2 chain identifier for Sui mainnet. */
+export const SUI_CHAIN_ID = 'sui:mainnet' as const;
+
 export class SuiAdapter implements ChainAdapter {
   readonly chain = 'sui' as const;
   private readonly client: SuiJsonRpcClient;
+  readonly chainId = SUI_CHAIN_ID;
 
   constructor(rpcUrl: string, network: 'mainnet' | 'testnet' = 'mainnet') {
     this.client = new SuiJsonRpcClient({ url: rpcUrl, network });

@@ -1,8 +1,8 @@
-import type { PolicyCheck } from '../check.js';
-import type { PolicyContext } from '../context.js';
 import type { ActionIntent } from '../../core/action-types.js';
 import type { CheckResult } from '../../types/result.js';
 import { extractTokenSymbol } from '../../utils/index.js';
+import type { PolicyCheck } from '../check.js';
+import type { PolicyContext } from '../context.js';
 
 /**
  * Policy check that verifies both the source and destination tokens
@@ -49,7 +49,7 @@ export class TokenAllowlistCheck implements PolicyCheck {
       return Promise.resolve({
         status: 'reject' as const,
         reason: 'token_not_allowed',
-        detail: `Source token "${fromSymbol}" is not in the allowlist for chain "${intent.chain}"`,
+        detail: `Source token "${fromSymbol}" is not in the allowlist for chain "${intent.chainId}"`,
         metadata: {
           token: fromSymbol,
           direction: 'from',
@@ -64,7 +64,7 @@ export class TokenAllowlistCheck implements PolicyCheck {
       return Promise.resolve({
         status: 'reject' as const,
         reason: 'token_not_allowed',
-        detail: `Destination token "${toSymbol}" is not in the allowlist for chain "${intent.chain}"`,
+        detail: `Destination token "${toSymbol}" is not in the allowlist for chain "${intent.chainId}"`,
         metadata: {
           token: toSymbol,
           direction: 'to',

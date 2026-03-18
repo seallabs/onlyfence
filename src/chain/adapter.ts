@@ -1,4 +1,5 @@
-import type { BalanceResult, SimulationResult, TxResult, Signer } from '../types/result.js';
+import type { Chain, ChainId } from '../core/action-types.js';
+import type { BalanceResult, Signer, SimulationResult, TxResult } from '../types/result.js';
 
 /**
  * Interface for chain-specific adapters that handle blockchain interactions.
@@ -11,8 +12,11 @@ import type { BalanceResult, SimulationResult, TxResult, Signer } from '../types
  * Post-MVP: EvmAdapter, SvmAdapter
  */
 export interface ChainAdapter {
-  /** Chain identifier (e.g., "sui", "evm", "solana") */
-  readonly chain: string;
+  /** Short chain name used as config key and factory key (e.g., "sui", "ethereum") */
+  readonly chain: Chain;
+
+  /** CAIP-2 chain identifier for DB storage and diagnostics (e.g., "sui:mainnet", "eip155:1") */
+  readonly chainId: ChainId;
 
   /**
    * Get token balances for an address.

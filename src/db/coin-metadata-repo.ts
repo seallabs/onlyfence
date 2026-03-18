@@ -6,7 +6,7 @@ import type { Statement } from 'better-sqlite3';
  */
 export interface CoinMetadataRow {
   readonly coin_type: string;
-  readonly chain: string;
+  readonly chain_id: string;
   readonly symbol: string;
   readonly name: string | null;
   readonly decimals: number;
@@ -23,19 +23,19 @@ export class CoinMetadataRepository {
 
   constructor(private readonly db: Database.Database) {
     this.getStmt = db.prepare(
-      'SELECT coin_type, chain, symbol, name, decimals FROM coin_metadata WHERE coin_type = ? AND chain = ?',
+      'SELECT coin_type, chain_id, symbol, name, decimals FROM coin_metadata WHERE coin_type = ? AND chain_id = ?',
     );
 
     this.upsertStmt = db.prepare(`
-      INSERT OR REPLACE INTO coin_metadata (coin_type, chain, symbol, name, decimals)
-      VALUES (@coin_type, @chain, @symbol, @name, @decimals)
+      INSERT OR REPLACE INTO coin_metadata (coin_type, chain_id, symbol, name, decimals)
+      VALUES (@coin_type, @chain_id, @symbol, @name, @decimals)
     `);
 
     this.upsertBulkTxn = db.transaction((rows: readonly CoinMetadataRow[]) => {
       for (const row of rows) {
         this.upsertStmt.run({
           coin_type: row.coin_type,
-          chain: row.chain,
+          chain_id: row.chain_id,
           symbol: row.symbol,
           name: row.name,
           decimals: row.decimals,
@@ -60,7 +60,7 @@ export class CoinMetadataRepository {
 
     const placeholders = coinTypes.map(() => '?').join(', ');
     const stmt = this.db.prepare(
-      `SELECT coin_type, chain, symbol, name, decimals FROM coin_metadata WHERE coin_type IN (${placeholders}) AND chain = ?`,
+      `SELECT coin_type, chain_id, symbol, name, decimals FROM coin_metadata WHERE coin_type IN (${placeholders}) AND chain_id = ?`,
     );
     return stmt.all(...coinTypes, chain) as CoinMetadataRow[];
   }
@@ -71,7 +71,7 @@ export class CoinMetadataRepository {
   upsert(row: CoinMetadataRow): void {
     this.upsertStmt.run({
       coin_type: row.coin_type,
-      chain: row.chain,
+      chain_id: row.chain_id,
       symbol: row.symbol,
       name: row.name,
       decimals: row.decimals,

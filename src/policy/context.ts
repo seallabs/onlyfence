@@ -1,18 +1,17 @@
 import type { ChainConfig } from '../types/config.js';
 import type { OracleClient } from '../oracle/client.js';
 import type { TradeLog } from '../db/trade-log.js';
-import type Database from 'better-sqlite3';
 
 /**
  * Context provided to each PolicyCheck during evaluation.
  * Contains all dependencies a check might need to make its decision.
+ *
+ * Note: raw database access is intentionally excluded — policy checks
+ * should use TradeLog for trade queries rather than running arbitrary SQL.
  */
 export interface PolicyContext {
   /** Chain-specific configuration including allowlists, limits, etc. */
   readonly config: ChainConfig;
-
-  /** SQLite database connection for direct queries */
-  readonly db: Database.Database;
 
   /** Oracle client for fetching token prices */
   readonly oracle: OracleClient;

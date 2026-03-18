@@ -35,7 +35,7 @@ describe('CachedCoinMetadataService', () => {
     it('returns from DB without calling inner when cached', async () => {
       repo.upsert({
         coin_type: '0x2::sui::SUI',
-        chain: 'sui',
+        chain_id: 'sui',
         symbol: 'SUI',
         name: null,
         decimals: 9,
@@ -73,7 +73,7 @@ describe('CachedCoinMetadataService', () => {
     it('returns decimals via getMetadata', async () => {
       repo.upsert({
         coin_type: '0x2::sui::SUI',
-        chain: 'sui',
+        chain_id: 'sui',
         symbol: 'SUI',
         name: null,
         decimals: 9,
@@ -88,7 +88,7 @@ describe('CachedCoinMetadataService', () => {
     it('skips coins already in DB and fetches only uncached', async () => {
       repo.upsert({
         coin_type: '0x2::sui::SUI',
-        chain: 'sui',
+        chain_id: 'sui',
         symbol: 'SUI',
         name: null,
         decimals: 9,
@@ -120,7 +120,7 @@ describe('CachedCoinMetadataService', () => {
     it('does nothing when all coins are cached', async () => {
       repo.upsert({
         coin_type: '0x2::sui::SUI',
-        chain: 'sui',
+        chain_id: 'sui',
         symbol: 'SUI',
         name: null,
         decimals: 9,

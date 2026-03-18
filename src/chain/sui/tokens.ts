@@ -27,6 +27,24 @@ export const SUI_TOKEN_MAP: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Reverse mapping from coin type address to symbol.
+ * Built once at module load from SUI_TOKEN_MAP.
+ */
+const COIN_TYPE_TO_SYMBOL = new Map<string, string>(
+  Object.entries(SUI_TOKEN_MAP).map(([symbol, coinType]) => [coinType, symbol]),
+);
+
+/**
+ * Resolve a coin type address back to its human-readable symbol.
+ *
+ * @param coinType - Fully-qualified Sui coin type (e.g., "0x2::sui::SUI")
+ * @returns The token symbol, or undefined if not in the registry
+ */
+export function coinTypeToSymbol(coinType: string): string | undefined {
+  return COIN_TYPE_TO_SYMBOL.get(coinType);
+}
+
+/**
  * Resolve a token symbol to its Sui mainnet coin type address.
  *
  * @param symbol - The token symbol (case-sensitive, e.g., "SUI", "USDC")
@@ -66,18 +84,11 @@ export const SUI_KNOWN_DECIMALS: Readonly<Record<string, number>> = Object.fromE
 );
 
 /**
- * Reverse mapping from fully-qualified coin type to token symbol.
- */
-const COIN_TYPE_TO_SYMBOL: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(SUI_TOKEN_MAP).map(([symbol, coinType]) => [coinType, symbol]),
-);
-
-/**
  * Resolve a coin type to its human-readable symbol.
  * Falls back to extracting the last segment of the coin type (e.g., "SUI" from "0x2::sui::SUI").
  */
 export function resolveSymbol(coinType: string): string {
-  const known = COIN_TYPE_TO_SYMBOL[coinType];
+  const known = COIN_TYPE_TO_SYMBOL.get(coinType);
   if (known !== undefined) return known;
   return extractTokenSymbol(coinType);
 }

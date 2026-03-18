@@ -39,7 +39,7 @@ export class CachedCoinMetadataService implements CoinMetadataService {
     // 3. Backfill DB
     this.repo.upsert({
       coin_type: meta.coinType,
-      chain,
+      chain_id: chain,
       symbol: meta.symbol,
       name: null,
       decimals: meta.decimals,
@@ -67,7 +67,7 @@ export class CachedCoinMetadataService implements CoinMetadataService {
     this.repo.upsertBulk(
       results.map((m) => ({
         coin_type: m.coinType,
-        chain,
+        chain_id: chain,
         symbol: m.symbol,
         name: null,
         decimals: m.decimals,

@@ -36,7 +36,7 @@ function createMockLogger(): Logger {
 
 function createSwapIntent(overrides?: Partial<SwapIntent['params']>): SwapIntent {
   return {
-    chain: 'sui',
+    chainId: 'sui:mainnet',
     action: 'swap',
     walletAddress: '0xabc',
     params: {
@@ -69,7 +69,7 @@ const mockBuiltTx: BuiltTransaction = {
 function createMockBuilder(tradeLog: TradeLog): ActionBuilder {
   return {
     builderId: 'test-builder',
-    chain: 'sui',
+    chainId: 'sui:mainnet',
     validate: vi.fn(),
     preview: vi.fn<[], Promise<ActionPreview>>().mockResolvedValue(mockPreview),
     build: vi.fn<[], Promise<BuiltTransaction>>().mockResolvedValue(mockBuiltTx),
@@ -95,7 +95,7 @@ function createMockBuilder(tradeLog: TradeLog): ActionBuilder {
       }
 
       tradeLog.logTrade({
-        chain: intent.chain,
+        chain_id: intent.chainId,
         wallet_address: intent.walletAddress,
         action: intent.action,
         from_token: intent.params.coinTypeIn,
@@ -118,7 +118,7 @@ function createMockChainAdapter(overrides?: {
   readonly signAndSubmit?: TxResult;
 }): ChainAdapter {
   return {
-    chain: 'sui',
+    chainId: 'sui:mainnet',
     getBalance: vi.fn(),
     buildTransactionBytes: vi
       .fn<[], Promise<Uint8Array>>()
@@ -219,7 +219,7 @@ describe('Pipeline Integration Tests', () => {
     expect(result.preview).toEqual(mockPreview);
 
     // Verify trade was logged with event-parsed amounts
-    const trades = tradeLog.getRecentTrades('sui', 10);
+    const trades = tradeLog.getRecentTrades('sui:mainnet', 10);
     expect(trades).toHaveLength(1);
     expect(trades[0]?.policy_decision).toBe('approved');
     expect(trades[0]?.tx_digest).toBe('0xdigest_success');
@@ -251,7 +251,7 @@ describe('Pipeline Integration Tests', () => {
     expect(chainAdapter.signAndSubmit).not.toHaveBeenCalled();
 
     // Trade should still be logged with event-parsed amountOut
-    const trades = tradeLog.getRecentTrades('sui', 10);
+    const trades = tradeLog.getRecentTrades('sui:mainnet', 10);
     expect(trades).toHaveLength(1);
     expect(trades[0]?.tx_digest).toBe('watch-only');
     expect(trades[0]?.amount_out).toBe('98120000');
@@ -282,7 +282,7 @@ describe('Pipeline Integration Tests', () => {
     expect(builder.preview).not.toHaveBeenCalled();
 
     // Trade should be logged as rejected via builder.finish
-    const trades = tradeLog.getRecentTrades('sui', 10);
+    const trades = tradeLog.getRecentTrades('sui:mainnet', 10);
     expect(trades).toHaveLength(1);
     expect(trades[0]?.policy_decision).toBe('rejected');
   });

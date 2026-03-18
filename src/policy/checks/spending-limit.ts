@@ -1,7 +1,7 @@
-import type { PolicyCheck } from '../check.js';
-import type { PolicyContext } from '../context.js';
 import type { ActionIntent } from '../../core/action-types.js';
 import type { CheckResult } from '../../types/result.js';
+import type { PolicyCheck } from '../check.js';
+import type { PolicyContext } from '../context.js';
 
 /**
  * Policy check that enforces per-trade and rolling 24-hour spending limits.
@@ -48,7 +48,7 @@ export class SpendingLimitCheck implements PolicyCheck {
       });
     }
 
-    const rolling24h = ctx.tradeLog.getRolling24hVolume(intent.chain);
+    const rolling24h = ctx.tradeLog.getRolling24hVolume(intent.chainId);
 
     const projectedVolume = rolling24h + tradeValueUsd;
     if (projectedVolume > limits.max_24h_volume) {

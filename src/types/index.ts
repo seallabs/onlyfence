@@ -19,4 +19,6 @@ export type {
   GlobalConfig,
   AppConfig,
   TelemetryConfig,
+  UpdateConfig,
 } from './config.js';
+export type { UpdateCache, UpdateStatus } from './update.js';

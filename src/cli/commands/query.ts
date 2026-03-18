@@ -1,7 +1,9 @@
 import type { Command } from 'commander';
-import type { AppComponents } from '../bootstrap.js';
-import { getPrimaryWallet } from '../../wallet/manager.js';
+import type { Chain } from '../../core/action-types.js';
 import { toErrorMessage } from '../../utils/index.js';
+import { getPrimaryWallet } from '../../wallet/manager.js';
+import type { AppComponents } from '../bootstrap.js';
+import { withComponents } from '../with-components.js';
 
 /**
  * Register the `fence query` command group.
@@ -19,14 +21,8 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
     .description('Query token prices via oracle')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
     .action(async (tokens: string[], options: { output: string }) => {
-      let components: AppComponents;
-      try {
-        components = getComponents();
-      } catch (err: unknown) {
-        console.error(`Error: ${toErrorMessage(err)}`);
-        process.exitCode = 1;
-        return;
-      }
+      const components = withComponents(getComponents);
+      if (components === undefined) return;
 
       const { oracle } = components;
 
@@ -70,26 +66,21 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
     .description('Query wallet balance via chain adapter')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
-    .action(async (options: { chain: string; output: string }) => {
-      let components: AppComponents;
-      try {
-        components = getComponents();
-      } catch (err: unknown) {
-        console.error(`Error: ${toErrorMessage(err)}`);
-        process.exitCode = 1;
-        return;
-      }
+    .action(async (options: { chain: Chain; output: string }) => {
+      const components = withComponents(getComponents);
+      if (components === undefined) return;
 
       const { db, chainAdapterFactory } = components;
-      const chain = options.chain;
+      const chainAlias = options.chain;
 
       try {
-        const wallet = getPrimaryWallet(db, chain);
+        const adapter = chainAdapterFactory.get(chainAlias);
+        const wallet = getPrimaryWallet(db, adapter.chainId);
         if (wallet === null) {
-          throw new Error(`No primary wallet found for chain "${chain}". Run "fence setup" first.`);
+          throw new Error(
+            `No primary wallet found for chain "${chainAlias}". Run "fence setup" first.`,
+          );
         }
-
-        const adapter = chainAdapterFactory.get(chain);
         const balanceResult = await adapter.getBalance(wallet.address);
 
         if (options.output === 'json') {
@@ -105,7 +96,7 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
           console.log(JSON.stringify(serializable, null, 2));
         } else {
           console.log(`Wallet: ${balanceResult.address}`);
-          console.log(`Chain:  ${chain}`);
+          console.log(`Chain:  ${chainAlias}`);
           console.log('');
           console.log('Token          Amount               Decimals');
           console.log('─────          ──────               ────────');

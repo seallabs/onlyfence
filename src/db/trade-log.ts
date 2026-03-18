@@ -1,11 +1,12 @@
 import type Database from 'better-sqlite3';
 import type { Statement } from 'better-sqlite3';
+import type { ChainId } from '../core/action-types.js';
 
 /**
  * Represents a trade record to be inserted into the database.
  */
 export interface TradeRecord {
-  readonly chain: string;
+  readonly chain_id: string;
   readonly wallet_address: string;
   readonly action: 'swap' | 'supply' | 'lp_deposit' | 'lp_withdraw';
   readonly protocol?: string;
@@ -20,6 +21,10 @@ export interface TradeRecord {
   readonly policy_decision: 'approved' | 'rejected';
   readonly rejection_reason?: string;
   readonly rejection_check?: string;
+  /** Fully-qualified on-chain coin type for fromToken (e.g., "0x2::sui::SUI") */
+  readonly from_coin_type?: string;
+  /** Fully-qualified on-chain coin type for toToken */
+  readonly to_coin_type?: string;
 }
 
 /**
@@ -27,7 +32,7 @@ export interface TradeRecord {
  */
 export interface TradeRow {
   readonly id: number;
-  readonly chain: string;
+  readonly chain_id: string;
   readonly wallet_address: string;
   readonly action: string;
   readonly protocol: string | null;
@@ -42,6 +47,8 @@ export interface TradeRow {
   readonly policy_decision: string;
   readonly rejection_reason: string | null;
   readonly rejection_check: string | null;
+  readonly from_coin_type: string | null;
+  readonly to_coin_type: string | null;
   readonly created_at: string;
 }
 
@@ -61,15 +68,17 @@ export class TradeLog {
   constructor(db: Database.Database) {
     this.insertStmt = db.prepare(`
       INSERT INTO trades (
-        chain, wallet_address, action, protocol, pool,
+        chain_id, wallet_address, action, protocol, pool,
         from_token, to_token, amount_in, amount_out,
         value_usd, tx_digest, gas_cost,
-        policy_decision, rejection_reason, rejection_check
+        policy_decision, rejection_reason, rejection_check,
+        from_coin_type, to_coin_type
       ) VALUES (
-        @chain, @wallet_address, @action, @protocol, @pool,
+        @chain_id, @wallet_address, @action, @protocol, @pool,
         @from_token, @to_token, @amount_in, @amount_out,
         @value_usd, @tx_digest, @gas_cost,
-        @policy_decision, @rejection_reason, @rejection_check
+        @policy_decision, @rejection_reason, @rejection_check,
+        @from_coin_type, @to_coin_type
       )
     `);
 
@@ -79,20 +88,20 @@ export class TradeLog {
     this.rolling24hStmt = db.prepare(`
       SELECT COALESCE(SUM(value_usd), 0) as total
       FROM trades
-      WHERE chain = ?
+      WHERE chain_id = ?
         AND created_at > datetime('now', '-24 hours')
         AND policy_decision = 'approved'
     `);
 
     this.recentStmt = db.prepare(`
       SELECT * FROM trades
-      WHERE chain = ?
+      WHERE chain_id = ?
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
     `);
 
     this.countStmt = db.prepare(`
-      SELECT COUNT(*) as count FROM trades WHERE chain = ?
+      SELECT COUNT(*) as count FROM trades WHERE chain_id = ?
     `);
   }
 
@@ -104,7 +113,7 @@ export class TradeLog {
    */
   logTrade(trade: TradeRecord): number {
     const result = this.insertStmt.run({
-      chain: trade.chain,
+      chain_id: trade.chain_id,
       wallet_address: trade.wallet_address,
       action: trade.action,
       protocol: trade.protocol ?? null,
@@ -119,6 +128,8 @@ export class TradeLog {
       policy_decision: trade.policy_decision,
       rejection_reason: trade.rejection_reason ?? null,
       rejection_check: trade.rejection_check ?? null,
+      from_coin_type: trade.from_coin_type ?? null,
+      to_coin_type: trade.to_coin_type ?? null,
     });
 
     return Number(result.lastInsertRowid);
@@ -127,18 +138,18 @@ export class TradeLog {
   /**
    * Get the rolling 24-hour approved trade volume in USD for a given chain.
    *
-   * @param chain - Chain identifier (e.g., "sui")
+   * @param chainId - CAIP-2 chain identifier (e.g., "sui:mainnet")
    * @returns Total USD volume of approved trades in the last 24 hours (0 if none)
    */
-  getRolling24hVolume(chain: string): number {
-    const row = this.rolling24hStmt.get(chain) as { total: number } | undefined;
+  getRolling24hVolume(chainId: ChainId): number {
+    const row = this.rolling24hStmt.get(chainId) as { total: number } | undefined;
     return row?.total ?? 0;
   }
 
   /**
    * Get recent trades for a given chain, ordered by most recent first.
    *
-   * @param chain - Chain identifier (e.g., "sui")
+   * @param chain - CAIP-2 chain identifier (e.g., "sui:mainnet")
    * @param limit - Maximum number of trades to return
    * @param offset - Number of trades to skip (for pagination)
    * @returns Array of trade rows
@@ -150,7 +161,7 @@ export class TradeLog {
   /**
    * Get the total number of trades for a given chain.
    *
-   * @param chain - Chain identifier (e.g., "sui")
+   * @param chain - CAIP-2 chain identifier (e.g., "sui:mainnet")
    * @returns Total trade count
    */
   getTradeCount(chain: string): number {

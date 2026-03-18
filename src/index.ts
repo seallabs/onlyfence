@@ -19,6 +19,9 @@ export type {
   GlobalConfig,
   AppConfig,
   TelemetryConfig,
+  UpdateConfig,
+  UpdateCache,
+  UpdateStatus,
 } from './types/index.js';
 
 // Policy engine
@@ -64,7 +67,17 @@ export type { CoinGeckoOracleConfig } from './oracle/index.js';
 // Chain adapter
 export type { ChainAdapter } from './chain/index.js';
 export { ChainAdapterFactory } from './chain/index.js';
-export { SuiAdapter, SUI_TOKEN_MAP, resolveTokenAddress, isKnownToken } from './chain/index.js';
+export {
+  SuiAdapter,
+  SUI_CHAIN_ID,
+  SUI_TOKEN_MAP,
+  resolveTokenAddress,
+  isKnownToken,
+  coinTypeToSymbol,
+} from './chain/index.js';
+
+// CAIP utilities
+export { formatCAIP19 } from './utils/caip.js';
 
 // Wallet
 export {
@@ -118,6 +131,28 @@ export {
   closeSentry,
   scrubSensitiveData,
 } from './telemetry/index.js';
+
+// Update
+export type {
+  UpdateSource,
+  UpdateCacheService,
+  UpdateChecker,
+  UpdateInstaller,
+} from './update/index.js';
+export {
+  CURRENT_VERSION,
+  UpdateSourceError,
+  GitHubReleasesSource,
+  FileUpdateCacheService,
+  UPDATE_CACHE_PATH,
+  DEFAULT_CACHE_TTL_MS,
+  DefaultUpdateChecker,
+  compareVersions,
+  ShellUpdateInstaller,
+  InstallError,
+  createUpdateChecker,
+  createUpdateInstaller,
+} from './update/index.js';
 
 // Utils
 export { toErrorMessage } from './utils/index.js';

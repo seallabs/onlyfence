@@ -56,7 +56,7 @@ export async function executePipeline<P extends ActionPreviewBase>(
     watchOnly,
   } = input;
 
-  const log = logger.child({ action: intent.action, chain: intent.chain });
+  const log = logger.child({ action: intent.action, chainId: intent.chainId });
 
   try {
     // Step 1: Validate intent params
@@ -138,7 +138,7 @@ export async function executePipeline<P extends ActionPreviewBase>(
     }
 
     log.info({ protector: mevProtector.name }, 'Applying MEV protection');
-    const protectedTx = await mevProtector.protect(txBytes, intent.chain);
+    const protectedTx = await mevProtector.protect(txBytes, intent.chainId);
 
     // Step 9: Sign and submit
     log.info('Signing and submitting transaction');

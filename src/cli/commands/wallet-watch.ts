@@ -1,5 +1,5 @@
-import type { Command } from 'commander';
 import type Database from 'better-sqlite3';
+import type { Command } from 'commander';
 import { registerWalletAddress } from '../../wallet/manager.js';
 
 const SUI_ADDRESS_REGEX = /^0x[0-9a-fA-F]{64}$/;
@@ -28,9 +28,10 @@ export function registerWalletWatchCommand(
         );
       }
       const db = getDb();
-      const result = registerWalletAddress(db, options.chain, address, false, true, options.alias);
+      const chainId = `${options.chain}:mainnet`;
+      const result = registerWalletAddress(db, chainId, address, false, true, options.alias);
       console.log(
-        `Watch-only wallet added: ${address} (${options.chain}) [alias: ${result.wallet.alias}]`,
+        `Watch-only wallet added: ${address} (${chainId}) [alias: ${result.wallet.alias}]`,
       );
     });
 }

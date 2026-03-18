@@ -1,8 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ChainAdapterFactory } from '../chain/factory.js';
-import { SUI_TOKEN_MAP, resolveTokenAddress, isKnownToken } from '../chain/sui/tokens.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChainAdapter } from '../chain/adapter.js';
-import type { BalanceResult, SimulationResult, TxResult, Signer } from '../types/result.js';
+import { ChainAdapterFactory } from '../chain/factory.js';
+import {
+  SUI_TOKEN_MAP,
+  coinTypeToSymbol,
+  isKnownToken,
+  resolveTokenAddress,
+} from '../chain/sui/tokens.js';
+import type { BalanceResult, Signer, SimulationResult, TxResult } from '../types/result.js';
 
 // Mock SuiJsonRpcClient so SuiAdapter can be constructed
 vi.mock('@mysten/sui/jsonRpc', () => ({
@@ -20,9 +25,11 @@ vi.mock('@mysten/bcs', () => ({
 /** Minimal stub adapter for factory tests (not Sui-specific). */
 class StubAdapter implements ChainAdapter {
   readonly chain: string;
+  readonly chainId: string;
 
-  constructor(chain: string) {
+  constructor(chain: string, chainId?: string) {
     this.chain = chain;
+    this.chainId = chainId ?? `${chain}:testnet`;
   }
 
   async getBalance(_address: string): Promise<BalanceResult> {
@@ -95,15 +102,40 @@ describe('ChainAdapterFactory', () => {
 
 describe('SuiAdapter', () => {
   // SuiAdapter now requires an rpcUrl, imported lazily to use mocked deps
-  it('should have chain set to "sui"', async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let adapter: any;
+
+  beforeEach(async () => {
     const { SuiAdapter } = await import('../chain/sui/adapter.js');
-    const adapter = new SuiAdapter('https://rpc.example.com');
+    adapter = new SuiAdapter('https://rpc.example.com');
+  });
+
+  it('should have chain set to "sui"', () => {
     expect(adapter.chain).toBe('sui');
   });
 
-  it('should be registerable with ChainAdapterFactory', async () => {
-    const { SuiAdapter } = await import('../chain/sui/adapter.js');
-    const adapter = new SuiAdapter('https://rpc.example.com');
+  it('should have chainId set to "sui:mainnet"', () => {
+    expect(adapter.chainId).toBe('sui:mainnet');
+  });
+
+  it('getBalance should call the RPC client', async () => {
+    await expect(adapter.getBalance('0xabc')).rejects.toThrow();
+  });
+
+  it('simulate should call the RPC client', async () => {
+    await expect(adapter.simulate(new Uint8Array(), '0xabc')).rejects.toThrow();
+  });
+
+  it('signAndSubmit should call the RPC client', async () => {
+    const signer: Signer = {
+      address: '0xabc',
+      publicKey: new Uint8Array(32),
+      sign: async (_data: Uint8Array) => new Uint8Array(64),
+    };
+    await expect(adapter.signAndSubmit(new Uint8Array(), signer)).rejects.toThrow();
+  });
+
+  it('should be registerable with ChainAdapterFactory', () => {
     const factory = new ChainAdapterFactory();
     factory.register(adapter);
 
@@ -148,5 +180,16 @@ describe('SUI Token Registry', () => {
     for (const token of expectedTokens) {
       expect(SUI_TOKEN_MAP[token]).toBeDefined();
     }
+  });
+
+  it('coinTypeToSymbol should reverse-resolve known coin types', () => {
+    expect(coinTypeToSymbol('0x2::sui::SUI')).toBe('SUI');
+    expect(coinTypeToSymbol(SUI_TOKEN_MAP['USDC']!)).toBe('USDC');
+    expect(coinTypeToSymbol(SUI_TOKEN_MAP['DEEP']!)).toBe('DEEP');
+  });
+
+  it('coinTypeToSymbol should return undefined for unknown coin types', () => {
+    expect(coinTypeToSymbol('0xunknown::module::TOKEN')).toBeUndefined();
+    expect(coinTypeToSymbol('')).toBeUndefined();
   });
 });

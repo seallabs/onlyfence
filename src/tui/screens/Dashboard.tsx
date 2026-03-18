@@ -40,7 +40,7 @@ function statusColor(row: TradeRow): string | undefined {
 
 const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
   { header: 'Time', width: 16, accessor: (r) => shortTime(r.created_at) },
-  { header: 'Chain', width: 6, accessor: (r) => r.chain },
+  { header: 'Chain', width: 6, accessor: (r) => r.chain_id },
   { header: 'From', width: 8, accessor: (r) => coinSymbol(r.from_token) },
   { header: 'To', width: 8, accessor: (r) => coinSymbol(r.to_token) },
   {
@@ -72,14 +72,14 @@ const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
 const BAR_WIDTH = 40;
 
 export function Dashboard(): ReactElement {
-  const { db, config, activeChain, policyRegistry, tradeLog } = useTui();
+  const { db, config, activeChain, activeChainId, policyRegistry, tradeLog } = useTui();
 
   const chainConfig = config.chain[activeChain];
 
   const { data } = useAutoRefresh<DashboardData>(() => {
-    const wallet = getPrimaryWallet(db, activeChain);
-    const volume = tradeLog.getRolling24hVolume(activeChain);
-    const trades = tradeLog.getRecentTrades(activeChain, 5);
+    const wallet = getPrimaryWallet(db, activeChainId);
+    const volume = tradeLog.getRolling24hVolume(activeChainId);
+    const trades = tradeLog.getRecentTrades(activeChainId, 5);
     return {
       walletAddress: wallet?.address ?? null,
       volume24h: volume,
@@ -87,10 +87,10 @@ export function Dashboard(): ReactElement {
     };
   }, 5000);
 
-  const maxVolume = chainConfig?.limits?.max_24h_volume ?? 0;
+  const maxVolume = chainConfig.limits?.max_24h_volume ?? 0;
   const volumePercent = maxVolume > 0 ? Math.min((data.volume24h / maxVolume) * 100, 100) : 0;
   const filledWidth = Math.round((volumePercent / 100) * BAR_WIDTH);
-  const tokens = chainConfig?.allowlist?.tokens ?? [];
+  const tokens = chainConfig.allowlist?.tokens ?? [];
   const checks = policyRegistry.registeredChecks;
 
   return (
@@ -200,10 +200,10 @@ export function Dashboard(): ReactElement {
             {'Spending Limits'}
           </Text>
           <Text color={theme.eyes}>
-            {`Max Single Trade: ${chainConfig?.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : 'None'}`}
+            {`Max Single Trade: ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : 'None'}`}
           </Text>
           <Text color={theme.eyes}>
-            {`Max 24h Volume:   ${chainConfig?.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : 'None'}`}
+            {`Max 24h Volume:   ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : 'None'}`}
           </Text>
         </Box>
       </Box>

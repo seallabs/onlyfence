@@ -53,7 +53,7 @@ describe('SpendingLimitCheck', () => {
   it('should reject when trade pushes 24h volume over limit', async () => {
     // Insert prior approved trades summing to $400
     tradeLog.logTrade({
-      chain: 'sui',
+      chain_id: 'sui:mainnet',
       wallet_address: '0xabc',
       action: 'swap',
       from_token: 'SUI',
@@ -98,7 +98,7 @@ describe('SpendingLimitCheck', () => {
   it('should not count rejected trades in 24h volume', async () => {
     // Insert a rejected trade (should not count)
     tradeLog.logTrade({
-      chain: 'sui',
+      chain_id: 'sui:mainnet',
       wallet_address: '0xabc',
       action: 'swap',
       from_token: 'SUI',

@@ -1,11 +1,12 @@
-import type { Command } from 'commander';
 import type Database from 'better-sqlite3';
-import type { AppComponents } from '../bootstrap.js';
-import { listWallets } from '../../wallet/manager.js';
+import type { Command } from 'commander';
 import { toErrorMessage } from '../../utils/index.js';
-import { registerWalletWatchCommand } from './wallet-watch.js';
-import { registerWalletSwitchCommand } from './wallet-switch.js';
+import { listWallets } from '../../wallet/manager.js';
+import type { AppComponents } from '../bootstrap.js';
+import { withComponents } from '../with-components.js';
 import { registerWalletRenameCommand } from './wallet-rename.js';
+import { registerWalletSwitchCommand } from './wallet-switch.js';
+import { registerWalletWatchCommand } from './wallet-watch.js';
 
 /**
  * Register the `fence wallet` command group.
@@ -32,14 +33,8 @@ export function registerWalletCommand(program: Command, getComponents: () => App
     .description('List all wallets')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
     .action((options: { output: string }) => {
-      let components: AppComponents;
-      try {
-        components = getComponents();
-      } catch (err: unknown) {
-        console.error(`Error: ${toErrorMessage(err)}`);
-        process.exitCode = 1;
-        return;
-      }
+      const components = withComponents(getComponents);
+      if (components === undefined) return;
 
       const { db } = components;
 
@@ -60,7 +55,7 @@ export function registerWalletCommand(program: Command, getComponents: () => App
             const primaryStr = w.isPrimary ? '*' : '';
             const watchStr = w.isWatchOnly ? '*' : '';
             console.log(
-              `${w.alias.padEnd(13)}${w.chain.padEnd(10)}${primaryStr.padEnd(9)}${watchStr.padEnd(12)}${w.address}`,
+              `${w.alias.padEnd(13)}${w.chainId.padEnd(10)}${primaryStr.padEnd(9)}${watchStr.padEnd(12)}${w.address}`,
             );
           }
         }
