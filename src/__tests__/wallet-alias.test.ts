@@ -135,7 +135,7 @@ describe('wallet alias', () => {
 
       expect(wallet).not.toBeNull();
       expect(wallet!.address).toBe('0xlookup');
-      expect(wallet!.chain).toBe('sui');
+      expect(wallet!.chainId).toBe('sui');
       expect(wallet!.alias).toBe('find-me');
     });
 

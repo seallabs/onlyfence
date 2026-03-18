@@ -31,7 +31,7 @@ function statusColor(row: TradeRow): string | undefined {
 const COLUMNS: readonly Column<TradeRow>[] = [
   { header: 'ID', width: 6, accessor: (r) => String(r.id) },
   { header: 'Time', width: 20, accessor: (r) => r.created_at },
-  { header: 'Chain', width: 6, accessor: (r) => r.chain },
+  { header: 'Chain', width: 6, accessor: (r) => r.chain_id },
   { header: 'Action', width: 8, accessor: (r) => r.action },
   { header: 'From', width: 8, accessor: (r) => coinSymbol(r.from_token) },
   { header: 'To', width: 8, accessor: (r) => coinSymbol(r.to_token) },
@@ -67,15 +67,15 @@ const COLUMNS: readonly Column<TradeRow>[] = [
 ];
 
 export function TradeHistory(): ReactElement {
-  const { activeChain, mode, tradeLog } = useTui();
+  const { activeChain, activeChainId, mode, tradeLog } = useTui();
 
   const [page, setPage] = useState(0);
   const [selectedRow, setSelectedRow] = useState(0);
   const pageRef = useRef(0);
 
   const { data, refresh } = useAutoRefresh(() => {
-    const trades = tradeLog.getRecentTrades(activeChain, PAGE_SIZE, pageRef.current * PAGE_SIZE);
-    const totalCount = tradeLog.getTradeCount(activeChain);
+    const trades = tradeLog.getRecentTrades(activeChainId, PAGE_SIZE, pageRef.current * PAGE_SIZE);
+    const totalCount = tradeLog.getTradeCount(activeChainId);
     return { trades, totalCount };
   }, 5000);
 

@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import type { AppComponents } from '../bootstrap.js';
 import { toErrorMessage } from '../../utils/index.js';
+import { withComponents } from '../with-components.js';
 
 /**
  * Register the `fence stats` command.
@@ -14,14 +15,8 @@ export function registerStatsCommand(program: Command, getComponents: () => AppC
     .option('-d, --days <days>', 'Show stats for last N days', '30')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
     .action((options: { days: string; output: string }) => {
-      let components: AppComponents;
-      try {
-        components = getComponents();
-      } catch (err: unknown) {
-        console.error(`Error: ${toErrorMessage(err)}`);
-        process.exitCode = 1;
-        return;
-      }
+      const components = withComponents(getComponents);
+      if (components === undefined) return;
 
       const { cliEventLog } = components;
       const days = parseInt(options.days, 10);

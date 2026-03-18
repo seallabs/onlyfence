@@ -1,3 +1,5 @@
+import type { Chain } from '../core/action-types.js';
+
 /**
  * Token allowlist configuration for a chain.
  * Only tokens in this list are permitted for trading.
@@ -93,15 +95,26 @@ export interface TelemetryConfig {
 }
 
 /**
+ * Update configuration for automatic version checking and installation.
+ */
+export interface UpdateConfig {
+  /** Whether to silently install updates (true) or ask the user first (false) */
+  readonly auto_install: boolean;
+}
+
+/**
  * Root application configuration parsed from ~/.onlyfence/config.toml.
  */
 export interface AppConfig {
   /** Per-chain configuration keyed by chain name */
-  readonly chain: Record<string, ChainConfig>;
+  readonly chain: Record<Chain, ChainConfig>;
 
   /** Global settings (post-MVP) */
   readonly global?: GlobalConfig;
 
   /** Anonymous telemetry / error reporting */
   readonly telemetry?: TelemetryConfig;
+
+  /** Automatic update settings */
+  readonly update?: UpdateConfig;
 }

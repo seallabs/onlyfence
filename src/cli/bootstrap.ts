@@ -1,27 +1,27 @@
 import type Database from 'better-sqlite3';
 import type { Logger } from 'pino';
-import type { AppConfig } from '../types/config.js';
-import type { OracleClient } from '../oracle/client.js';
-import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
-import { openDatabase, DB_PATH } from '../db/connection.js';
-import { loadConfig, CONFIG_PATH } from '../config/loader.js';
-import { CoinGeckoOracle } from '../oracle/coingecko.js';
-import { TradeLog } from '../db/trade-log.js';
-import { CliEventLog } from '../db/cli-events.js';
-import { PolicyCheckRegistry } from '../policy/registry.js';
-import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
-import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { ChainAdapterFactory } from '../chain/factory.js';
-import { SuiAdapter } from '../chain/sui/adapter.js';
-import { ActionBuilderRegistry } from '../core/action-builder.js';
 import { SuiSwapBuilder } from '../chain/sui/7k/swap.js';
-import { getLogger } from '../logger/index.js';
-import { initSentry } from '../telemetry/sentry.js';
+import { SuiAdapter } from '../chain/sui/adapter.js';
+import { SUI_KNOWN_DECIMALS } from '../chain/sui/tokens.js';
+import { CONFIG_PATH, loadConfig } from '../config/loader.js';
+import { ActionBuilderRegistry } from '../core/action-builder.js';
+import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
+import { CachedCoinMetadataService } from '../data/cached-coin-metadata.js';
 import type { CoinMetadataService } from '../data/coin-metadata.js';
 import { NoodlesCoinMetadataService } from '../data/coin-metadata.js';
-import { CachedCoinMetadataService } from '../data/cached-coin-metadata.js';
+import { CliEventLog } from '../db/cli-events.js';
 import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
-import { SUI_KNOWN_DECIMALS } from '../chain/sui/tokens.js';
+import { DB_PATH, openDatabase } from '../db/connection.js';
+import { TradeLog } from '../db/trade-log.js';
+import { getLogger } from '../logger/index.js';
+import type { OracleClient } from '../oracle/client.js';
+import { CoinGeckoOracle } from '../oracle/coingecko.js';
+import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
+import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
+import { PolicyCheckRegistry } from '../policy/registry.js';
+import { initSentry } from '../telemetry/sentry.js';
+import type { AppConfig } from '../types/config.js';
 
 /**
  * All initialized application components returned by bootstrap.
@@ -38,6 +38,9 @@ export interface AppComponents {
   readonly mevProtectors: Map<string, MevProtector>;
   readonly coinMetadataService: CoinMetadataService;
   readonly logger: Logger;
+
+  /** Close the database and release resources. Safe to call multiple times. */
+  close(): void;
 }
 
 /**
@@ -75,6 +78,18 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const mevProtectors = buildMevProtectors();
   const coinMetadataService = buildCoinMetadataService(db);
 
+  let closed = false;
+
+  function close(): void {
+    if (closed) return;
+    closed = true;
+    try {
+      db.close();
+    } catch (err: unknown) {
+      logger.warn({ err }, 'Error closing database');
+    }
+  }
+
   logger.info('Bootstrap complete');
 
   return {
@@ -89,6 +104,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     mevProtectors,
     coinMetadataService,
     logger,
+    close,
   };
 }
 

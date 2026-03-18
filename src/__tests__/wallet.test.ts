@@ -113,7 +113,7 @@ describe('Wallet Manager', () => {
 
     it('should create a Sui wallet with the correct derivation path', () => {
       const result = generateWallet(db);
-      const suiWallet = result.wallets.find((w) => w.chain === 'sui');
+      const suiWallet = result.wallets.find((w) => w.chainId === 'sui:mainnet');
       expect(suiWallet).toBeDefined();
       expect(suiWallet?.derivationPath).toBe(SUI_DERIVATION_PATH);
       expect(suiWallet?.isPrimary).toBe(true);
@@ -133,7 +133,7 @@ describe('Wallet Manager', () => {
 
     it('should import a valid mnemonic and derive the Sui address', () => {
       const result = importFromMnemonic(db, TEST_MNEMONIC);
-      expect(result.wallet.chain).toBe('sui');
+      expect(result.wallet.chainId).toBe('sui:mainnet');
       expect(result.wallet.address).toMatch(/^0x[0-9a-f]{64}$/);
       expect(result.wallet.derivationPath).toBe(SUI_DERIVATION_PATH);
     });
@@ -162,7 +162,7 @@ describe('Wallet Manager', () => {
   describe('registerWalletAddress', () => {
     it('should import a wallet with a raw key', () => {
       const result = registerWalletAddress(db, 'sui', '0xabc123', true);
-      expect(result.wallet.chain).toBe('sui');
+      expect(result.wallet.chainId).toBe('sui');
       expect(result.wallet.address).toBe('0xabc123');
       expect(result.wallet.derivationPath).toBeNull();
       expect(result.wallet.isPrimary).toBe(true);

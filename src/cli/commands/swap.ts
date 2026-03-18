@@ -1,7 +1,13 @@
 import type { Command } from 'commander';
 import { resolveTokenAddress, scaleToSmallestUnit } from '../../chain/sui/tokens.js';
 import type { ActionBuilder } from '../../core/action-builder.js';
-import type { PipelineResult, SwapIntent, SwapPreview } from '../../core/action-types.js';
+import type {
+  Chain,
+  ChainId,
+  PipelineResult,
+  SwapIntent,
+  SwapPreview,
+} from '../../core/action-types.js';
 import { NoOpMevProtector } from '../../core/mev-protector.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
 import type { PolicyContext } from '../../policy/context.js';
@@ -17,6 +23,7 @@ import type {
   SuccessResponse,
 } from '../output.js';
 import { printJsonOutput } from '../output.js';
+import { withComponents } from '../with-components.js';
 
 /** Shared fallback MEV protector for chains without a registered protector. */
 const FALLBACK_MEV_PROTECTOR = new NoOpMevProtector();
@@ -48,23 +55,13 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
         amountStr: string,
         options: {
           slippage: string;
-          chain: string;
+          chain: Chain;
           password?: string;
           output: string;
         },
       ) => {
-        let components: AppComponents;
-        try {
-          components = getComponents();
-        } catch (err: unknown) {
-          const errorOutput: ErrorResponse = {
-            status: 'error',
-            message: toErrorMessage(err),
-          };
-          printJsonOutput(errorOutput);
-          process.exitCode = 1;
-          return;
-        }
+        const components = withComponents(getComponents);
+        if (components === undefined) return;
 
         const {
           db,
@@ -79,23 +76,18 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           logger,
         } = components;
         const chain = options.chain;
+        const chainId: ChainId = `${chain}:mainnet`;
         const log = logger.child({ command: 'swap' });
 
         try {
           // Validate chain config exists
           const chainConfig = config.chain[chain];
-          if (chainConfig === undefined) {
-            throw new Error(
-              `No configuration found for chain "${chain}". ` +
-                `Available chains: ${Object.keys(config.chain).join(', ')}`,
-            );
-          }
 
           // Get wallet address
-          const wallet = getPrimaryWallet(db, chain);
+          const wallet = getPrimaryWallet(db, chainId);
           if (wallet === null) {
             throw new Error(
-              `No primary wallet found for chain "${chain}". Run "fence setup" first.`,
+              `No primary wallet found for chain "${chainId}". Run "fence setup" first.`,
             );
           }
 
@@ -135,7 +127,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
 
           // Build SwapIntent
           const intent: SwapIntent = {
-            chain,
+            chainId,
             action: 'swap',
             walletAddress: wallet.address,
             params: {
@@ -150,7 +142,6 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           // Build policy context
           const policyCtx: PolicyContext = {
             config: chainConfig,
-            db,
             oracle,
             tradeLog,
             ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
@@ -221,7 +212,7 @@ function mapPipelineResultToOutput(
     case 'success': {
       const output: SuccessResponse = {
         status: 'success',
-        chain: intent.chain,
+        chain: intent.chainId,
         action: intent.action,
         txDigest: result.txDigest ?? '',
         fromToken: intent.params.coinTypeIn,
@@ -238,7 +229,7 @@ function mapPipelineResultToOutput(
     case 'simulated': {
       const output: SimulatedResponse = {
         status: 'simulated',
-        chain: intent.chain,
+        chain: intent.chainId,
         action: intent.action,
         fromToken: intent.params.coinTypeIn,
         toToken: intent.params.coinTypeOut,
@@ -256,7 +247,7 @@ function mapPipelineResultToOutput(
     case 'rejected': {
       const output: RejectionResponse = {
         status: 'rejected',
-        chain: intent.chain,
+        chain: intent.chainId,
         action: intent.action,
         check: result.rejectionCheck ?? 'unknown',
         reason: result.rejectionReason ?? 'policy_rejected',

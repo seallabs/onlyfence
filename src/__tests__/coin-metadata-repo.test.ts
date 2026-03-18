@@ -15,7 +15,7 @@ describe('CoinMetadataRepository', () => {
 
   const suiRow: CoinMetadataRow = {
     coin_type: '0x2::sui::SUI',
-    chain: 'sui',
+    chain_id: 'sui',
     symbol: 'SUI',
     name: 'Sui',
     decimals: 9,
@@ -23,7 +23,7 @@ describe('CoinMetadataRepository', () => {
 
   const usdcRow: CoinMetadataRow = {
     coin_type: '0xdba3::usdc::USDC',
-    chain: 'sui',
+    chain_id: 'sui',
     symbol: 'USDC',
     name: null,
     decimals: 6,

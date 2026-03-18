@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import type { SwapIntent } from '../core/action-types.js';
 import type { TradeRecord } from '../db/trade-log.js';
 import { TradeLog } from '../db/trade-log.js';
@@ -25,7 +26,7 @@ export function createIntent(
 ): SwapIntent {
   const { params: paramOverrides, ...rest } = overrides ?? {};
   return {
-    chain: 'sui',
+    chainId: SUI_CHAIN_ID,
     action: 'swap',
     walletAddress: '0xabc',
     params: {
@@ -50,7 +51,6 @@ export function createContext(
 ): PolicyContext {
   return {
     config,
-    db,
     oracle: createMockOracle(),
     tradeLog: new TradeLog(db),
     ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
@@ -61,9 +61,9 @@ export function createContext(
  * Insert a test wallet into the database for foreign key constraints.
  */
 export function insertTestWallet(db: Database.Database, address: string = '0xabc'): void {
-  db.prepare(`INSERT OR IGNORE INTO wallets (chain, address, is_primary) VALUES ('sui', ?, 1)`).run(
-    address,
-  );
+  db.prepare(
+    `INSERT OR IGNORE INTO wallets (chain_id, address, is_primary) VALUES ('sui:mainnet', ?, 1)`,
+  ).run(address);
 }
 
 /**
@@ -71,7 +71,7 @@ export function insertTestWallet(db: Database.Database, address: string = '0xabc
  */
 export function createTradeRecord(overrides?: Partial<TradeRecord>): TradeRecord {
   return {
-    chain: 'sui',
+    chain_id: SUI_CHAIN_ID,
     wallet_address: '0xabc',
     action: 'swap',
     from_token: 'SUI',

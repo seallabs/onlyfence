@@ -27,14 +27,14 @@ describe('TradeLog', () => {
       const id = tradeLog.logTrade(createTradeRecord({ value_usd: undefined }));
       expect(id).toBe(1);
 
-      const rows = tradeLog.getRecentTrades('sui', 10);
+      const rows = tradeLog.getRecentTrades('sui:mainnet', 10);
       expect(rows).toHaveLength(1);
       expect(rows[0]?.value_usd).toBeNull();
     });
 
     it('should handle optional fields as null', () => {
       const id = tradeLog.logTrade({
-        chain: 'sui',
+        chain_id: 'sui:mainnet',
         wallet_address: '0xabc',
         action: 'swap',
         from_token: 'SUI',
@@ -46,7 +46,7 @@ describe('TradeLog', () => {
       });
       expect(id).toBe(1);
 
-      const rows = tradeLog.getRecentTrades('sui', 10);
+      const rows = tradeLog.getRecentTrades('sui:mainnet', 10);
       expect(rows).toHaveLength(1);
       expect(rows[0]?.protocol).toBeNull();
       expect(rows[0]?.pool).toBeNull();
@@ -58,7 +58,7 @@ describe('TradeLog', () => {
 
   describe('getRolling24hVolume', () => {
     it('should return 0 when there are no trades', () => {
-      const volume = tradeLog.getRolling24hVolume('sui');
+      const volume = tradeLog.getRolling24hVolume('sui:mainnet');
       expect(volume).toBe(0);
     });
 
@@ -66,7 +66,7 @@ describe('TradeLog', () => {
       tradeLog.logTrade(createTradeRecord({ value_usd: 100 }));
       tradeLog.logTrade(createTradeRecord({ value_usd: 200 }));
 
-      const volume = tradeLog.getRolling24hVolume('sui');
+      const volume = tradeLog.getRolling24hVolume('sui:mainnet');
       expect(volume).toBe(300);
     });
 
@@ -81,15 +81,15 @@ describe('TradeLog', () => {
         }),
       );
 
-      const volume = tradeLog.getRolling24hVolume('sui');
+      const volume = tradeLog.getRolling24hVolume('sui:mainnet');
       expect(volume).toBe(100);
     });
 
     it('should filter by chain', () => {
-      tradeLog.logTrade(createTradeRecord({ chain: 'sui', value_usd: 100 }));
-      tradeLog.logTrade(createTradeRecord({ chain: 'evm', value_usd: 200 }));
+      tradeLog.logTrade(createTradeRecord({ chain_id: 'sui:mainnet', value_usd: 100 }));
+      tradeLog.logTrade(createTradeRecord({ chain_id: 'evm', value_usd: 200 }));
 
-      expect(tradeLog.getRolling24hVolume('sui')).toBe(100);
+      expect(tradeLog.getRolling24hVolume('sui:mainnet')).toBe(100);
       expect(tradeLog.getRolling24hVolume('evm')).toBe(200);
     });
 
@@ -97,14 +97,14 @@ describe('TradeLog', () => {
       tradeLog.logTrade(createTradeRecord({ value_usd: 100 }));
       tradeLog.logTrade(createTradeRecord({ value_usd: undefined }));
 
-      const volume = tradeLog.getRolling24hVolume('sui');
+      const volume = tradeLog.getRolling24hVolume('sui:mainnet');
       expect(volume).toBe(100);
     });
   });
 
   describe('getRecentTrades', () => {
     it('should return empty array when no trades exist', () => {
-      const trades = tradeLog.getRecentTrades('sui', 10);
+      const trades = tradeLog.getRecentTrades('sui:mainnet', 10);
       expect(trades).toHaveLength(0);
     });
 
@@ -112,7 +112,7 @@ describe('TradeLog', () => {
       tradeLog.logTrade(createTradeRecord({ from_token: 'SUI', value_usd: 10 }));
       tradeLog.logTrade(createTradeRecord({ from_token: 'USDC', value_usd: 20 }));
 
-      const trades = tradeLog.getRecentTrades('sui', 10);
+      const trades = tradeLog.getRecentTrades('sui:mainnet', 10);
       expect(trades).toHaveLength(2);
       // Most recent first (higher ID = later insert)
       expect(trades[0]?.from_token).toBe('USDC');
@@ -124,7 +124,7 @@ describe('TradeLog', () => {
       tradeLog.logTrade(createTradeRecord({ value_usd: 20 }));
       tradeLog.logTrade(createTradeRecord({ value_usd: 30 }));
 
-      const trades = tradeLog.getRecentTrades('sui', 2);
+      const trades = tradeLog.getRecentTrades('sui:mainnet', 2);
       expect(trades).toHaveLength(2);
     });
 
@@ -134,33 +134,33 @@ describe('TradeLog', () => {
       tradeLog.logTrade(createTradeRecord({ from_token: 'DEEP', value_usd: 30 }));
 
       // Most recent first: DEEP, USDC, SUI — skip first, get next 2
-      const trades = tradeLog.getRecentTrades('sui', 2, 1);
+      const trades = tradeLog.getRecentTrades('sui:mainnet', 2, 1);
       expect(trades).toHaveLength(2);
       expect(trades[0]?.from_token).toBe('USDC');
       expect(trades[1]?.from_token).toBe('SUI');
     });
 
     it('should filter by chain', () => {
-      tradeLog.logTrade(createTradeRecord({ chain: 'sui' }));
-      tradeLog.logTrade(createTradeRecord({ chain: 'evm' }));
+      tradeLog.logTrade(createTradeRecord({ chain_id: 'sui:mainnet' }));
+      tradeLog.logTrade(createTradeRecord({ chain_id: 'evm' }));
 
-      const suiTrades = tradeLog.getRecentTrades('sui', 10);
+      const suiTrades = tradeLog.getRecentTrades('sui:mainnet', 10);
       expect(suiTrades).toHaveLength(1);
-      expect(suiTrades[0]?.chain).toBe('sui');
+      expect(suiTrades[0]?.chain_id).toBe('sui:mainnet');
     });
   });
 
   describe('getTradeCount', () => {
     it('should return 0 when no trades exist', () => {
-      expect(tradeLog.getTradeCount('sui')).toBe(0);
+      expect(tradeLog.getTradeCount('sui:mainnet')).toBe(0);
     });
 
     it('should count all trades for a chain', () => {
       tradeLog.logTrade(createTradeRecord());
       tradeLog.logTrade(createTradeRecord({ tx_digest: '0x2' }));
-      tradeLog.logTrade(createTradeRecord({ chain: 'evm', tx_digest: '0x3' }));
+      tradeLog.logTrade(createTradeRecord({ chain_id: 'evm', tx_digest: '0x3' }));
 
-      expect(tradeLog.getTradeCount('sui')).toBe(2);
+      expect(tradeLog.getTradeCount('sui:mainnet')).toBe(2);
       expect(tradeLog.getTradeCount('evm')).toBe(1);
     });
   });

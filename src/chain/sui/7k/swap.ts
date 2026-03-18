@@ -151,11 +151,13 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent, SwapPreview> {
     const amountOut = parsed?.amountOut ?? preview?.expectedOutput;
 
     this.tradeLog.logTrade({
-      chain: intent.chain,
+      chain_id: intent.chainId,
       wallet_address: intent.walletAddress,
       action: intent.action,
       from_token: intent.params.coinTypeIn,
       to_token: intent.params.coinTypeOut,
+      from_coin_type: intent.params.coinTypeIn,
+      to_coin_type: intent.params.coinTypeOut,
       amount_in: intent.params.amountIn,
       policy_decision: status,
       ...(amountOut !== undefined ? { amount_out: amountOut } : {}),
@@ -163,7 +165,7 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent, SwapPreview> {
       ...(gasUsed !== undefined ? { gas_cost: gasUsed } : {}),
       ...(rejection?.reason !== undefined ? { rejection_reason: rejection.reason } : {}),
       ...(rejection?.check !== undefined ? { rejection_check: rejection.check } : {}),
-      ...(intent.tradeValueUsd !== undefined ? { trade_value_usd: intent.tradeValueUsd } : {}),
+      ...(intent.tradeValueUsd !== undefined ? { value_usd: intent.tradeValueUsd } : {}),
     });
   }
 

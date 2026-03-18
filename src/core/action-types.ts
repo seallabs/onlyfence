@@ -6,10 +6,12 @@
 
 /** Supported DeFi actions -- extend this union to add new action types */
 export type DeFiAction = 'swap' | 'supply' | 'lp_deposit' | 'lp_withdraw';
+export type Chain = 'sui';
+export type ChainId = `${Chain}:${string}`;
 
 /** Base intent -- all actions share these fields */
 export interface ActionIntentBase {
-  readonly chain: string;
+  readonly chainId: ChainId;
   readonly action: DeFiAction;
   readonly walletAddress: string;
 }

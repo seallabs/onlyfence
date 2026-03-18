@@ -1,10 +1,11 @@
 import type {
+  AllowlistConfig,
   AppConfig,
   ChainConfig,
-  AllowlistConfig,
-  LimitsConfig,
   GlobalConfig,
+  LimitsConfig,
   TelemetryConfig,
+  UpdateConfig,
 } from '../types/config.js';
 
 /**
@@ -105,10 +106,16 @@ export function validateConfig(raw: unknown): AppConfig {
     throw new ConfigValidationError('"telemetry" must be an object if present', 'telemetry');
   }
 
+  const update = raw['update'];
+  if (update !== undefined && !isRecord(update)) {
+    throw new ConfigValidationError('"update" must be an object if present', 'update');
+  }
+
   return {
     chain: validatedChains,
     ...(global !== undefined ? { global: validateGlobalConfig(global) } : {}),
     ...(telemetry !== undefined ? { telemetry: validateTelemetryConfig(telemetry) } : {}),
+    ...(update !== undefined ? { update: validateUpdateConfig(update) } : {}),
   };
 }
 
@@ -181,6 +188,15 @@ function validateTelemetryConfig(raw: Record<string, unknown>): TelemetryConfig 
     enabled,
     ...(typeof dsn === 'string' ? { dsn } : {}),
   };
+}
+
+function validateUpdateConfig(raw: Record<string, unknown>): UpdateConfig {
+  const autoInstall = raw['auto_install'];
+  if (typeof autoInstall !== 'boolean') {
+    throw new ConfigValidationError('"auto_install" must be a boolean', 'update.auto_install');
+  }
+
+  return { auto_install: autoInstall };
 }
 
 function validateLimits(raw: unknown, path: string): LimitsConfig {

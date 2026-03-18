@@ -4,6 +4,7 @@ import { initConfig, CONFIG_PATH } from '../config/loader.js';
 import { ConfigAlreadyExistsError } from '../config/schema.js';
 import { generateWallet, importFromMnemonic } from './manager.js';
 import { saveKeystore } from './keystore.js';
+import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import type { KeystoreData } from './types.js';
 
 /**
@@ -13,7 +14,7 @@ import type { KeystoreData } from './types.js';
 export interface SetupResult {
   readonly mnemonic: string;
   readonly address: string;
-  readonly chain: string;
+  readonly chainId: string;
   readonly derivationPath: string | null;
   readonly privateKeyHex: string;
 }
@@ -46,7 +47,7 @@ export function generateSetupWallet(db: Database.Database, alias?: string): Setu
   return {
     mnemonic: result.mnemonic,
     address: wallet?.address ?? '',
-    chain: wallet?.chain ?? 'sui',
+    chainId: wallet?.chainId ?? SUI_CHAIN_ID,
     derivationPath: wallet?.derivationPath ?? null,
     privateKeyHex: result.privateKeyHex,
   };
@@ -69,7 +70,7 @@ export function importSetupWallet(
   return {
     mnemonic: trimmed,
     address: result.wallet.address,
-    chain: result.wallet.chain,
+    chainId: result.wallet.chainId,
     derivationPath: result.wallet.derivationPath,
     privateKeyHex: result.privateKeyHex,
   };
@@ -84,7 +85,7 @@ export function importSetupWallet(
 export function saveSetupKeystore(result: SetupResult, password: string): void {
   const keystoreData: KeystoreData = {
     mnemonic: result.mnemonic,
-    keys: { [result.chain]: result.privateKeyHex },
+    keys: { [result.chainId]: result.privateKeyHex },
   };
   saveKeystore(keystoreData, password);
 }

@@ -23,6 +23,9 @@ const SALT_LENGTH = 32;
 /** Default keystore file path. */
 export const DEFAULT_KEYSTORE_PATH = join(ONLYFENCE_DIR, 'keystore');
 
+/** Minimum password length for keystore encryption. */
+export const MIN_PASSWORD_LENGTH = 8;
+
 /**
  * Encrypt keystore data with a password and write to disk.
  *
