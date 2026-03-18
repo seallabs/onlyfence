@@ -10,3 +10,4 @@ coverage/
 *.tsbuildinfo
 dist-standalone/
 .claude/settings.local.json
+docs/superpowers/**

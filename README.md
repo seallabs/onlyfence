@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start"><img src="https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen?style=flat-square" alt="Node.js >=20" /></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen?style=flat-square" alt="Node.js >=23" /></a>
   <a href="#"><img src="https://img.shields.io/badge/version-0.1.0-blue?style=flat-square" alt="v0.1.0" /></a>
   <a href="#supported-chains"><img src="https://img.shields.io/badge/chain-Sui-4da2ff?style=flat-square" alt="Sui" /></a>
   <a href="#"><img src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript strict" /></a>
