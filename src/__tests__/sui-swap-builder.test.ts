@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { SwapIntent } from '../core/action-types.js';
-import type { ActionPreview } from '../core/action-builder.js';
+import type { SwapIntent, SwapPreview } from '../core/action-types.js';
 
 // Mock MetaAg
 const mockQuote = vi.fn();
@@ -42,7 +41,7 @@ beforeEach(async () => {
 function makeSwapIntent(overrides?: Partial<SwapIntent['params']>): SwapIntent {
   return {
     action: 'swap',
-    chain: 'sui',
+    chainId: 'sui:mainnet',
     walletAddress: '0x' + 'a'.repeat(64),
     params: {
       coinTypeIn: '0x2::sui::SUI',
@@ -56,44 +55,48 @@ function makeSwapIntent(overrides?: Partial<SwapIntent['params']>): SwapIntent {
 
 describe('SuiSwapBuilder', () => {
   it('has correct builderId and chain', () => {
-    const builder = new SuiSwapBuilder();
+    const mockTradeLog = { logTrade: vi.fn() } as unknown as import('../db/trade-log.js').TradeLog;
+    const builder = new SuiSwapBuilder(mockTradeLog);
     expect(builder.builderId).toBe('7k-swap');
     expect(builder.chain).toBe('sui');
   });
 
   describe('validate', () => {
+    let builder: InstanceType<typeof SuiSwapBuilder>;
+
+    beforeEach(() => {
+      const mockTradeLog = {
+        logTrade: vi.fn(),
+      } as unknown as import('../db/trade-log.js').TradeLog;
+      builder = new SuiSwapBuilder(mockTradeLog);
+    });
+
     it('throws when coinTypeIn equals coinTypeOut', () => {
-      const builder = new SuiSwapBuilder();
       const intent = makeSwapIntent({ coinTypeOut: '0x2::sui::SUI' });
       expect(() => builder.validate(intent)).toThrow('Cannot swap token to itself');
     });
 
     it('throws when amountIn is zero', () => {
-      const builder = new SuiSwapBuilder();
       const intent = makeSwapIntent({ amountIn: '0' });
       expect(() => builder.validate(intent)).toThrow('Invalid amount');
     });
 
     it('throws when amountIn is negative', () => {
-      const builder = new SuiSwapBuilder();
       const intent = makeSwapIntent({ amountIn: '-1' });
       expect(() => builder.validate(intent)).toThrow('Invalid amount');
     });
 
     it('throws when coinTypeIn is empty', () => {
-      const builder = new SuiSwapBuilder();
       const intent = makeSwapIntent({ coinTypeIn: '' });
       expect(() => builder.validate(intent)).toThrow('Missing token types');
     });
 
     it('throws when coinTypeOut is empty', () => {
-      const builder = new SuiSwapBuilder();
       const intent = makeSwapIntent({ coinTypeOut: '' });
       expect(() => builder.validate(intent)).toThrow('Missing token types');
     });
 
     it('does not throw for valid intent', () => {
-      const builder = new SuiSwapBuilder();
       expect(() => builder.validate(makeSwapIntent())).not.toThrow();
     });
   });
@@ -111,7 +114,10 @@ describe('SuiSwapBuilder', () => {
       };
       mockQuote.mockResolvedValue([fakeQuote]);
 
-      const builder = new SuiSwapBuilder();
+      const mockTradeLog = {
+        logTrade: vi.fn(),
+      } as unknown as import('../db/trade-log.js').TradeLog;
+      const builder = new SuiSwapBuilder(mockTradeLog);
       const intent = makeSwapIntent();
       const preview = await builder.preview(intent);
 
@@ -141,7 +147,10 @@ describe('SuiSwapBuilder', () => {
       };
       mockQuote.mockResolvedValue([quote1, quote2]);
 
-      const builder = new SuiSwapBuilder();
+      const mockTradeLog = {
+        logTrade: vi.fn(),
+      } as unknown as import('../db/trade-log.js').TradeLog;
+      const builder = new SuiSwapBuilder(mockTradeLog);
       const preview = await builder.preview(makeSwapIntent());
 
       // quote2 has higher amountOut (2600000 > 2490000/2500000)
@@ -152,14 +161,20 @@ describe('SuiSwapBuilder', () => {
     it('throws when no quotes available', async () => {
       mockQuote.mockResolvedValue([]);
 
-      const builder = new SuiSwapBuilder();
+      const mockTradeLog = {
+        logTrade: vi.fn(),
+      } as unknown as import('../db/trade-log.js').TradeLog;
+      const builder = new SuiSwapBuilder(mockTradeLog);
       await expect(builder.preview(makeSwapIntent())).rejects.toThrow('No swap quotes available');
     });
 
     it('throws on network error from quote', async () => {
       mockQuote.mockRejectedValue(new Error('Network timeout'));
 
-      const builder = new SuiSwapBuilder();
+      const mockTradeLog = {
+        logTrade: vi.fn(),
+      } as unknown as import('../db/trade-log.js').TradeLog;
+      const builder = new SuiSwapBuilder(mockTradeLog);
       await expect(builder.preview(makeSwapIntent())).rejects.toThrow('Failed to fetch swap quote');
     });
   });
@@ -175,7 +190,8 @@ describe('SuiSwapBuilder', () => {
         id: 'q1',
       };
 
-      const preview: ActionPreview = {
+      const preview: SwapPreview = {
+        action: 'swap',
         description: 'Swap via cetus',
         expectedOutput: '2500000',
         provider: 'cetus',
@@ -184,7 +200,10 @@ describe('SuiSwapBuilder', () => {
 
       mockSwap.mockResolvedValue('coin-out-arg');
 
-      const builder = new SuiSwapBuilder();
+      const mockTradeLog = {
+        logTrade: vi.fn(),
+      } as unknown as import('../db/trade-log.js').TradeLog;
+      const builder = new SuiSwapBuilder(mockTradeLog);
       const result = await builder.build(makeSwapIntent(), preview);
 
       expect(result.transaction).toBeDefined();

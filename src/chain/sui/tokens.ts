@@ -1,3 +1,4 @@
+import BigNumber from 'bignumber.js';
 import { extractTokenSymbol } from '../../utils/index.js';
 
 /**
@@ -118,8 +119,11 @@ export function scaleToSmallestUnit(humanAmount: string, decimals: number): stri
   if (isNaN(float) || float <= 0) {
     throw new Error(`Invalid amount "${humanAmount}": must be a positive number`);
   }
-  const scaled = Math.floor(float * 10 ** decimals);
-  return scaled.toString();
+  const scaled = BigNumber(float)
+    .times(10 ** decimals)
+    .integerValue(BigNumber.ROUND_FLOOR)
+    .toString();
+  return scaled;
 }
 
 /**

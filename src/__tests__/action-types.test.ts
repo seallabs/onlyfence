@@ -5,7 +5,7 @@ describe('ActionIntent', () => {
   it('discriminates SwapIntent by action field', () => {
     const intent: ActionIntent = {
       action: 'swap',
-      chain: 'sui',
+      chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
         coinTypeIn: '0x2::sui::SUI',
@@ -25,7 +25,7 @@ describe('ActionIntent', () => {
   it('discriminates SupplyIntent by action field', () => {
     const intent: ActionIntent = {
       action: 'supply',
-      chain: 'sui',
+      chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
         coinType: '0x2::sui::SUI',

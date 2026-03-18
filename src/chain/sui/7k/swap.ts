@@ -6,6 +6,7 @@ import type {
   FinishContext,
 } from '../../../core/action-builder.js';
 import type { SwapIntent, SwapPreview } from '../../../core/action-types.js';
+import { toErrorMessage } from '../../../utils/index.js';
 import type { TradeLog } from '../../../db/trade-log.js';
 import type { SwapEventAmounts } from './events.js';
 import { parseSwapEvent } from './events.js';
@@ -74,8 +75,7 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent, SwapPreview> {
         { sender: intent.walletAddress },
       )
       .catch((e: unknown) => {
-        const message = e instanceof Error ? e.message : String(e);
-        throw new Error(`Failed to fetch swap quote: ${message}`);
+        throw new Error(`Failed to fetch swap quote: ${toErrorMessage(e)}`);
       });
 
     // Map quotes to a normalized shape, preferring simulatedAmountOut over amountOut

@@ -61,6 +61,13 @@ export class SuiAdapter implements ChainAdapter {
   }
 
   async buildTransactionBytes(transaction: unknown): Promise<Uint8Array> {
+    if (
+      typeof transaction !== 'object' ||
+      transaction === null ||
+      typeof (transaction as Record<string, unknown>)['build'] !== 'function'
+    ) {
+      throw new Error('Expected a Sui Transaction object with a build() method');
+    }
     const tx = transaction as { build(opts: { client: SuiJsonRpcClient }): Promise<Uint8Array> };
     return tx.build({ client: this.client });
   }

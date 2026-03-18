@@ -7,18 +7,13 @@ import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { formatSmallestUnit } from '../../chain/sui/tokens.js';
+import { extractTokenSymbol } from '../../utils/index.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
 interface DashboardData {
   readonly walletAddress: string | null;
   readonly volume24h: number;
   readonly trades: readonly TradeRow[];
-}
-
-/** Extract the coin symbol from a full type path (e.g. "0x2::sui::SUI" -> "SUI"). */
-function coinSymbol(typeTag: string): string {
-  const parts = typeTag.split('::');
-  return parts[parts.length - 1] ?? typeTag;
 }
 
 /** Format an ISO timestamp to a compact "MM-DD HH:MM:SS" string. */
@@ -41,8 +36,8 @@ function statusColor(row: TradeRow): string | undefined {
 const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
   { header: 'Time', width: 16, accessor: (r) => shortTime(r.created_at) },
   { header: 'Chain', width: 6, accessor: (r) => r.chain_id },
-  { header: 'From', width: 8, accessor: (r) => coinSymbol(r.from_token) },
-  { header: 'To', width: 8, accessor: (r) => coinSymbol(r.to_token) },
+  { header: 'From', width: 8, accessor: (r) => extractTokenSymbol(r.from_token) },
+  { header: 'To', width: 8, accessor: (r) => extractTokenSymbol(r.to_token) },
   {
     header: 'Amount In',
     width: 16,

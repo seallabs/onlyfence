@@ -6,6 +6,8 @@
  * when the API is unreachable or returns no data.
  */
 
+import { extractTokenSymbol, toErrorMessage } from '../utils/index.js';
+
 /**
  * Immutable metadata for a single coin type.
  */
@@ -90,9 +92,8 @@ export class NoodlesCoinMetadataService implements CoinMetadataService {
         return fallback;
       }
 
-      const reason = apiError instanceof Error ? apiError.message : String(apiError);
       throw new Error(
-        `Cannot resolve decimals for coin type "${coinType}": API failed (${reason}) and no local fallback`,
+        `Cannot resolve decimals for coin type "${coinType}": API failed (${toErrorMessage(apiError)}) and no local fallback`,
       );
     }
   }
@@ -151,10 +152,6 @@ export class NoodlesCoinMetadataService implements CoinMetadataService {
     const decimals = this.knownDecimals[coinType];
     if (decimals === undefined) return undefined;
 
-    // Extract symbol from coin type (last segment after ::)
-    const parts = coinType.split('::');
-    const symbol = parts[parts.length - 1] ?? coinType;
-
-    return { coinType, symbol, decimals };
+    return { coinType, symbol: extractTokenSymbol(coinType), decimals };
   }
 }

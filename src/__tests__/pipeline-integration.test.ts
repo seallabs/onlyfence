@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3';
 import type { ChainAdapter } from '../chain/adapter.js';
 import type { ActionBuilder, BuiltTransaction, FinishContext } from '../core/action-builder.js';
 import { parseSwapEvent } from '../chain/sui/7k/events.js';
-import type { ActionPreview, SwapIntent } from '../core/action-types.js';
+import type { SwapPreview, SwapIntent } from '../core/action-types.js';
 import type { Signer, SimulationResult, TxResult } from '../types/result.js';
 import type { ChainConfig } from '../types/config.js';
 import type { PolicyContext } from '../policy/context.js';
@@ -15,7 +15,7 @@ import { TradeLog } from '../db/trade-log.js';
 import { openMemoryDatabase } from '../db/connection.js';
 import { NoOpMevProtector } from '../core/mev-protector.js';
 import { executePipeline } from '../core/transaction-pipeline.js';
-import { createMockOracle, insertTestWallet } from './helpers.js';
+import { createMockOracle, createMockLogger, createIntent, insertTestWallet } from './helpers.js';
 
 // --- Shared fixtures ---
 
@@ -25,31 +25,8 @@ const chainConfig: ChainConfig = {
   limits: { max_single_trade: 1000, max_24h_volume: 5000 },
 };
 
-function createMockLogger(): Logger {
-  return {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    child: vi.fn().mockReturnThis(),
-  } as unknown as Logger;
-}
-
-function createSwapIntent(overrides?: Partial<SwapIntent['params']>): SwapIntent {
-  return {
-    chainId: 'sui:mainnet',
-    action: 'swap',
-    walletAddress: '0xabc',
-    params: {
-      coinTypeIn: '0x2::sui::SUI',
-      coinTypeOut: '0xdba3::usdc::USDC',
-      amountIn: '100000000',
-      slippageBps: 100,
-      ...overrides,
-    },
-  };
-}
-
-const mockPreview: ActionPreview = {
+const mockPreview: SwapPreview = {
+  action: 'swap',
   description: 'Swap 100 SUI -> USDC',
   expectedOutput: '98120000',
   provider: '7k',
@@ -195,7 +172,7 @@ describe('Pipeline Integration Tests', () => {
   });
 
   it('full success path: intent -> policy -> preview -> build -> simulate -> sign -> submit -> finish', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder(tradeLog);
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -227,7 +204,7 @@ describe('Pipeline Integration Tests', () => {
   });
 
   it('watch-only path: stops after simulate and returns simulated with gasEstimate', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder(tradeLog);
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -258,7 +235,7 @@ describe('Pipeline Integration Tests', () => {
   });
 
   it('policy rejection: token not in allowlist returns rejected with check name', async () => {
-    const intent = createSwapIntent({ coinTypeOut: '0xaaa::bbb::DOGE' });
+    const intent = createIntent({ params: { coinTypeOut: '0xaaa::bbb::DOGE' } });
     const builder = createMockBuilder(tradeLog);
     const chainAdapter = createMockChainAdapter();
     const mevProtector = new NoOpMevProtector();
@@ -288,7 +265,7 @@ describe('Pipeline Integration Tests', () => {
   });
 
   it('simulation failure: simulate returns success=false -> simulation_failed', async () => {
-    const intent = createSwapIntent();
+    const intent = createIntent();
     const builder = createMockBuilder(tradeLog);
     const chainAdapter = createMockChainAdapter({
       simulate: { success: false, gasEstimate: 0, error: 'InsufficientGas', rawResponse: {} },
