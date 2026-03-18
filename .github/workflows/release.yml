@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "23"
+          node-version: "24"
           cache: "npm"
 
       - name: Install dependencies
@@ -56,8 +56,36 @@ jobs:
           name: onlyfence-${{ matrix.target_os }}-${{ matrix.target_arch }}
           path: dist-standalone/*.tar.gz
 
-  publish:
+  test-install:
     needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Test install script with downloaded artifacts
+        run: |
+          # Move tarballs to a temp directory to simulate GitHub release
+          mkdir -p /tmp/release-artifacts
+          cp artifacts/*.tar.gz /tmp/release-artifacts/
+
+          # Test installation using file:// URLs
+          chmod +x scripts/test-install.sh
+          ./scripts/test-install.sh --no-build --keep
+        env:
+          ONLYFENCE_BASE_URL: file:///tmp/release-artifacts
+
+  publish:
+    needs: test-install
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -98,10 +126,18 @@ jobs:
             npm install -g onlyfence@${{ github.ref_name }}
             ```
 
-      - name: Publish to npm
+      - name: Publish to npm (stable releases only)
+        if: "!contains(github.ref_name, '-')"
         run: |
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         continue-on-error: true
+
+      - name: Skip npm publish for pre-release
+        if: "contains(github.ref_name, '-')"
+        run: |
+          echo "Pre-release version detected (${{ github.ref_name }}). Skipping npm publish."
+          echo "GitHub Release created successfully. Team members can install via:"
+          echo "  ONLYFENCE_VERSION=${{ github.ref_name }} curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh"

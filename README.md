@@ -1,74 +1,164 @@
 <p align="center">
-  <img src="static/img/logo/png/logo-512.png" width="160" alt="OnlyFence — pixel art blue octopus logo" />
+  <img src="static/img/logo/png/logo-512.png" width="160" alt="OnlyFence logo — AI crypto trading safety tool" />
 </p>
 
 <h1 align="center">OnlyFence</h1>
 
 <p align="center">
-  <strong>Agent Wallet Guardrails for DeFi</strong><br />
-  <sub>Standalone CLI &middot; Zero Infrastructure &middot; Multi-Chain</sub>
+  <strong>Safe, full-featured DeFi toolkit for AI agents.</strong><br />
+  <sub>Guardrails first. Swap, lend, borrow, and manage positions — without risking your wallet.</sub>
 </p>
 
 <p align="center">
-  <a href="#quick-start"><img src="https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen?style=flat-square" alt="Node.js >=23" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/version-0.1.0-blue?style=flat-square" alt="v0.1.0" /></a>
-  <a href="#supported-chains"><img src="https://img.shields.io/badge/chain-Sui-4da2ff?style=flat-square" alt="Sui" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript strict" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/infra-zero-22c55e?style=flat-square" alt="Zero infrastructure" /></a>
-</p>
-
-<p align="center">
-  <code>npm install -g onlyfence</code> &mdash; set your limits &mdash; let the agent trade within the fence.
+  <a href="#install"><img src="https://img.shields.io/badge/install-one%20command-brightgreen?style=for-the-badge" alt="One command install" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge" alt="v0.1.0" /></a>
+  <a href="#supported-chains"><img src="https://img.shields.io/badge/chain-Sui-4da2ff?style=for-the-badge" alt="Sui blockchain" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GNU%20GPLv3-22c55e?style=for-the-badge" alt="GNU GPLv3" /></a>
 </p>
 
 ---
 
-## The Problem
+## What is OnlyFence?
 
-AI trading agents hold raw private keys with unlimited access. A single prompt injection can drain the wallet. Wallet owners have zero visibility into what the agent is doing — every trade is fire-and-forget.
+OnlyFence is a **free, open-source DeFi toolkit** that gives your AI agent full onchain capabilities — **with safety guardrails built in from day one**.
 
-## The Solution
+Your agent can swap tokens, lend, borrow, open and close positions, and run complex strategies. OnlyFence makes sure it can **never go beyond the limits you set**.
 
-OnlyFence sits between the agent and the blockchain. Every trade passes through a configurable policy pipeline **locally** before it touches the chain. No server, no account, no infrastructure — just `npm install` and go.
+Think of it like giving your AI agent a **company credit card with spending limits** instead of handing over your bank account.
+
+<!-- TODO: [IMAGE] Hero graphic — split screen showing "Without OnlyFence" (wallet drained, red scary) vs "With OnlyFence" (agent running strategies safely within guardrails) -->
+
+### The Problem
+
+AI agents need wallet access to trade, lend, borrow, and manage positions. But raw wallet access means:
+
+- The agent can trade tokens you didn't approve
+- There's no limit on how much it can spend
+- A single bug or prompt injection can drain everything in seconds
+- You have zero visibility into what it's actually doing
+
+**You wouldn't give an employee unlimited access to the company funds.** So why give your AI agent unlimited access to your wallet?
+
+### The Solution
+
+OnlyFence gives your agent **everything it needs to execute DeFi strategies** — while keeping you in control.
 
 ```
-Agent → fence swap SUI USDC 100 → Policy Engine → Blockchain
-                                       │
-                           ┌───────────┴───────────┐
-                           │  Token allowlist  ✅/❌ │
-                           │  Spending limits  ✅/❌ │
-                           │  24h volume cap   ✅/❌ │
-                           └───────────────────────┘
+Your AI Agent → OnlyFence → Blockchain
+                   │
+      ┌────────────┴────────────┐
+      │  ✅ Token approved?      │
+      │  ✅ Under trade limit?   │
+      │  ✅ Under daily limit?   │
+      │  ✅ Strategy allowed?    │
+      └─────────────────────────┘
+
+  All checks pass → action executes
+  Any check fails → action blocked, you stay safe
 ```
 
-## Features
+<!-- TODO: [VIDEO] 30-second demo — show `fence setup` creating a wallet, then `fence swap` with a trade getting approved, then a trade getting blocked by spending limit -->
 
-- **Policy Engine** — Composable pipeline of safety checks, short-circuits on first rejection. Drop in new checks without modifying existing code.
-- **Token Allowlist** — Only approved tokens can be traded, per chain.
-- **Spending Limits** — Per-trade USD cap + rolling 24-hour volume limit.
-- **Wallet Management** — BIP-39 mnemonic generation, Ed25519/secp256k1 key derivation, encrypted keystores.
-- **Full Audit Trail** — Every trade attempt (approved or rejected) logged to SQLite with timestamps, amounts, and policy decisions.
-- **Interactive TUI** — Full-screen terminal dashboard with live policy config, trade history, and wallet info.
-- **Oracle Integration** — Real-time USD pricing with retry logic and graceful degradation.
-- **JSON Output** — Machine-readable output for agent integration (`--output json`).
-- **Zero Infrastructure** — Everything runs locally. No backend, no database server, no hosted services.
-- **Powered by 7K Aggregator** — Optimal swap routing across all major Sui DEXes (Cetus, DeepBook, Bluefin, FlowX, Turbos).
+---
 
-## Quick Start
+## What Can Your Agent Do With OnlyFence?
 
-### Install
+| Action | Status | Description |
+|--------|--------|-------------|
+| **Swap** | Live | Trade tokens across multiple DEXes with best-price routing |
+| **Check balance** | Live | Query wallet balances and token prices |
+| **Lend** | Coming soon | Supply assets to lending protocols to earn yield |
+| **Borrow** | Coming soon | Borrow against collateral for leveraged strategies |
+| **Open position** | Coming soon | Enter leveraged long/short positions |
+| **Close position** | Coming soon | Exit positions and take profit or cut losses |
+| **LP (Liquidity)** | Coming soon | Deposit, withdraw, compound, and rebalance LP positions |
+| **Stake** | Coming soon | Stake tokens for protocol rewards |
 
-```bash
+Every action goes through your safety rules first. Your agent gets rich DeFi capabilities — you keep full control.
+
+<!-- TODO: [IMAGE] Diagram showing the agent in the center connected to multiple DeFi actions (swap, lend, borrow, LP, stake) with a shield/fence icon in between -->
+
+---
+
+## Why OnlyFence?
+
+| | Without OnlyFence | With OnlyFence |
+|---|---|---|
+| **DeFi capabilities** | Build everything yourself | Swap, lend, borrow, LP — out of the box |
+| **Spending control** | Unlimited — agent can spend everything | You set per-trade and daily limits |
+| **Token control** | Agent can trade anything | Only tokens you approve |
+| **Visibility** | No idea what the agent is doing | Full history with audit log |
+| **Your keys** | Often sent to a server | Stay on your computer, encrypted |
+| **Infrastructure** | Usually needs a server or account | Nothing — runs 100% on your machine |
+| **Cost** | Often paid service | Free and open source |
+
+---
+
+## Install
+
+One command. Takes about 30 seconds.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/seallabs/onlyfence/main/install.sh | sh
+```
+
+That's it. No account needed. No sign-up. No credit card.
+
+<!-- TODO: [GIF] Terminal recording of the install script running — show the output messages and success -->
+
+<details>
+<summary><strong>Other ways to install</strong></summary>
+
+**Using npm** (if you already have Node.js):
+```sh
+npm install -g onlyfence
+```
+
+**Manual install** (from source):
+```sh
 git clone https://github.com/seallabs/onlyfence.git
 cd onlyfence
 npm install && npm run build
 ```
 
-### Setup
+</details>
 
-```bash
+<details>
+<summary><strong>Don't have Node.js?</strong></summary>
+
+OnlyFence needs Node.js 23 or higher. If the installer says Node.js is missing, install it first:
+
+**macOS:**
+```sh
+brew install node
+```
+
+**Linux (Ubuntu/Debian):**
+```sh
+curl -fsSL https://fnm.vercel.app/install | sh
+fnm install 23
+```
+
+Then run the OnlyFence install command again.
+
+</details>
+
+### Requirements
+
+- **macOS** (Intel or Apple Silicon) or **Linux** (x64 or ARM64)
+- **Node.js 23+** (the installer will tell you if it's missing)
+
+---
+
+## Getting Started
+
+### Step 1: Set Up Your Wallet
+
+```sh
 fence setup
 ```
+
+The setup wizard walks you through everything:
 
 ```
 ? How would you like to set up your wallet?
@@ -78,17 +168,49 @@ fence setup
 ✓ Wallet generated. Back up this mnemonic:
   abandon ability able about above ...
 
-  Sui:    0x7a3f...e821
+  Sui: 0x7a3f...e821
 
-✓ Keystore encrypted. Saved to ~/.onlyfence/keystore
-✓ Config initialized at ~/.onlyfence/config.toml
-✓ Database initialized at ~/.onlyfence/trades.db
+✓ Keystore encrypted
+✓ Config initialized
+✓ Database initialized
+
+  You're all set! Run `fence` to open the dashboard.
 ```
 
-### Trade
+<!-- TODO: [GIF] Terminal recording of `fence setup` — show the interactive prompts and the success output -->
 
-```bash
-# Swap 10 SUI for USDC — policy checks run automatically
+> **Important:** Write down the mnemonic phrase (the list of words) and keep it somewhere safe. This is the only way to recover your wallet. OnlyFence will never show it again.
+
+### Step 2: Set Your Rules
+
+Your safety rules are in a simple config file. The defaults are sensible, but you can change them anytime:
+
+```sh
+fence config show
+```
+
+```toml
+[chain.sui.allowlist]
+tokens = ["SUI", "USDC", "USDT", "DEEP", "BLUE", "WAL"]   # Only these tokens can be traded
+
+[chain.sui.limits]
+max_single_trade = 200.0     # No single trade above $200
+max_24h_volume   = 500.0     # No more than $500 per day total
+```
+
+**Change a rule:**
+```sh
+# Allow up to $1000 per day
+fence config set chain.sui.limits.max_24h_volume 1000
+
+# Add a new token to the approved list
+fence config set chain.sui.allowlist.tokens '["SUI", "USDC", "USDT", "DEEP", "BLUE", "WAL", "CETUS"]'
+```
+
+### Step 3: Let Your Agent Work
+
+```sh
+# Swap tokens — guardrails check every trade automatically
 fence swap SUI USDC 10
 
 # Check wallet balance
@@ -96,12 +218,19 @@ fence query balance
 
 # Get token prices
 fence query price SUI,USDC
+
+# Coming soon: lend, borrow, open positions, and more
+# fence lend SUI 100 --protocol navi
+# fence borrow USDC 50 --collateral SUI
 ```
 
-### Interactive Dashboard
+Your agent calls these commands and gets structured JSON responses. Every action is checked against your rules before it touches the chain.
 
-```bash
-# Launch TUI (run fence with no arguments)
+### Step 4: Open the Dashboard
+
+You don't have to use the command line for everything. OnlyFence includes a **full interactive dashboard** right in your terminal — just run:
+
+```sh
 fence
 ```
 
@@ -110,97 +239,72 @@ fence
 │ <1> Dashboard  <2> Trades  <3> Policy  <4> Wallet  <q> Quit │
 │                                                              │
 │   ▀▀▀▀▀                                                     │
-│   ▀█▀█▀█   OnlyFence          Release Notes                 │
-│   ▀▀ ▀▀ ▀   AI Trading        ────────────────────────────  │
-│   ▄ ▄ ▄ ▄   Guardrails        v0.1.0  Initial release       │
+│   ▀█▀█▀█   OnlyFence          Account Balance               │
+│   ▀▀ ▀▀ ▀   AI Trading        ──────────────────────        │
+│   ▄ ▄ ▄ ▄   Guardrails        SUI   42.5    $38.25          │
+│                                USDC  100.0   $100.00         │
 ╰──────────────────────────────────────────────────────────────╯
 ```
 
-## Configuration
+From the dashboard you can:
+- **See your balances** and portfolio at a glance
+- **Browse trade history** — every action your agent took, with status
+- **View and change your safety rules** — no need to edit config files manually
+- **Manage wallets** — switch between wallets, check addresses
 
-All policy rules live in TOML at `~/.onlyfence/config.toml`. Rules are per-chain because tokens, protocols, and pool addresses differ across blockchains.
+<!-- TODO: [IMAGE] Screenshot of the actual TUI dashboard — full terminal width, showing the Dashboard tab with balance widget -->
 
-```toml
-[chain.sui]
-rpc = "https://fullnode.mainnet.sui.io"
+<!-- TODO: [GIF] Quick walkthrough of TUI tabs — switch from Dashboard to Trades to Policy to Wallet, showing each screen -->
 
-[chain.sui.allowlist]
-tokens = ["SUI", "USDC", "USDT", "DEEP", "BLUE", "WAL"]
-
-[chain.sui.limits]
-max_single_trade = 200.0     # USD per trade
-max_24h_volume   = 500.0     # USD rolling 24h cap
-```
-
-```bash
-fence config init                                    # Create default config
-fence config show                                    # View current config
-fence config set chain.sui.limits.max_single_trade 500  # Update a value
-```
+---
 
 ## How It Works
 
+When your agent calls any OnlyFence command, here's what happens:
+
 ```
-┌─ OnlyFence CLI ─────────────────────────────────┐
-│                                                  │
-│  TOML Config  →  Policy Engine (in-process)      │
-│  SQLite DB    →  Trade Log + Rolling Volume      │
-│  Keystore     →  Sign & Submit                   │
-│  Oracle       →  USD Value Resolution            │
-│  Chain Adapter →  7K Aggregator (Sui)            │
-│                                                  │
-└──────────────────────────────────────────────────┘
-```
-
-When an agent calls `fence swap`, the entire sequence executes within the CLI:
-
-1. **Load policy** — read TOML config for the target chain
-2. **Token allowlist** — are both tokens in the allowlist? If not → **REJECT**
-3. **Spending limit** — fetch USD price, check per-trade max, check rolling 24h volume → **REJECT** if over
-4. **Get swap quote** — call 7K Aggregator for best route
-5. **Simulate** — dry-run via Sui RPC. If fails → **REJECT**
-6. **Sign and submit** — sign with local key, submit to network
-7. **Log trade** — write to SQLite (tokens, amounts, USD value, tx digest, gas, policy decision)
-8. **Return JSON** — structured response to agent
-
-## CLI Reference
-
-| Command | Description |
-|---------|-------------|
-| `fence` | Launch interactive TUI |
-| `fence setup` | Wallet + config + database setup wizard |
-| `fence swap <from> <to> <amount>` | Execute swap with policy enforcement |
-| `fence query price <tokens>` | Get USD prices for tokens |
-| `fence query balance` | Check wallet balances |
-| `fence wallet list` | List all registered wallets |
-| `fence config init` | Create default config |
-| `fence config show [key]` | Display configuration |
-| `fence config set <key> <value>` | Update a config value |
-
-### Swap Options
-
-```bash
-fence swap SUI USDC 100 \
-  --slippage 0.5 \       # Max slippage % (default: 0.5)
-  --chain sui \           # Target chain
-  --output json           # Machine-readable output for agents
+1. 📋 Load your safety rules from config
+2. ✅ Check: is the token on your approved list?
+3. ✅ Check: is this under your per-trade limit?
+4. ✅ Check: would this put you over your daily limit?
+5. 💰 Find the best execution route (across multiple exchanges)
+6. 🧪 Simulate first (dry run — no real money yet)
+7. ✍️ Sign and submit the transaction
+8. 📝 Log everything (so you can review later)
 ```
 
-### JSON Output
+If **any** check fails, the action is blocked. Your money stays safe.
 
-```jsonc
-// Success
+Every action — approved or rejected — is saved in a local database so you always have a complete audit trail. This works the same whether your agent is swapping, lending, borrowing, or managing positions.
+
+---
+
+## Connecting Your AI Agent
+
+OnlyFence works with **any AI agent** — ChatGPT, Claude, custom bots, or your own scripts. Instead of building blockchain logic yourself, your agent calls `fence` commands and gets structured JSON back.
+
+**Your agent runs a command like:**
+```sh
+fence swap SUI USDC 100 --output json
+```
+
+**If the action is approved:**
+```json
 {
   "status": "success",
   "chain": "sui",
   "txDigest": "8Hk4...mW2p",
-  "fromToken": "SUI", "toToken": "USDC",
-  "amountIn": "100", "amountOut": "98.12",
-  "valueUsd": 98.0, "gasCost": 0.0021,
+  "fromToken": "SUI",
+  "toToken": "USDC",
+  "amountIn": "100",
+  "amountOut": "98.12",
+  "valueUsd": 98.0,
   "route": "SUI → USDC via Cetus"
 }
+```
 
-// Rejection
+**If the action is blocked by your rules:**
+```json
 {
   "status": "rejected",
   "check": "spending_limit",
@@ -209,146 +313,141 @@ fence swap SUI USDC 100 \
 }
 ```
 
-## Architecture
+The agent reads the response and adjusts its strategy — no ambiguity, no guessing. Your agent gets the DeFi building blocks; you set the boundaries.
 
-```
-┌──────────────────────────────────────────────────┐
-│                   CLI / TUI                       │
-├──────────────────────────────────────────────────┤
-│                 Policy Engine                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────┐ │
-│  │ Token        │  │ Spending     │  │  ...   │ │
-│  │ Allowlist    │→ │ Limits       │→ │ Custom │ │
-│  └──────────────┘  └──────────────┘  └────────┘ │
-├──────────────────────────────────────────────────┤
-│         Chain Adapters          │    Oracle       │
-│  ┌─────┐  ┌─────┐  ┌────────┐  │  ┌───────────┐ │
-│  │ Sui │  │ EVM │  │ Solana │  │  │ CoinGecko │ │
-│  └─────┘  └─────┘  └────────┘  │  └───────────┘ │
-├──────────────────────────────────────────────────┤
-│  Wallet (BIP-39 / Ed25519)  │  Database (SQLite) │
-└──────────────────────────────────────────────────┘
-```
+---
 
-### Extending the Policy Engine
+## Two Ways to Use OnlyFence
 
-Adding a guardrail requires: (1) implement the interface, (2) define a config section, (3) register — one line. Zero changes to existing checks or pipeline.
+### Interactive Dashboard (for you)
 
-```typescript
-import type { PolicyCheck } from 'onlyfence';
+Run `fence` to open the full-screen dashboard. Browse your balances, trade history, and safety rules visually — no commands to memorize.
 
-export class MyCheck implements PolicyCheck {
-  readonly name = 'my-check';
+Perfect for monitoring what your agent is doing and tweaking rules on the fly.
 
-  async evaluate(intent: TradeIntent, ctx: PolicyContext): Promise<CheckResult> {
-    // Your logic here
-    return { status: 'pass' };
-  }
-}
+### CLI Commands (for your agent)
 
-// Register — that's it
-registry.register(new MyCheck());
-```
+Your AI agent calls `fence` commands with `--output json` to get structured responses. This is how the agent interacts with DeFi — safely.
 
-### Adding a New Chain
+| Command | What it does |
+|---------|-------------|
+| `fence` | Open the interactive dashboard |
+| `fence setup` | Set up your wallet and config (run this first) |
+| `fence swap SUI USDC 10` | Swap tokens (with safety checks) |
+| `fence query balance` | See your wallet balance |
+| `fence query price SUI,USDC` | Check token prices in USD |
+| `fence wallet list` | See all your wallets |
+| `fence config show` | View your current rules |
+| `fence config set <key> <value>` | Change a rule |
+| `fence unlock` | Unlock your wallet for the session |
+| `fence lock` | Lock your wallet |
 
-```typescript
-import type { ChainAdapter } from 'onlyfence';
-
-export class EvmAdapter implements ChainAdapter {
-  readonly chain = 'evm';
-  async getBalance(address: string): Promise<BalanceResult> { /* ... */ }
-  async getSwapQuote(params: SwapParams): Promise<SwapQuote> { /* ... */ }
-  async buildSwapTx(quote: SwapQuote): Promise<TransactionData> { /* ... */ }
-  async simulateTx(tx: TransactionData): Promise<SimulationResult> { /* ... */ }
-  async signAndSubmit(tx: TransactionData, signer: Signer): Promise<TxResult> { /* ... */ }
-}
-```
+---
 
 ## Supported Chains
 
-| Chain | Status | Execution Backend |
-|-------|--------|-------------------|
-| **Sui** | **Live** | 7K Aggregator (Cetus, DeepBook, Bluefin, FlowX, Turbos) |
-| **EVM** | Planned | 1inch / 0x + viem |
-| **Solana** | Planned | Jupiter |
+| Chain | Status | Exchanges |
+|-------|--------|-----------|
+| **Sui** | Live | Cetus, DeepBook, Bluefin, FlowX, Turbos (via 7K Aggregator) |
+| **EVM** (Ethereum, Base, etc.) | Coming soon | |
+| **Solana** | Coming soon | |
 
-## Wallet Model
+---
 
-OnlyFence uses BIP-39 to derive addresses across chains from a single mnemonic. Per-chain key import is also supported.
+## FAQ
 
-| Chain | Curve | Derivation Path | Address Format |
-|-------|-------|-----------------|----------------|
-| Sui | ed25519 | `m/44'/784'/0'/0'/0'` | `0xabc...` (32 bytes, hex) |
-| EVM | secp256k1 | `m/44'/60'/0'/0/0` | `0x123...` (20 bytes, hex) |
-| Solana | ed25519 | `m/44'/501'/0'/0'` | `7Kx3...` (base58) |
+<details>
+<summary><strong>Is OnlyFence free?</strong></summary>
+
+Yes, 100% free and open source. No hidden fees, no premium tier, no account needed.
+
+</details>
+
+<details>
+<summary><strong>Is my wallet safe?</strong></summary>
+
+Your private keys are encrypted and stored locally on your computer. They never leave your machine. OnlyFence doesn't have servers — everything runs locally.
+
+</details>
+
+<details>
+<summary><strong>What if I lose my mnemonic phrase?</strong></summary>
+
+If you lose your mnemonic, you lose access to your wallet. OnlyFence cannot recover it for you. Write it down and store it somewhere safe when you first run `fence setup`.
+
+</details>
+
+<details>
+<summary><strong>Can I use my existing wallet?</strong></summary>
+
+Yes. During `fence setup`, choose "Import existing private key or mnemonic" to use a wallet you already have.
+
+</details>
+
+<details>
+<summary><strong>What happens if the price oracle is down?</strong></summary>
+
+If OnlyFence can't fetch USD prices, it still enforces your token allowlist. USD-based spending limits are skipped (not silently bypassed — this is logged). Your token restrictions always apply.
+
+</details>
+
+<details>
+<summary><strong>Does OnlyFence charge any fees on trades?</strong></summary>
+
+No. OnlyFence doesn't take any fees. You only pay the normal blockchain gas fees and any DEX fees from the swap itself.
+
+</details>
+
+<details>
+<summary><strong>Can I run this on a server / VPS?</strong></summary>
+
+Yes. OnlyFence is a CLI tool, so it runs anywhere Node.js runs — your laptop, a VPS, a Raspberry Pi, etc.
+
+</details>
+
+---
 
 ## Roadmap
 
-| Release | Features |
-|---------|----------|
-| **MVP** (current) | Token allowlist, spending limits, swap execution, TUI, wallet management |
-| **v2** | Token denylist, protocol allowlist, pool denylist |
-| **v3** | Circuit breaker, trade frequency limiter |
-| **v4** | Cost-basis P&L tracking, P&L-based circuit breaker |
-| **v5** | Telegram notifications, Telegram approval gate |
-| **v6** | LP operations (deposit, withdraw, compound, rebalance) via 7K LP Pro |
-| **v7** | EVM + Solana chain adapters, global cross-chain policy |
+What's coming next:
 
-## Comparison
+**More DeFi actions:**
+- **Lending & borrowing** — supply assets to earn yield, borrow against collateral
+- **Position management** — open/close leveraged long/short positions
+- **LP operations** — deposit, withdraw, compound, and rebalance liquidity
+- **Staking** — stake tokens for protocol rewards
 
-| Feature | OnlyFence | Coinbase Agentic | Openfort | Bitget Skill |
-|---------|-----------|------------------|----------|--------------|
-| Multi-chain | Sui + EVM + SVM | EVM (Base) | 25+ EVM | Partial |
-| Agent-first CLI | Yes | No | No | No |
-| Policy guardrails | Full suite | Yes | Yes | No |
-| Standalone (no server) | Yes | No | No | No |
-| Open source | Yes | — | — | — |
+**More guardrails:**
+- **Token denylist** — block specific tokens instead of maintaining an allowlist
+- **Trade frequency limits** — prevent too many trades in a short period
+- **P&L-based circuit breaker** — auto-stop the agent when losses hit a threshold
 
-## Development
+**More chains:**
+- **EVM** (Ethereum, Base, Arbitrum, etc.)
+- **Solana**
 
-```bash
-npm run dev          # Run with tsx (no compile)
-npm run build        # Compile TypeScript
-npm run typecheck    # Type checking
-npm run lint         # ESLint
-npm run format       # Prettier
-npm test             # Vitest
-npm run test:watch   # Watch mode
-```
+**More control:**
+- **Telegram alerts** — get notified when actions happen or get blocked
+- **Telegram approval gate** — manually approve actions from your phone
+- **P&L tracking** — see your profit/loss in real time
 
-### Project Structure
-
-```
-src/
-├── cli/          # Command parser and subcommands
-├── tui/          # Interactive terminal UI (React/Ink)
-├── policy/       # Policy engine, check interface, registry
-├── chain/        # Chain adapters (Sui via 7K Aggregator)
-├── oracle/       # Price oracle (CoinGecko)
-├── wallet/       # BIP-39, key derivation, encrypted keystores
-├── db/           # SQLite database, trade log, migrations
-├── config/       # TOML config loading and validation
-├── types/        # Core type definitions
-└── utils/        # Shared utilities
-```
+---
 
 ## Security
 
-- **Encrypted keystore** — Private keys encrypted at rest, password-protected at `~/.onlyfence/keystore.json`
-- **Mnemonics shown once** — Displayed during setup, never stored in plaintext
-- **Local-only execution** — All policy evaluation happens in-process. No data leaves the machine except the transaction itself
-- **Dry-run simulation** — Every transaction is simulated via RPC before signing
-- **Graceful oracle degradation** — If the oracle is unreachable, trades proceed but only token allowlist is enforced; USD limits are skipped, not silently bypassed
+- Private keys are encrypted at rest with your password
+- Mnemonics are shown once during setup and never stored in plaintext
+- All policy evaluation happens locally — no data leaves your machine
+- Every transaction is simulated before signing (dry run)
+- Full audit trail of every trade attempt
+
+See [SECURITY.md](SECURITY.md) for our vulnerability reporting policy.
+
+---
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/my-feature`)
-3. Follow existing patterns — SOLID, DRY, strict TypeScript
-4. Add tests for new functionality
-5. Run `npm run format && npm run lint && npm test`
-6. Open a pull request
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
@@ -356,4 +455,12 @@ src/
   <img src="static/img/logo/png/logo-72.png" width="36" alt="OnlyFence" />
   <br />
   <sub>Built by <a href="https://github.com/seallabs">Seal Labs</a> &middot; Powered by <a href="https://7k.ag">7K Aggregator</a></sub>
+  <br />
+  <sub>
+    <a href="#install">Install</a> &middot;
+    <a href="#getting-started">Getting Started</a> &middot;
+    <a href="#all-commands">Commands</a> &middot;
+    <a href="#faq">FAQ</a> &middot;
+    <a href="https://github.com/seallabs/onlyfence/issues">Report a Bug</a>
+  </sub>
 </p>
