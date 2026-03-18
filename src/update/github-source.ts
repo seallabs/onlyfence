@@ -7,7 +7,7 @@ const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 /**
  * Fetches the latest version from GitHub Releases API.
  *
- * Uses Node's built-in fetch (available since Node 18, project requires >= 23).
+ * Uses Node's built-in fetch (available since Node 18, project requires >= 25).
  * The User-Agent header is required by the GitHub API.
  */
 export class GitHubReleasesSource implements UpdateSource {

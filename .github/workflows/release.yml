@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "25"
           cache: "npm"
 
       - name: Install dependencies
@@ -70,19 +70,33 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "25"
 
       - name: Test install script with downloaded artifacts
         run: |
-          # Move tarballs to a temp directory to simulate GitHub release
+          # Stage tarballs to simulate a GitHub release
           mkdir -p /tmp/release-artifacts
           cp artifacts/*.tar.gz /tmp/release-artifacts/
 
-          # Test installation using file:// URLs
-          chmod +x scripts/test-install.sh
-          ./scripts/test-install.sh --no-build --keep
-        env:
-          ONLYFENCE_BASE_URL: file:///tmp/release-artifacts
+          VERSION="${GITHUB_REF_NAME#v}"
+          INSTALL_DIR=$(mktemp -d)
+
+          # Run the real install.sh with local artifacts
+          ONLYFENCE_BASE_URL="file:///tmp/release-artifacts" \
+          ONLYFENCE_VERSION="$VERSION" \
+          ONLYFENCE_INSTALL_DIR="$INSTALL_DIR" \
+          ONLYFENCE_SKIP_PATH_SETUP=1 \
+          sh install.sh
+
+          # Verify the installation works
+          FENCE_BIN="${INSTALL_DIR}/bin/fence"
+          if [ -x "$FENCE_BIN" ]; then
+            FENCE_VERSION=$("$FENCE_BIN" --version 2>/dev/null || echo "unknown")
+            echo "SUCCESS: fence v${FENCE_VERSION}"
+          else
+            echo "FAIL: fence not found at ${FENCE_BIN}"
+            exit 1
+          fi
 
   publish:
     needs: test-install

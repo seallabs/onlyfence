@@ -27,7 +27,7 @@ export interface UpdateInstaller {
   /**
    * Download and install the given version.
    *
-   * Re-runs install.sh logic: GitHub tarball first, npm fallback.
+   * Re-runs install.sh logic: downloads GitHub release tarball with bundled Node.js runtime.
    * Progress is written to stdout/stderr.
    *
    * @param version - Version to install (e.g. "0.2.0")
@@ -41,7 +41,7 @@ export interface UpdateInstaller {
  *
  * This reuses 100% of the existing installation logic:
  * - Platform detection (OS + architecture)
- * - GitHub release tarball download (preferred) with npm fallback
+ * - GitHub release tarball download (includes bundled Node.js runtime)
  * - PATH setup and wrapper script creation
  *
  * The ONLYFENCE_VERSION env var tells install.sh which version to install.

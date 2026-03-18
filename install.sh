@@ -12,7 +12,6 @@ set -eu
 REPO="${ONLYFENCE_REPO:-seallabs/onlyfence}"
 INSTALL_DIR="${ONLYFENCE_INSTALL_DIR:-$HOME/.onlyfence}"
 BIN_DIR="${INSTALL_DIR}/bin"
-NODE_MIN_VERSION=23
 # Override base URL for local testing (e.g. http://localhost:8888 or file:///path/to)
 BASE_URL="${ONLYFENCE_BASE_URL:-}"
 # Skip writing PATH to shell profile (useful for testing)
@@ -54,24 +53,12 @@ detect_arch() {
   esac
 }
 
-# ─── Dependency checks ──────────────────────────────────────────────────────
+# ─── Download helpers ────────────────────────────────────────────────────────
 
 check_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
-check_node() {
-  if ! check_command node; then
-    return 1
-  fi
-  node_version=$(node -v | sed 's/^v//' | cut -d. -f1)
-  if [ "$node_version" -lt "$NODE_MIN_VERSION" ]; then
-    return 1
-  fi
-  return 0
-}
-
-# Select best available download tool
 select_downloader() {
   if check_command curl; then
     echo "curl"
@@ -113,7 +100,7 @@ get_latest_version() {
     | sed 's/^v//'
 }
 
-# ─── Installation methods ───────────────────────────────────────────────────
+# ─── Installation ───────────────────────────────────────────────────────────
 
 install_from_github_release() {
   version="$1"
@@ -150,55 +137,27 @@ install_from_github_release() {
   info "Extracting to ${INSTALL_DIR}..."
 
   # Clean previous installation but preserve user data
-  if [ -d "${INSTALL_DIR}/lib" ]; then
-    rm -rf "${INSTALL_DIR}/lib"
-  fi
+  rm -rf "${INSTALL_DIR}/lib" "${INSTALL_DIR}/node_modules" "${INSTALL_DIR}/runtime"
   mkdir -p "${INSTALL_DIR}" "${BIN_DIR}"
 
   tar -xzf "${tmpdir}/${tarball}" -C "${INSTALL_DIR}"
 
-  # Create bin wrapper
+  # Verify bundled runtime exists
+  if [ ! -x "${INSTALL_DIR}/runtime/node" ]; then
+    error "Bundled Node.js runtime not found in release archive."
+    return 1
+  fi
+
+  # Create bin wrapper that uses the bundled Node.js
   cat > "${BIN_DIR}/fence" <<'WRAPPER'
 #!/usr/bin/env sh
 set -eu
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
-exec node "${INSTALL_DIR}/lib/cli/index.js" "$@"
+exec "${INSTALL_DIR}/runtime/node" "${INSTALL_DIR}/lib/cli/index.js" "$@"
 WRAPPER
 
   chmod +x "${BIN_DIR}/fence"
-  return 0
-}
-
-install_from_npm() {
-  info "Installing OnlyFence from npm..."
-
-  mkdir -p "${INSTALL_DIR}" "${BIN_DIR}"
-  tmpdir=$(mktemp -d)
-  trap 'rm -rf "$tmpdir"' EXIT
-
-  # Install to a temporary location, then move
-  cd "$tmpdir"
-  npm init -y >/dev/null 2>&1
-  npm install --omit=dev onlyfence@"${1:-latest}" 2>&1 | tail -1
-
-  # Copy the installed package to our install dir
-  rm -rf "${INSTALL_DIR}/lib" "${INSTALL_DIR}/node_modules"
-  cp -r "${tmpdir}/node_modules/onlyfence/dist" "${INSTALL_DIR}/lib"
-  cp -r "${tmpdir}/node_modules" "${INSTALL_DIR}/node_modules"
-
-  # Create bin wrapper
-  cat > "${BIN_DIR}/fence" <<'WRAPPER'
-#!/usr/bin/env sh
-set -eu
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
-export NODE_PATH="${INSTALL_DIR}/node_modules"
-exec node "${INSTALL_DIR}/lib/cli/index.js" "$@"
-WRAPPER
-
-  chmod +x "${BIN_DIR}/fence"
-  cd - >/dev/null
   return 0
 }
 
@@ -251,23 +210,6 @@ main() {
   os=$(detect_os)
   arch=$(detect_arch)
 
-  # Check Node.js
-  if ! check_node; then
-    error "Node.js >= ${NODE_MIN_VERSION} is required but not found."
-    printf "\n"
-    info "Install Node.js using one of:"
-    info "  curl -fsSL https://fnm.vercel.app/install | sh && fnm install ${NODE_MIN_VERSION}"
-    info "  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | sh && nvm install ${NODE_MIN_VERSION}"
-    info "  brew install node     (macOS)"
-    info "  apt install nodejs    (Debian/Ubuntu)"
-    printf "\n"
-    info "Then re-run this installer."
-    exit 1
-  fi
-
-  node_ver=$(node -v)
-  ok "Node.js ${node_ver} detected"
-
   # Resolve version
   version="${ONLYFENCE_VERSION:-}"
   if [ -z "$version" ]; then
@@ -279,32 +221,17 @@ main() {
     version=$(get_latest_version) || true
   fi
 
-  installed=false
-
-  # Try GitHub release first (prebuilt, faster)
-  if [ -n "$version" ]; then
-    info "Trying prebuilt binary from GitHub releases..."
-    if install_from_github_release "$version" "$os" "$arch" 2>/dev/null; then
-      installed=true
-      ok "Installed from GitHub release v${version}"
-    else
-      warn "No prebuilt binary found for ${os}-${arch}, falling back to npm..."
-    fi
+  if [ -z "$version" ]; then
+    error "Could not resolve version. Set ONLYFENCE_VERSION or check your network."
+    exit 1
   fi
 
-  # Fallback to npm
-  if [ "$installed" = false ]; then
-    if ! check_command npm; then
-      error "npm is required for installation but not found."
-      exit 1
-    fi
-    if install_from_npm "$version"; then
-      installed=true
-      ok "Installed from npm"
-    else
-      error "Installation failed."
-      exit 1
-    fi
+  if install_from_github_release "$version" "$os" "$arch"; then
+    ok "Installed OnlyFence v${version}"
+  else
+    error "Installation failed. No release found for ${os}-${arch}."
+    info "Check available releases at https://github.com/${REPO}/releases"
+    exit 1
   fi
 
   # Setup PATH

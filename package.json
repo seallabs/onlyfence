@@ -66,6 +66,6 @@
     "@bluefin-exchange/bluefin7k-aggregator-sdk": "$@bluefin-exchange/bluefin7k-aggregator-sdk"
   },
   "engines": {
-    "node": ">=23.0.0"
+    "node": ">=25.0.0"
   }
 }
