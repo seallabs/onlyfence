@@ -25,6 +25,30 @@ import {
 
 const TOTAL_STEPS = 5;
 
+/** Terminal control character constants. */
+const KEY = {
+  CTRL_C: '\x03',
+  BACKSPACE_DEL: '\x7f',
+  BACKSPACE_BS: '\b',
+  ENTER_CR: '\r',
+  ENTER_LF: '\n',
+  ESCAPE: '\x1b',
+} as const;
+
+/**
+ * Execute a callback with stdin in raw mode, restoring the previous
+ * raw-mode state afterwards — even on error.
+ */
+async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
+  const wasRaw = stdin.isRaw;
+  stdin.setRawMode(true);
+  try {
+    return await fn();
+  } finally {
+    stdin.setRawMode(wasRaw);
+  }
+}
+
 /**
  * Register the `fence setup` command on the given program.
  *
@@ -189,38 +213,33 @@ export function registerSetupCommand(program: Command): void {
  * Any key other than y/Y defaults to 'n'.
  */
 async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
-  const wasRaw = stdin.isRaw;
-  stdin.setRawMode(true);
-  stdout.write(prompt);
+  return withRawMode(() => {
+    stdout.write(prompt);
 
-  const answer = await new Promise<'y' | 'n'>((resolve) => {
-    const onData = (key: Buffer): void => {
-      const ch = key.toString('utf8');
+    return new Promise<'y' | 'n'>((resolve) => {
+      const onData = (key: Buffer): void => {
+        const ch = key.toString('utf8');
 
-      if (ch === '\x03') {
-        // Ctrl+C
+        if (ch === KEY.CTRL_C) {
+          stdin.removeListener('data', onData);
+          stdout.write('\n');
+          process.exit(130);
+        }
+
         stdin.removeListener('data', onData);
-        stdin.setRawMode(wasRaw);
-        stdout.write('\n');
-        process.exit(130);
-      }
 
-      stdin.removeListener('data', onData);
-      stdin.setRawMode(wasRaw);
+        if (ch.toLowerCase() === 'y') {
+          stdout.write('y\n');
+          resolve('y');
+        } else {
+          stdout.write('n\n');
+          resolve('n');
+        }
+      };
 
-      if (ch.toLowerCase() === 'y') {
-        stdout.write('y\n');
-        resolve('y');
-      } else {
-        stdout.write('n\n');
-        resolve('n');
-      }
-    };
-
-    stdin.on('data', onData);
+      stdin.on('data', onData);
+    });
   });
-
-  return answer;
 }
 
 /**
@@ -245,41 +264,34 @@ async function promptPasswordWithRetry(prompt: string): Promise<string> {
  * the terminal from echoing the first keystroke in plain text.
  */
 async function promptPassword(prompt: string): Promise<string> {
-  const wasRaw = stdin.isRaw;
-  stdin.setRawMode(true);
-  stdout.write(prompt);
+  return withRawMode(() => {
+    stdout.write(prompt);
 
-  const password = await new Promise<string>((resolve) => {
-    let buf = '';
-    const onData = (key: Buffer): void => {
-      const ch = key.toString('utf8');
+    return new Promise<string>((resolve) => {
+      let buf = '';
+      const onData = (key: Buffer): void => {
+        const ch = key.toString('utf8');
 
-      if (ch === '\r' || ch === '\n') {
-        stdin.removeListener('data', onData);
-        stdin.setRawMode(wasRaw);
-        stdout.write('\n');
-        resolve(buf);
-      } else if (ch === '\x7f' || ch === '\b') {
-        // Backspace
-        if (buf.length > 0) {
-          buf = buf.slice(0, -1);
-          stdout.write('\b \b');
+        if (ch === KEY.ENTER_CR || ch === KEY.ENTER_LF) {
+          stdin.removeListener('data', onData);
+          stdout.write('\n');
+          resolve(buf);
+        } else if (ch === KEY.BACKSPACE_DEL || ch === KEY.BACKSPACE_BS) {
+          if (buf.length > 0) {
+            buf = buf.slice(0, -1);
+            stdout.write('\b \b');
+          }
+        } else if (ch === KEY.CTRL_C) {
+          stdin.removeListener('data', onData);
+          stdout.write('\n');
+          process.exit(130);
+        } else if (!ch.startsWith(KEY.ESCAPE)) {
+          buf += ch;
+          stdout.write('•');
         }
-      } else if (ch === '\x03') {
-        // Ctrl+C
-        stdin.removeListener('data', onData);
-        stdin.setRawMode(wasRaw);
-        stdout.write('\n');
-        process.exit(130);
-      } else if (!ch.startsWith('\x1b')) {
-        // Ignore escape sequences (arrow keys, etc.)
-        buf += ch;
-        stdout.write('•');
-      }
-    };
+      };
 
-    stdin.on('data', onData);
+      stdin.on('data', onData);
+    });
   });
-
-  return password;
 }

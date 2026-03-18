@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { toErrorMessage } from '../../utils/errors.js';
 
 /**
  * JSON.stringify replacer that converts bigint values to strings.
@@ -51,7 +52,7 @@ export function useAsyncAutoRefresh<T>(
         setLoading(false);
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(toErrorMessage(err));
         setLoading(false);
       })
       .finally(() => {
