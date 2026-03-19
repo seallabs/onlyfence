@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OnlyFence | The Kinetic Guardrail for Autonomous Agents</title>
+    <meta name="description"
+        content="A high-performance, open-source CLI guardrail layer for DeFi. Protect your agent from draining wallets with local-first policy enforcement.">
+    <meta name="keywords"
+        content="DeFi, AI Agents, Guardrails, Sui Network, Wallet Security, Agentic Web3, Open Source CLI">
+
+    <script src="GA.js" defer></script>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="128x128" href="assets/logo-128.png">
+    <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+    <link rel="apple-touch-icon" href="assets/logo-128.png">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- Micro-grid background texture -->
+    <div class="grid-bg" aria-hidden="true"></div>
+
+    <!-- ============================
+         NAVIGATION
+    ============================= -->
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a href="#" class="logo">
+                <img src="assets/logo-512.png" alt="OnlyFence" class="logo-img">
+                <span class="logo-text">OnlyFence_</span>
+            </a>
+            <div class="nav-links">
+                <a href="#problem" class="nav-link scramble-hover">Problem</a>
+                <a href="#features" class="nav-link scramble-hover">Features</a>
+                <a href="#advantage" class="nav-link scramble-hover">Why</a>
+                <a href="https://github.com/seallabs/onlyfence" class="nav-cta scramble-hover"
+                    onclick="gtag('event','link_github_clicked',{source:'nav'})">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+
+        <!-- ============================
+             SECTION 1 — HERO
+        ============================= -->
+        <section class="hero" id="hero">
+            <div class="hero-content reveal">
+                <div class="eyebrow">[ SYSTEM_STATUS: OPERATIONAL // AGENT_FENCE_v0.1.0 ]</div>
+                <h1 class="hero-headline scramble-on-load">Let the agent trade within the fence.</h1>
+                <p class="hero-sub">
+                    OnlyFence is an open-source CLI, local-first guardrail layer & DeFi tool for AI Agents, enforcing
+                    security policies in milliseconds — before a single key is signed.
+                </p>
+                <div class="hero-ctas">
+                    <a href="https://github.com/seallabs/onlyfence/blob/main/README.md"
+                        class="btn btn-gradient scramble-hover" id="cta-hero-install"
+                        onclick="gtag('event','cta_hero_install_clicked')">
+                        INSTALL_CLI
+                    </a>
+                    <a href="https://github.com/seallabs/onlyfence" class="btn btn-ghost scramble-hover"
+                        id="cta-view-source"
+                        onclick="gtag('event','cta_view_source_clicked'); gtag('event','link_github_clicked',{source:'hero'})">
+                        VIEW_SOURCE
+                    </a>
+                </div>
+            </div>
+
+            <div class="hero-visual reveal-delay">
+                <div class="terminal-ambient-glow" aria-hidden="true"></div>
+                <div class="terminal-window" id="hero-terminal">
+                    <div class="terminal-bar">
+                        <span class="tdot tdot-red"></span>
+                        <span class="tdot tdot-yellow"></span>
+                        <span class="tdot tdot-green"></span>
+                        <span class="terminal-bar-title">fence — policy-engine</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="t-line" id="t1">
+                            <span class="t-prompt">admin@fence:~$</span>
+                            <span class="t-cmd" id="t-type-target"></span><span class="t-cursor"
+                                id="t-input-cursor"></span>
+                        </div>
+                        <div class="t-line t-info t-hidden" id="t2">&gt; [POLICY_ENGINE] Evaluating Trade Intent...
+                        </div>
+                        <div class="t-line t-error t-hidden" id="t3">&gt; [REJECTED] 24h Volume Cap ($500) exceeded.
+                        </div>
+                        <div class="t-line t-dim t-hidden" id="t4">&gt; Current Session: $480 | Attempted: +$500</div>
+                        <div class="t-line t-dim t-hidden" id="t5">&gt; Action: Transaction short-circuited locally.
+                        </div>
+                        <div class="t-line t-hidden" id="t6">
+                            <span class="t-prompt">admin@fence:~$</span><span class="t-cursor"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================
+             INSTALL STRIP
+        ============================= -->
+        <div class="install-wrapper reveal">
+            <div class="install-strip">
+                <span class="install-label">INSTALL</span>
+                <div class="install-body">
+                    <code
+                        id="install-cmd-text">curl -fsSL https://raw.githubusercontent.com/seallabs/onlyfence/main/install.sh | sh</code>
+                    <button class="copy-btn" id="copy-install" aria-label="Copy install command">
+                        <span id="copy-label">COPY</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================
+             SECTION 2 — THE PROBLEM
+        ============================= -->
+        <section class="problem-section" id="problem">
+            <div class="section-header reveal">
+                <div class="section-tag">01 / THE PROBLEM</div>
+                <h2 class="section-headline">AGENTS HAVE EYES.<br>THEY DON'T HAVE BRAKES.</h2>
+            </div>
+            <div class="problem-body reveal">
+                <p class="problem-text">
+                    Autonomous AI agents hold raw private keys with total authority. One hallucination, one prompt
+                    injection, or one bad strategy can drain a wallet in a single block.
+                </p>
+                <p class="problem-text problem-accent">
+                    OnlyFence provides the invisible boundary. No backend. No cloud. No middleman. Just a local,
+                    hardened policy engine that ensures your agent only does what you've authorized.
+                </p>
+            </div>
+            <div class="problem-image-wrap reveal">
+                <img src="assets/screenshot-03.jpg" alt="The agent problem: unchecked autonomy leads to drained wallets"
+                    class="problem-img">
+            </div>
+        </section>
+
+        <!-- ============================
+             SECTION 3 — CORE LOGIC (BENTO)
+        ============================= -->
+        <section class="features-section" id="features">
+            <div class="section-header reveal">
+                <div class="section-tag">02 / CORE LOGIC</div>
+                <h2 class="section-headline">THE POLICY PIPELINE.</h2>
+            </div>
+
+            <div class="bento-grid reveal">
+
+                <!-- Card 1: The Engine (spans 2 cols) -->
+                <div class="bento-card bento-wide">
+                    <div class="bento-tag">EDITABLE_POLICIES</div>
+                    <h3 class="bento-title scramble-hover">The Engine</h3>
+                    <p class="bento-desc">Define spending limits, volume caps, and token allowlists in a simple TOML
+                        config. Composable safety checks that adapt to your strategy in real-time.</p>
+                    <div class="code-block">
+                        <span class="c-comment"># ~/.onlyfence/config.toml</span><br>
+                        <span class="c-key">max_single_trade</span> = <span class="c-val">"$200 USD"</span><br>
+                        <span class="c-key">volume_cap_24h</span>&nbsp;&nbsp; = <span class="c-val">"$500
+                            USD"</span><br>
+                        <span class="c-key">allowed_tokens</span>&nbsp;&nbsp; = <span class="c-val">["SUI", "USDC",
+                            "USDT"]</span>
+                    </div>
+                </div>
+
+                <!-- Card 2: The Vault -->
+                <div class="bento-card">
+                    <div class="bento-tag">ENCRYPTED_SIGNING</div>
+                    <h3 class="bento-title scramble-hover">The Vault</h3>
+                    <p class="bento-desc">BIP-39 mnemonic generation and local-only keystores. Your keys never leave
+                        your machine.</p>
+                    <div class="code-block code-success">
+                        ✓ Keystore encrypted locally<br>
+                        ✓ BIP-39 mnemonic secured
+                    </div>
+                </div>
+
+                <!-- Card 3: The Oracle -->
+                <div class="bento-card">
+                    <div class="bento-tag">REALTIME_SIMULATION</div>
+                    <h3 class="bento-title scramble-hover">The Oracle</h3>
+                    <p class="bento-desc">Every trade is simulated via RPC and priced via Oracle before execution. Zero
+                        surprises at signing time.</p>
+                    <div class="code-block code-info">
+                        &gt; Simulating via RPC...<br>
+                        &gt; Oracle price: $1.24 USD
+                    </div>
+                </div>
+
+                <!-- Card 4: The Agent API -->
+                <div class="bento-card">
+                    <div class="bento-tag">MACHINE_READABLE</div>
+                    <h3 class="bento-title scramble-hover">The Agent API</h3>
+                    <p class="bento-desc">Direct JSON output for seamless integration with Claude, Cursor, and custom
+                        agent scripts.</p>
+                    <div class="code-block code-info">fence swap SUI USDC 10 --output json</div>
+                </div>
+
+                <!-- Card 5: Interactive TUI -->
+                <div class="bento-card">
+                    <div class="bento-tag">INTERACTIVE_TUI</div>
+                    <h3 class="bento-title scramble-hover">The Dashboard</h3>
+                    <p class="bento-desc">Full-screen terminal interface. Live policy config, trade history, and wallet
+                        balances — all in one view.</p>
+                    <div class="code-block code-success">fence &nbsp;&nbsp;// Launch Dashboard</div>
+                </div>
+
+                <!-- Card 6: The Network (full-width) -->
+                <div class="bento-card bento-full">
+                    <div class="bento-tag">7K_AGGREGATOR_POWERED</div>
+                    <h3 class="bento-title scramble-hover">The Network</h3>
+                    <p class="bento-desc">Optimal routing across all Sui DEXes. Best execution guaranteed by 7K
+                        Aggregator intelligence. EVM & Solana support coming.</p>
+                    <div class="dex-list">
+                        <span class="dex-badge">Cetus</span>
+                        <span class="dex-badge">DeepBook</span>
+                        <span class="dex-badge">Bluefin</span>
+                        <span class="dex-badge">FlowX</span>
+                        <span class="dex-badge">Turbos</span>
+                        <span class="dex-badge dex-badge--coming">EVM ↗</span>
+                        <span class="dex-badge dex-badge--coming">Solana ↗</span>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ============================
+             SECTION 4 — THE ADVANTAGE
+        ============================= -->
+        <section class="advantage-section" id="advantage">
+            <div class="section-header reveal">
+                <div class="section-tag">03 / THE ADVANTAGE</div>
+                <h2 class="section-headline">WHY THIS SYSTEM?</h2>
+            </div>
+
+            <div class="advantage-grid reveal">
+                <div class="adv-card">
+                    <div class="adv-icon">[ƛ]</div>
+                    <h3 class="adv-title scramble-hover">ZERO LATENCY</h3>
+                    <p class="adv-desc">Policy evaluation happens in-process. No API round-trips to slow down your
+                        strategy. Sub-millisecond decisions, every trade.</p>
+                </div>
+                <div class="adv-card">
+                    <div class="adv-icon">[Ø]</div>
+                    <h3 class="adv-title scramble-hover">ZERO INFRASTRUCTURE</h3>
+                    <p class="adv-desc">No servers, no accounts, no tracking. Privacy is the default, not a feature. One
+                        install, full enterprise-grade guardrail power.</p>
+                </div>
+                <div class="adv-card">
+                    <div class="adv-icon">[◉]</div>
+                    <h3 class="adv-title scramble-hover">AUDIT-READY</h3>
+                    <p class="adv-desc">Every decision—approved or blocked—is logged to a local SQLite database.
+                        Complete forensic trail for every agent action.</p>
+                </div>
+                <div class="adv-card">
+                    <div class="adv-icon">[↯]</div>
+                    <h3 class="adv-title scramble-hover">DEVELOPER FIRST</h3>
+                    <p class="adv-desc">Built by engineers who write agents. No messy wrappers or bloated SDKs. Direct
+                        CLI integration with any agent stack or prompt sequence.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================
+             SECTION — READY TO DEPLOY
+        ============================= -->
+        <section class="deploy-section">
+            <div class="deploy-inner reveal">
+                <div class="section-tag">DEPLOY</div>
+                <h2 class="deploy-headline">Ready to deploy?</h2>
+                <p class="deploy-sub">One command. Takes about 30 seconds. No account required.</p>
+                <div class="deploy-install">
+                    <span class="install-label">INSTALL</span>
+                    <div class="install-body">
+                        <code id="deploy-cmd-text">curl -fsSL https://raw.githubusercontent.com/seallabs/onlyfence/main/install.sh | sh</code>
+                        <button class="copy-btn" id="copy-deploy" aria-label="Copy install command">
+                            <span id="copy-deploy-label">COPY</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ============================
+         FOOTER
+    ============================= -->
+    <footer class="footer">
+        <div class="footer-inner">
+            <p class="footer-tagline">"Because the only thing more dangerous than a dumb bot is a smart one with your
+                money."</p>
+            <div class="footer-ctas">
+                <a href="https://github.com/seallabs/onlyfence/blob/main/README.md" class="btn btn-gradient btn-sm"
+                    onclick="gtag('event','cta_footer_install_clicked')">
+                    INSTALL_NOW
+                </a>
+                <a href="https://github.com/seallabs/onlyfence/blob/main/README.md" class="btn btn-ghost btn-sm">
+                    DOCUMENTATION
+                </a>
+                <a href="https://github.com/seallabs/onlyfence" class="btn btn-ghost btn-sm"
+                    onclick="gtag('event','link_github_clicked',{source:'footer'})">
+                    GITHUB
+                </a>
+            </div>
+            <div class="footer-badges">
+                <span class="footer-badge">BUILT_BY_SEAL_LABS</span>
+                <span class="footer-sep">|</span>
+                <span class="footer-badge">POWERED_BY_7K</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
