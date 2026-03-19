@@ -136,7 +136,8 @@ download_to_stdout() {
 get_latest_version() {
   download_to_stdout "https://api.github.com/repos/${REPO}/releases/latest" \
     | grep '"tag_name"' \
-    | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/'
+    | head -1 \
+    | cut -d'"' -f4
 }
 
 # ─── Installation ───────────────────────────────────────────────────────────
