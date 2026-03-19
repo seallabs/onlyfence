@@ -136,7 +136,8 @@ download_to_stdout() {
 get_latest_version() {
   download_to_stdout "https://api.github.com/repos/${REPO}/releases/latest" \
     | grep '"tag_name"' \
-    | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/'
+    | head -1 \
+    | cut -d'"' -f4
 }
 
 # ─── Installation ───────────────────────────────────────────────────────────
@@ -335,13 +336,14 @@ main() {
   if [ -x "${BIN_DIR}/fence" ]; then
     ok "OnlyFence installed to ${BIN_DIR}/fence"
 
-    # Check if it's in the current PATH
+    # Ensure fence is on PATH for the rest of this script (setup wizard, etc.)
     case ":${PATH}:" in
       *":${BIN_DIR}:"*)
         fence_ver=$("${BIN_DIR}/fence" --version 2>/dev/null || echo "unknown")
         ok "fence ${fence_ver} is ready"
         ;;
       *)
+        export PATH="${BIN_DIR}:${PATH}"
         warn "Restart your shell or run:"
         printf "\n  export PATH=\"%s:\$PATH\"\n\n" "$BIN_DIR"
         ;;

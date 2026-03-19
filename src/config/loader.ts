@@ -15,6 +15,11 @@ import { CONFIG_FILE_HEADER } from './utils.js';
 export const ONLYFENCE_DIR = process.env['ONLYFENCE_HOME'] ?? join(homedir(), '.onlyfence');
 
 /**
+ * Default path to the fence binary directory.
+ */
+export const BIN_DIR = join(ONLYFENCE_DIR, 'bin');
+
+/**
  * Default path to the TOML configuration file.
  */
 export const CONFIG_PATH = join(ONLYFENCE_DIR, 'config.toml');

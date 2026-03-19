@@ -2,7 +2,13 @@ import type { Command } from 'commander';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { openDatabase, DB_PATH } from '../../db/connection.js';
-import { initConfig, updateConfigFile, loadConfig, CONFIG_PATH } from '../../config/loader.js';
+import {
+  initConfig,
+  updateConfigFile,
+  loadConfig,
+  CONFIG_PATH,
+  BIN_DIR,
+} from '../../config/loader.js';
 import { ConfigAlreadyExistsError } from '../../config/schema.js';
 import { generateSetupWallet, importSetupWallet, saveSetupKeystore } from '../../wallet/setup.js';
 import type { SetupResult } from '../../wallet/setup.js';
@@ -24,6 +30,12 @@ import {
 } from '../style.js';
 
 const TOTAL_STEPS = 5;
+
+/** Check whether the fence binary directory is on the user's current PATH. */
+function isFenceOnPath(): boolean {
+  const pathDirs = (process.env['PATH'] ?? '').split(':');
+  return pathDirs.includes(BIN_DIR);
+}
 
 /** Terminal control character constants. */
 const KEY = {
@@ -192,15 +204,16 @@ export function registerSetupCommand(program: Command): void {
 
         // Completion banner
         console.log('');
-        box(
-          [
-            bold(green('Setup complete!')),
-            '',
-            `Run ${cyan('fence swap')} to execute trades.`,
-            `Run ${cyan('fence --help')} for all commands.`,
-          ],
-          green,
-        );
+        const lines: string[] = [bold(green('Setup complete!')), ''];
+        if (!isFenceOnPath()) {
+          lines.push(`To start using fence, run:`);
+          lines.push('');
+          lines.push(`  ${cyan(`export PATH="${BIN_DIR}:$PATH"`)}`);
+          lines.push('');
+        }
+        lines.push(`Run ${cyan('fence swap')} to execute trades.`);
+        lines.push(`Run ${cyan('fence --help')} for all commands.`);
+        box(lines, green);
         console.log('');
       } catch (err: unknown) {
         error(err instanceof Error ? err.message : String(err));
