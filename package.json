@@ -9,7 +9,7 @@
     "fence": "dist/cli/index.js"
   },
   "scripts": {
-    "prebuild": "node scripts/sync-version.js",
+    "prebuild": "node scripts/sync-version.js && node scripts/sync-changelog.js",
     "build": "tsc",
     "start": "tsx src/cli/index.ts",
     "dev": "tsx src/cli/index.ts",
