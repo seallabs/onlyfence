@@ -100,8 +100,14 @@ export function registerSetupCommand(program: Command): void {
 
         let result: SetupResult;
 
-        if (choice.toLowerCase() === 'i') {
-          const mnemonic = await rl.question(`  ${cyan('?')} Enter your BIP-39 mnemonic phrase: `);
+        const trimmed = choice.trim();
+        // Detect if the user pasted a mnemonic phrase directly at the g/i prompt
+        const looksLikeMnemonic = trimmed.split(/\s+/).length >= 12;
+
+        if (trimmed.toLowerCase() === 'i' || looksLikeMnemonic) {
+          const mnemonic = looksLikeMnemonic
+            ? trimmed
+            : await rl.question(`  ${cyan('?')} Enter your BIP-39 mnemonic phrase: `);
           result = importSetupWallet(db, mnemonic, options.alias);
 
           success('Wallet imported successfully!');
