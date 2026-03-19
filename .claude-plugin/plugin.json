@@ -1,0 +1,14 @@
+{
+  "name": "onlyfence",
+  "description": "DeFi toolkit for AI agents — swap tokens, check balances, manage wallets, and configure safety guardrails on the Sui blockchain via the fence CLI.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Seal Labs",
+    "url": "https://github.com/seallabs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seallabs/onlyfence"
+  },
+  "license": "GPL-3.0"
+}
