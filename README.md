@@ -300,6 +300,18 @@ fence swap SUI USDC 100 --output json
 
 The agent reads the response and adjusts its strategy — no ambiguity, no guessing. Your agent gets the DeFi building blocks; you set the boundaries.
 
+### Claude Code / Codex Integration
+
+If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://openai.com/index/codex/), or other AI coding agents, OnlyFence provides a native plugin and skill — no manual CLI wiring needed.
+
+**Install the plugin:**
+```sh
+claude plugin marketplace add seallabs/onlyfence
+claude plugin install onlyfence@onlyfence
+```
+
+Once installed, your coding agent can call OnlyFence commands directly — swap tokens, check balances, enforce guardrails — all within the agent's natural workflow. The same safety rules apply: every action is checked against your policy before it touches the chain.
+
 ---
 
 ## Two Ways to Use OnlyFence

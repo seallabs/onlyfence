@@ -11,3 +11,16 @@ export function extractTokenSymbol(coinType: string): string {
   const parts = coinType.split('::');
   return parts[parts.length - 1] ?? coinType;
 }
+
+/**
+ * Parse a comma-separated token string into a trimmed, non-empty array.
+ *
+ * @param raw - Comma-separated token string (e.g., "SUI, USDC, USDT")
+ * @returns Array of trimmed token strings with empty entries removed
+ */
+export function parseTokenList(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
