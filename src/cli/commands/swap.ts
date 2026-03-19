@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { resolveTokenAddress, scaleToSmallestUnit } from '../../chain/sui/tokens.js';
+import { resolveSymbol, resolveTokenAddress, scaleToSmallestUnit } from '../../chain/sui/tokens.js';
 import type { ActionBuilder } from '../../core/action-builder.js';
 import type { Chain, ChainId, PipelineResult, SwapIntent } from '../../core/action-types.js';
 import { NoOpMevProtector } from '../../core/mev-protector.js';
@@ -92,11 +92,10 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           );
 
           // === Resolve CLI inputs to stable internal representations ===
-          // Token aliases (SUI, USDC) → fully-qualified coin types (0x2::sui::SUI)
-          // Human-readable amount (100.5) → smallest unit string (100500000000)
-          // These resolved values are the source of truth for all downstream code.
-          const coinTypeIn = resolveTokenAddress(fromToken.toUpperCase());
-          const coinTypeOut = resolveTokenAddress(toToken.toUpperCase());
+          // Accepts both symbol aliases (SUI, USDC) and raw coin types
+          // (0xdba3…::usdc::USDC). resolveTokenAddress handles both forms.
+          const coinTypeIn = resolveTokenAddress(fromToken);
+          const coinTypeOut = resolveTokenAddress(toToken);
 
           // Resolve decimals remotely (Noodles API) with local fallback
           const decimals = await coinMetadataService.getDecimals(coinTypeIn, chain);
@@ -106,13 +105,14 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           const slippageBps = Math.round(parseFloat(options.slippage) * 100);
 
           // Resolve USD price from oracle (handle failure per spec section 10)
+          const fromSymbol = resolveSymbol(coinTypeIn);
           let tradeValueUsd: number | undefined;
           try {
-            const price = await oracle.getPrice(fromToken.toUpperCase());
+            const price = await oracle.getPrice(fromSymbol);
             tradeValueUsd = parseFloat(amountStr) * price;
           } catch (err: unknown) {
             log.warn(
-              { token: fromToken, error: toErrorMessage(err) },
+              { token: fromSymbol, error: toErrorMessage(err) },
               'Oracle price unavailable; USD spending limits will not be enforced',
             );
             tradeValueUsd = undefined;

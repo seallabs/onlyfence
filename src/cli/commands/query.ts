@@ -1,4 +1,5 @@
 import type { Command } from 'commander';
+import { resolveSymbol, resolveTokenAddress } from '../../chain/sui/tokens.js';
 import type { Chain } from '../../core/action-types.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
@@ -28,8 +29,10 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
 
       const settled = await Promise.allSettled(
         tokens.map(async (token) => {
-          const price = await oracle.getPrice(token.toUpperCase());
-          return { token: token.toUpperCase(), priceUsd: price };
+          const coinType = resolveTokenAddress(token);
+          const symbol = resolveSymbol(coinType);
+          const price = await oracle.getPrice(symbol);
+          return { token: symbol, priceUsd: price };
         }),
       );
 
@@ -39,7 +42,7 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
             return outcome.value;
           }
           return {
-            token: (tokens[idx] ?? '').toUpperCase(),
+            token: tokens[idx] ?? '',
             priceUsd: null,
             error: toErrorMessage(outcome.reason),
           };
