@@ -16,4 +16,17 @@ export const theme = {
   error: '#ef4444',
   warning: '#f59e0b',
   muted: '#64748b',
+  panelBorder: '#475569',
 } as const;
+
+/** Map a policy decision string to a theme color. */
+export function policyDecisionColor(decision: string): string {
+  switch (decision) {
+    case 'approved':
+      return theme.success;
+    case 'rejected':
+      return theme.error;
+    default:
+      return theme.warning;
+  }
+}

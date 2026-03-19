@@ -1,9 +1,13 @@
 import { Box, Text, useInput } from 'ink';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { getRegistryEntries, REGISTRY_ALIASES_UPPER } from '../../chain/sui/tokens.js';
+import {
+  getRegistryEntries,
+  REGISTRY_ALIASES_UPPER,
+  resolveSymbol,
+} from '../../chain/sui/tokens.js';
 import type { CoinMetadataService } from '../../data/coin-metadata.js';
-import { extractTokenSymbol, toErrorMessage } from '../../utils/index.js';
+import { toErrorMessage } from '../../utils/index.js';
 import { theme } from '../theme.js';
 
 /** Maximum number of rows visible in the scrollable token list. */
@@ -173,7 +177,7 @@ export function TokenSelectPopup({
         .then((meta) => {
           if (!mountedRef.current) return;
           setDiscovered({
-            symbol: meta.symbol !== '' ? meta.symbol : extractTokenSymbol(coinType),
+            symbol: meta.symbol !== '' ? meta.symbol : resolveSymbol(coinType),
             decimals: meta.decimals,
             coinType: meta.coinType,
           });
@@ -264,7 +268,7 @@ export function TokenSelectPopup({
 
   if (phase === 'custom-input') {
     return (
-      <Box flexDirection="column" borderStyle="single" borderColor={theme.highlight} paddingX={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor={theme.highlight} paddingX={1}>
         <Text color={theme.highlight} bold>
           {'Add Custom Coin Type'}
         </Text>
@@ -290,7 +294,7 @@ export function TokenSelectPopup({
 
   if (phase === 'discovering') {
     return (
-      <Box flexDirection="column" borderStyle="single" borderColor={theme.highlight} paddingX={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor={theme.highlight} paddingX={1}>
         <Text color={theme.highlight} bold>
           {'Discovering Token...'}
         </Text>
@@ -302,7 +306,7 @@ export function TokenSelectPopup({
 
   if (phase === 'custom-confirm' && discovered !== null) {
     return (
-      <Box flexDirection="column" borderStyle="single" borderColor={theme.highlight} paddingX={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor={theme.highlight} paddingX={1}>
         <Text color={theme.success} bold>
           {'Token Found'}
         </Text>
@@ -323,7 +327,7 @@ export function TokenSelectPopup({
   const visible = items.slice(scrollOffset, scrollOffset + VISIBLE_ROWS);
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor={theme.highlight} paddingX={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.highlight} paddingX={1}>
       <Box>
         <Text color={theme.highlight} bold>
           {'Select Allowed Tokens'}

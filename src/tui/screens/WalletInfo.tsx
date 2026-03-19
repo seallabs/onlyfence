@@ -5,6 +5,7 @@ import { useTui } from '../context.js';
 import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
 import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
+import { Panel } from '../components/Panel.js';
 import { listWallets } from '../../wallet/manager.js';
 import type { WalletInfo as WalletInfoType } from '../../wallet/types.js';
 
@@ -31,22 +32,13 @@ export function WalletInfo(): ReactElement {
         <Text color={theme.muted}>{`  ─  ${wallets.length} wallet(s)`}</Text>
       </Box>
 
-      <Box flexDirection="column" borderStyle="single" borderColor={theme.shadow} paddingX={1}>
+      <Panel>
         <Table columns={WALLET_COLUMNS} data={wallets} />
-      </Box>
+      </Panel>
 
       {/* Wallet details summary */}
       {wallets.length > 0 && (
-        <Box
-          flexDirection="column"
-          borderStyle="single"
-          borderColor={theme.shadow}
-          paddingX={1}
-          marginTop={1}
-        >
-          <Text color={theme.body} bold>
-            {'Details'}
-          </Text>
+        <Panel title="Details" marginTop={1}>
           {wallets.map((w) => (
             <Box key={w.address} flexDirection="column" marginBottom={1}>
               <Text color={theme.eyes}>
@@ -56,7 +48,7 @@ export function WalletInfo(): ReactElement {
               <Text color={theme.muted}>{`  Path:    ${w.derivationPath ?? 'Imported'}`}</Text>
             </Box>
           ))}
-        </Box>
+        </Panel>
       )}
 
       <Box marginTop={1}>

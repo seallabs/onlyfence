@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { theme } from '../theme.js';
 import { useTui } from '../context.js';
 import { TextInput } from '../components/TextInput.js';
+import { Panel } from '../components/Panel.js';
 import { TokenSelectPopup } from '../components/TokenSelectPopup.js';
 import { updateConfigFile } from '../../config/loader.js';
 import { setNestedValue } from '../../config/utils.js';
@@ -213,7 +214,7 @@ export function PolicyConfig(): ReactElement {
     <Box flexDirection="column" paddingX={1}>
       <PolicyHeader activeChain={activeChain} dirty={dirty} />
 
-      <Box flexDirection="column" borderStyle="single" borderColor={theme.shadow} paddingX={1}>
+      <Panel>
         {FIELD_LABELS.map((label, i) => {
           const isSelected = i === selectedField;
           const isEditing = mode === 'edit' && isSelected;
@@ -244,19 +245,10 @@ export function PolicyConfig(): ReactElement {
             </Box>
           );
         })}
-      </Box>
+      </Panel>
 
       {/* Current config summary */}
-      <Box
-        flexDirection="column"
-        borderStyle="single"
-        borderColor={theme.shadow}
-        paddingX={1}
-        marginTop={1}
-      >
-        <Text color={theme.body} bold>
-          {'Current Config (on disk)'}
-        </Text>
+      <Panel title="Current Config (on disk)" marginTop={1}>
         <Text color={theme.eyes}>{`RPC:              ${chainConfig.rpc}`}</Text>
         <Text color={theme.eyes}>
           {`Max Single Trade: ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : '-'}`}
@@ -267,7 +259,7 @@ export function PolicyConfig(): ReactElement {
         <Text color={theme.eyes}>
           {`Tokens:           ${chainConfig.allowlist?.tokens.join(', ') ?? '-'}`}
         </Text>
-      </Box>
+      </Panel>
 
       {status !== null && (
         <Box marginTop={1}>

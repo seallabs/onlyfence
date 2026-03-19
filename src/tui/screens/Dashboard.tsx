@@ -1,18 +1,18 @@
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
-import { theme } from '../theme.js';
+import { policyDecisionColor, theme } from '../theme.js';
 import { useTui } from '../context.js';
 import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
 import { useAsyncAutoRefresh } from '../hooks/useAsyncAutoRefresh.js';
 import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
+import { Panel } from '../components/Panel.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import {
   formatAmountWithDecimals,
   formatSmallestUnit,
   resolveSymbol,
 } from '../../chain/sui/tokens.js';
-import { extractTokenSymbol } from '../../utils/index.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
 interface DashboardData {
@@ -32,22 +32,14 @@ function shortTime(iso: string): string {
   return iso.slice(5, 19);
 }
 
-function statusColor(row: TradeRow): string | undefined {
-  switch (row.policy_decision) {
-    case 'approved':
-      return theme.success;
-    case 'rejected':
-      return theme.error;
-    default:
-      return theme.warning;
-  }
-}
+const VOLUME_WARNING_THRESHOLD = 80;
+const VOLUME_CRITICAL_THRESHOLD = 95;
 
 const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
   { header: 'Time', width: 16, accessor: (r) => shortTime(r.created_at) },
   { header: 'Chain', width: 6, accessor: (r) => r.chain_id },
-  { header: 'From', width: 8, accessor: (r) => extractTokenSymbol(r.from_token) },
-  { header: 'To', width: 8, accessor: (r) => extractTokenSymbol(r.to_token) },
+  { header: 'From', width: 8, accessor: (r) => resolveSymbol(r.from_token) },
+  { header: 'To', width: 8, accessor: (r) => resolveSymbol(r.to_token) },
   {
     header: 'Amount In',
     width: 16,
@@ -70,7 +62,7 @@ const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
     header: 'Status',
     width: 12,
     accessor: (r) => r.policy_decision,
-    color: statusColor,
+    color: (r) => policyDecisionColor(r.policy_decision),
   },
 ];
 
@@ -121,6 +113,12 @@ export function Dashboard(): ReactElement {
   const maxVolume = chainConfig.limits?.max_24h_volume ?? 0;
   const volumePercent = maxVolume > 0 ? Math.min((data.volume24h / maxVolume) * 100, 100) : 0;
   const filledWidth = Math.round((volumePercent / 100) * BAR_WIDTH);
+  const barColor =
+    volumePercent > VOLUME_CRITICAL_THRESHOLD
+      ? theme.error
+      : volumePercent > VOLUME_WARNING_THRESHOLD
+        ? theme.warning
+        : theme.highlight;
   const tokens = chainConfig.allowlist?.tokens ?? [];
   const checks = policyRegistry.registeredChecks;
 
@@ -135,16 +133,7 @@ export function Dashboard(): ReactElement {
 
       {/* Row 1: Wallet + Policy side by side */}
       <Box>
-        <Box
-          flexDirection="column"
-          width="50%"
-          borderStyle="single"
-          borderColor={theme.shadow}
-          paddingX={1}
-        >
-          <Text color={theme.body} bold>
-            {'Wallet'}
-          </Text>
+        <Panel title="Wallet" width="50%">
           <Text color={theme.eyes}>{`Chain:   ${activeChain}`}</Text>
           <Text color={theme.eyes}>
             {`Address: ${data.walletAddress ?? 'No wallet configured'}`}
@@ -152,36 +141,18 @@ export function Dashboard(): ReactElement {
           <Text
             color={theme.eyes}
           >{`Status:  ${data.walletAddress !== null ? 'Primary' : '-'}`}</Text>
-        </Box>
+        </Panel>
 
-        <Box
-          flexDirection="column"
-          width="50%"
-          borderStyle="single"
-          borderColor={theme.shadow}
-          paddingX={1}
-        >
-          <Text color={theme.body} bold>
-            {'Policy Status'}
-          </Text>
+        <Panel title="Policy Status" width="50%">
           <Text color={theme.eyes}>{`Active Checks: ${checks.length}`}</Text>
           {checks.map((name) => (
             <Text key={name} color={theme.success}>{`  + ${name}`}</Text>
           ))}
-        </Box>
+        </Panel>
       </Box>
 
       {/* Row 2: Account Balance */}
-      <Box
-        flexDirection="column"
-        borderStyle="single"
-        borderColor={theme.shadow}
-        paddingX={1}
-        marginTop={1}
-      >
-        <Text color={theme.body} bold>
-          {'Account Balance'}
-        </Text>
+      <Panel title="Account Balance" marginTop={1}>
         {data.walletAddress === null ? (
           <Text color={theme.muted} italic>
             {'No wallet configured'}
@@ -199,42 +170,25 @@ export function Dashboard(): ReactElement {
         ) : (
           <Table columns={BALANCE_COLUMNS} data={balances} />
         )}
-      </Box>
+      </Panel>
 
       {/* Row 3: 24h Volume */}
-      <Box
-        flexDirection="column"
-        borderStyle="single"
-        borderColor={theme.shadow}
-        paddingX={1}
-        marginTop={1}
-      >
-        <Text color={theme.body} bold>
-          {'24h Rolling Volume'}
-        </Text>
+      <Panel title="24h Rolling Volume" marginTop={1}>
         <Text color={theme.eyes}>
-          {`$${data.volume24h.toFixed(2)} / ${maxVolume > 0 ? `$${maxVolume.toFixed(2)}` : 'No limit'}  (${volumePercent.toFixed(1)}%)`}
+          {`$${data.volume24h.toFixed(2)} / ${maxVolume > 0 ? `$${maxVolume.toFixed(2)}` : 'No limit'}`}
         </Text>
         <Box>
-          <Text color={volumePercent > 80 ? theme.warning : theme.highlight}>
-            {'█'.repeat(filledWidth)}
-          </Text>
+          <Text color={theme.muted}>{'['}</Text>
+          <Text color={barColor}>{'█'.repeat(filledWidth)}</Text>
           <Text color={theme.muted}>{'░'.repeat(BAR_WIDTH - filledWidth)}</Text>
+          <Text color={theme.muted}>{']'}</Text>
+          <Text color={theme.eyes}>{` ${volumePercent.toFixed(1)}%`}</Text>
         </Box>
-      </Box>
+      </Panel>
 
       {/* Row 4: Allowed Tokens + Spending Limits */}
       <Box marginTop={1}>
-        <Box
-          flexDirection="column"
-          width="50%"
-          borderStyle="single"
-          borderColor={theme.shadow}
-          paddingX={1}
-        >
-          <Text color={theme.body} bold>
-            {'Allowed Tokens'}
-          </Text>
+        <Panel title="Allowed Tokens" width="50%">
           {tokens.length > 0 ? (
             <Box flexWrap="wrap">
               {tokens.map((token) => (
@@ -248,40 +202,22 @@ export function Dashboard(): ReactElement {
               {'No tokens configured'}
             </Text>
           )}
-        </Box>
+        </Panel>
 
-        <Box
-          flexDirection="column"
-          width="50%"
-          borderStyle="single"
-          borderColor={theme.shadow}
-          paddingX={1}
-        >
-          <Text color={theme.body} bold>
-            {'Spending Limits'}
-          </Text>
+        <Panel title="Spending Limits" width="50%">
           <Text color={theme.eyes}>
             {`Max Single Trade: ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : 'None'}`}
           </Text>
           <Text color={theme.eyes}>
             {`Max 24h Volume:   ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : 'None'}`}
           </Text>
-        </Box>
+        </Panel>
       </Box>
 
       {/* Row 5: Recent Trades */}
-      <Box
-        flexDirection="column"
-        borderStyle="single"
-        borderColor={theme.shadow}
-        paddingX={1}
-        marginTop={1}
-      >
-        <Text color={theme.body} bold>
-          {'Recent Trades'}
-        </Text>
+      <Panel title="Recent Trades" marginTop={1}>
         <Table columns={TRADE_COLUMNS} data={data.trades} />
-      </Box>
+      </Panel>
     </Box>
   );
 }

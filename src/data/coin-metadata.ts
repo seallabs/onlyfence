@@ -6,7 +6,8 @@
  * when the API is unreachable or returns no data.
  */
 
-import { extractTokenSymbol, toErrorMessage } from '../utils/index.js';
+import { resolveSymbol } from '../chain/sui/tokens.js';
+import { toErrorMessage } from '../utils/index.js';
 
 /**
  * Immutable metadata for a single coin type.
@@ -152,6 +153,6 @@ export class NoodlesCoinMetadataService implements CoinMetadataService {
     const decimals = this.knownDecimals[coinType];
     if (decimals === undefined) return undefined;
 
-    return { coinType, symbol: extractTokenSymbol(coinType), decimals };
+    return { coinType, symbol: resolveSymbol(coinType), decimals };
   }
 }
