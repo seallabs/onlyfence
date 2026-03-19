@@ -1,4 +1,4 @@
-import type { AlphalendClient } from '@alphafi/alphalend-sdk';
+import { type AlphalendClient } from '@alphafi/alphalend-sdk';
 import { normalizeStructTag } from '@mysten/sui/utils';
 
 // ---------------------------------------------------------------------------

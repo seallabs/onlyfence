@@ -5,100 +5,76 @@
  * ensuring consistent machine-readable responses for agent consumers.
  */
 
-/**
- * Successful trade execution response.
- */
-export interface SuccessResponse {
-  readonly status: 'success';
-  readonly chain: string;
-  readonly action: string;
-  readonly txDigest: string;
+import type { ChainId, DeFiAction, DefiProtocol, PipelineStatus } from '../core/action-types.js';
+
+/** Map of reward token to amount value */
+type RewardMap = Record<
+  string,
+  {
+    /** Unit: human readable */
+    amount: number;
+    valueUsd?: number | null;
+  }
+>;
+
+export interface SwapOutput {
   readonly fromToken: string;
   readonly toToken: string;
-  readonly amountIn: string;
-  readonly amountOut: string;
+  /** Unit: human readable */
+  readonly amountIn: number;
+  /** Unit: human readable */
+  readonly amountOut: number;
   readonly valueUsd: number | null;
-  readonly gasCost: number;
-  readonly route: string;
 }
 
-/**
- * Policy rejection response.
- */
-export interface RejectionResponse {
-  readonly status: 'rejected';
-  readonly chain: string;
-  readonly action: string;
-  readonly check: string;
-  readonly reason: string;
-  readonly detail: string;
-  readonly metadata?: Record<string, unknown>;
+export interface LendingOutput {
+  readonly token: string;
+  /** Unit: human readable */
+  readonly amount: number;
+  readonly marketId: string;
+  readonly valueUsd?: number | null;
 }
 
-/**
- * Error response for unexpected failures.
- */
-export interface ErrorResponse {
-  readonly status: 'error';
-  readonly message: string;
+export interface LendingRewardsOutput {
+  /** total rewards in USD; */
+  readonly valueUsd?: number | null;
+  /** rewards by token */
+  readonly rewards?: RewardMap;
 }
 
-/**
- * Simulated trade response (watch-only mode).
- */
-export interface SimulatedResponse {
-  readonly status: 'simulated';
-  readonly chain: string;
-  readonly action: string;
-  readonly fromToken: string;
-  readonly toToken: string;
-  readonly amountIn: string;
-  readonly expectedOutput: string;
-  readonly provider: string;
-  readonly priceImpact?: number;
-  readonly gasEstimate: number;
+export interface LPOutput {
+  readonly base: string;
+  readonly quote: string;
+  /** Unit: human readable */
+  readonly amountBase: number;
+  /** Unit: human readable */
+  readonly amountQuote: number;
+  /** Unit: human readable */
+  readonly valueUsd?: number | null;
+  readonly rewards?: RewardMap;
 }
 
-/**
- * Successful lending action response.
- */
-export interface LendingSuccessResponse {
-  readonly status: 'success';
-  readonly chain: string;
-  readonly action: string;
-  readonly txDigest: string;
-  readonly protocol: string;
-  readonly token?: string;
-  readonly amount?: string;
-  readonly marketId?: string;
-  readonly valueUsd: number | null;
-  readonly gasCost: number;
-}
+/** Action payload union -- extend when adding new action output types */
+export type ActionPayload = SwapOutput | LendingOutput | LendingRewardsOutput | LPOutput;
 
 /**
- * Simulated lending action response (watch-only mode).
+ * Unified CLI output for all pipeline-based commands.
+ *
+ * Generic parameter T narrows the payload to a specific action output type.
  */
-export interface LendingSimulatedResponse {
-  readonly status: 'simulated';
-  readonly chain: string;
-  readonly action: string;
-  readonly protocol: string;
-  readonly token?: string;
-  readonly amount?: string;
-  readonly marketId?: string;
-  readonly gasEstimate: number;
+export interface CliOutput<T extends ActionPayload = ActionPayload> {
+  readonly status: PipelineStatus;
+  readonly action: DeFiAction;
+  readonly chainId: ChainId;
+  readonly address: string;
+  readonly gasUsed?: number | undefined;
+  readonly txDigest?: string | undefined;
+  readonly protocol?: DefiProtocol | undefined;
+  readonly payload?: T | undefined;
+  readonly error?: string | undefined;
+  readonly rejectionCheck?: string | undefined;
+  readonly rejectionReason?: string | undefined;
 }
-
-/**
- * Union of all CLI output types.
- */
-export type CliOutput =
-  | SuccessResponse
-  | RejectionResponse
-  | ErrorResponse
-  | SimulatedResponse
-  | LendingSuccessResponse
-  | LendingSimulatedResponse;
 
 /**
  * Format a CLI output object as a JSON string for stdout.

@@ -1,30 +1,51 @@
 import type { ActionIntent } from '../../core/action-types.js';
 import type { CheckResult } from '../../types/result.js';
-import { resolveSymbol } from '../../chain/sui/tokens.js';
 import type { PolicyCheck } from '../check.js';
 import type { PolicyContext } from '../context.js';
+
+/**
+ * Resolves a token alias or raw coin type to its canonical address.
+ * Returns undefined if the input cannot be resolved (unknown token).
+ */
+type AddressResolver = (symbolOrAddress: string) => string | undefined;
 
 /**
  * Policy check that verifies both the source and destination tokens
  * are present in the chain's configured allowlist.
  *
- * Only applies to swap intents. Non-swap actions pass automatically.
+ * Compares canonical coin type addresses (not symbols) to avoid
+ * false-positive matches from ambiguous struct names.
+ *
+ * Only applies to swap and supply intents. Non-applicable actions pass automatically.
  * If no allowlist config is defined for the chain, the check passes
  * (config-driven loading per spec section 2.3).
  */
 export class TokenAllowlistCheck implements PolicyCheck {
   readonly name = 'token_allowlist';
   readonly description = 'Verifies that both trade tokens are in the chain allowlist';
+  private readonly addressResolver: AddressResolver;
+
+  constructor(addressResolver: AddressResolver) {
+    this.addressResolver = addressResolver;
+  }
 
   private cache: { ref: readonly string[]; set: Set<string> } | null = null;
 
   /**
-   * Get or build the uppercased token set, cached by token array reference.
-   * Cache invalidates automatically when config is reloaded (new array reference).
+   * Build a set of canonical coin type addresses from the allowlist aliases.
+   * Unresolvable aliases are kept as-is (uppercased) for backwards compatibility.
+   * Cached by token array reference — invalidates when config is reloaded.
    */
-  private getAllowedSet(tokens: readonly string[]): Set<string> {
+  private getAllowedAddresses(tokens: readonly string[]): Set<string> {
     if (this.cache?.ref !== tokens) {
-      this.cache = { ref: tokens, set: new Set(tokens.map((t) => t.toUpperCase())) };
+      const addresses = new Set<string>();
+      for (const t of tokens) {
+        const resolved = this.addressResolver(t);
+        if (resolved !== undefined) {
+          addresses.add(resolved);
+        }
+      }
+      this.cache = { ref: tokens, set: addresses };
     }
     return this.cache.set;
   }
@@ -40,34 +61,30 @@ export class TokenAllowlistCheck implements PolicyCheck {
       return Promise.resolve({ status: 'pass' });
     }
 
-    const allowedTokens = this.getAllowedSet(allowlist.tokens);
+    const allowedAddresses = this.getAllowedAddresses(allowlist.tokens);
 
     // Swap intents: check both source and destination tokens
     if (intent.action === 'swap') {
-      const fromSymbol = resolveSymbol(intent.params.coinTypeIn);
-      const fromTokenUpper = fromSymbol.toUpperCase();
-      if (!allowedTokens.has(fromTokenUpper)) {
+      if (!allowedAddresses.has(intent.params.coinTypeIn)) {
         return Promise.resolve({
           status: 'reject' as const,
           reason: 'token_not_allowed',
-          detail: `Source token "${fromSymbol}" is not in the allowlist for chain "${intent.chainId}"`,
+          detail: `Source token "${intent.params.coinTypeIn}" is not in the allowlist for chain "${intent.chainId}"`,
           metadata: {
-            token: fromSymbol,
+            token: intent.params.coinTypeIn,
             direction: 'from',
             allowedTokens: [...allowlist.tokens],
           },
         });
       }
 
-      const toSymbol = resolveSymbol(intent.params.coinTypeOut);
-      const toTokenUpper = toSymbol.toUpperCase();
-      if (!allowedTokens.has(toTokenUpper)) {
+      if (!allowedAddresses.has(intent.params.coinTypeOut)) {
         return Promise.resolve({
           status: 'reject' as const,
           reason: 'token_not_allowed',
-          detail: `Destination token "${toSymbol}" is not in the allowlist for chain "${intent.chainId}"`,
+          detail: `Destination token "${intent.params.coinTypeOut}" is not in the allowlist for chain "${intent.chainId}"`,
           metadata: {
-            token: toSymbol,
+            token: intent.params.coinTypeOut,
             direction: 'to',
             allowedTokens: [...allowlist.tokens],
           },
@@ -77,17 +94,15 @@ export class TokenAllowlistCheck implements PolicyCheck {
       return Promise.resolve({ status: 'pass' as const });
     }
 
-    // Lending actions (supply, borrow, withdraw, repay): single coinType check
+    // Lending actions (supply, repay): single coinType check
     if ('coinType' in intent.params) {
-      const symbol = resolveSymbol(intent.params.coinType);
-      const symbolUpper = symbol.toUpperCase();
-      if (!allowedTokens.has(symbolUpper)) {
+      if (!allowedAddresses.has(intent.params.coinType)) {
         return Promise.resolve({
           status: 'reject' as const,
           reason: 'token_not_allowed',
-          detail: `Token "${symbol}" is not in the allowlist for chain "${intent.chainId}"`,
+          detail: `Token "${intent.params.coinType}" is not in the allowlist for chain "${intent.chainId}"`,
           metadata: {
-            token: symbol,
+            token: intent.params.coinType,
             allowedTokens: [...allowlist.tokens],
           },
         });

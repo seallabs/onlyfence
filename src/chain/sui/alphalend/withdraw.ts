@@ -1,5 +1,5 @@
 import type { AlphalendClient } from '@alphafi/alphalend-sdk';
-import { getUserPositionCapId, MAX_U64 } from '@alphafi/alphalend-sdk';
+import { MAX_U64 } from '@alphafi/alphalend-sdk';
 import type { SuiClient } from '@mysten/sui/client';
 import type {
   ActionBuilder,
@@ -9,6 +9,7 @@ import type {
 import type { WithdrawIntent } from '../../../core/action-types.js';
 import type { LendingLog } from '../../../db/lending-log.js';
 import { coinTypeToSymbol } from '../tokens.js';
+import { AlphaLendBase } from './base.js';
 import { parseLendingEvent } from './events.js';
 
 /**
@@ -19,15 +20,20 @@ import { parseLendingEvent } from './events.js';
  * withdraw method. Supports full withdrawal via the `withdrawAll` flag
  * which uses MAX_U64 as the amount.
  */
-export class AlphaLendWithdrawBuilder implements ActionBuilder<WithdrawIntent> {
+export class AlphaLendWithdrawBuilder
+  extends AlphaLendBase
+  implements ActionBuilder<WithdrawIntent>
+{
   readonly builderId = 'alphalend-withdraw';
   readonly chain = 'sui';
 
   constructor(
-    private readonly alphalendClient: AlphalendClient,
-    private readonly suiClient: SuiClient,
+    alphalendClient: AlphalendClient,
+    suiClient: SuiClient,
     private readonly lendingLog: LendingLog,
-  ) {}
+  ) {
+    super(alphalendClient, suiClient);
+  }
 
   validate(intent: WithdrawIntent): void {
     const { coinType, amount, marketId, withdrawAll } = intent.params;
@@ -45,11 +51,11 @@ export class AlphaLendWithdrawBuilder implements ActionBuilder<WithdrawIntent> {
   async build(intent: WithdrawIntent): Promise<BuiltTransaction> {
     const { coinType, amount, marketId, withdrawAll } = intent.params;
 
-    const network = intent.chainId.split(':')[1] ?? 'mainnet';
-    const positionCapId = await getUserPositionCapId(this.suiClient, network, intent.walletAddress);
-    if (positionCapId === undefined) {
-      throw new Error('No position found. Supply collateral first.');
-    }
+    const { priceUpdateCoinTypes, positionCapId } = await this.getBuildContext(
+      intent.chainId.split(':')[1] ?? 'mainnet',
+      intent.walletAddress,
+      coinType,
+    );
 
     const withdrawAmount = withdrawAll === true ? MAX_U64 : BigInt(amount);
 
@@ -59,7 +65,7 @@ export class AlphaLendWithdrawBuilder implements ActionBuilder<WithdrawIntent> {
       coinType,
       positionCapId,
       address: intent.walletAddress,
-      priceUpdateCoinTypes: [coinType],
+      priceUpdateCoinTypes: Array.from(priceUpdateCoinTypes),
     });
     transaction.setSenderIfNotSet(intent.walletAddress);
 

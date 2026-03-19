@@ -1,23 +1,23 @@
 import type { Command } from 'commander';
-import { resolveSymbol, resolveTokenAddress, scaleToSmallestUnit } from '../../chain/sui/tokens.js';
+import { buildSuiSigner } from '../../chain/sui/signer.js';
 import type { ActionBuilder } from '../../core/action-builder.js';
-import type { Chain, ChainId, PipelineResult, SwapIntent } from '../../core/action-types.js';
+import type {
+  Chain,
+  ChainId,
+  PipelineResult,
+  PipelineStatus,
+  SwapIntent,
+} from '../../core/action-types.js';
 import { NoOpMevProtector } from '../../core/mev-protector.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
 import type { PolicyContext } from '../../policy/context.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { loadSessionKeyBytes } from '../../wallet/session.js';
-import { buildSuiSigner } from '../../chain/sui/signer.js';
 import type { AppComponents } from '../bootstrap.js';
-import type {
-  CliOutput,
-  ErrorResponse,
-  RejectionResponse,
-  SimulatedResponse,
-  SuccessResponse,
-} from '../output.js';
+import type { CliOutput, SwapOutput } from '../output.js';
 import { printJsonOutput } from '../output.js';
+import { resolveTokenInput } from '../resolve.js';
 import { withComponents } from '../with-components.js';
 
 /** Shared fallback MEV protector for chains without a registered protector. */
@@ -91,21 +91,27 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             'Swap command invoked',
           );
 
-          // === Resolve CLI inputs to stable internal representations ===
-          // Accepts both symbol aliases (SUI, USDC) and raw coin types
-          // (0xdba3…::usdc::USDC). resolveTokenAddress handles both forms.
-          const coinTypeIn = resolveTokenAddress(fromToken);
-          const coinTypeOut = resolveTokenAddress(toToken);
+          // Get chain adapter (needed for token resolution and pipeline)
+          const chainAdapter = chainAdapterFactory.get(chain);
 
-          // Resolve decimals remotely (Noodles API) with local fallback
-          const decimals = await coinMetadataService.getDecimals(coinTypeIn, chain);
-          const scaledAmountIn = scaleToSmallestUnit(amountStr, decimals);
+          // === Resolve CLI inputs to stable internal representations ===
+          // resolveTokenInput handles alias resolution (case-insensitive),
+          // coin type normalization, decimal fetching, and amount scaling.
+          const resolvedIn = await resolveTokenInput(
+            fromToken,
+            amountStr,
+            chainAdapter,
+            coinMetadataService,
+          );
+          const {
+            coinType: coinTypeIn,
+            symbol: fromSymbol,
+            scaledAmount: scaledAmountIn,
+          } = resolvedIn;
+          const coinTypeOut = chainAdapter.resolveTokenAddress(toToken);
 
           // Build slippage in basis points
           const slippageBps = Math.round(parseFloat(options.slippage) * 100);
-
-          // Resolve USD price from oracle (handle failure per spec section 10)
-          const fromSymbol = resolveSymbol(coinTypeIn);
           let tradeValueUsd: number | undefined;
           try {
             const price = await oracle.getPrice(fromSymbol);
@@ -150,9 +156,6 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             intent,
           ) as ActionBuilder<SwapIntent>;
 
-          // Get chain adapter
-          const chainAdapter = chainAdapterFactory.get(chain);
-
           // Get MEV protector (fallback to NoOp)
           const mevProtector = mevProtectors.get(chain) ?? FALLBACK_MEV_PROTECTOR;
 
@@ -175,9 +178,12 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           process.exitCode = output.exitCode;
         } catch (err: unknown) {
           log.error({ err: toErrorMessage(err) }, 'Swap failed');
-          const errorOutput: ErrorResponse = {
+          const errorOutput: CliOutput = {
             status: 'error',
-            message: toErrorMessage(err),
+            action: 'swap',
+            chainId,
+            address: '',
+            error: toErrorMessage(err),
           };
           printJsonOutput(errorOutput);
           process.exitCode = 1;
@@ -186,11 +192,20 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
     );
 }
 
+/** Exit codes by pipeline status */
+const EXIT_CODES: Record<PipelineStatus, number> = {
+  success: 0,
+  simulated: 0,
+  rejected: 3,
+  simulation_failed: 4,
+  error: 1,
+};
+
 /**
  * Result of mapping a PipelineResult to CLI output.
  */
 interface MappedOutput {
-  readonly cliOutput: CliOutput;
+  readonly cliOutput: CliOutput<SwapOutput>;
   readonly exitCode: number;
 }
 
@@ -204,67 +219,31 @@ function mapPipelineResultToOutput(
 ): MappedOutput {
   const meta = result.metadata;
 
-  switch (result.status) {
-    case 'success': {
-      const output: SuccessResponse = {
-        status: 'success',
-        chain: intent.chainId,
-        action: intent.action,
-        txDigest: result.txDigest ?? '',
+  const base: CliOutput<SwapOutput> = {
+    status: result.status,
+    action: intent.action,
+    chainId: intent.chainId,
+    address: intent.walletAddress,
+    gasUsed: result.gasUsed,
+    txDigest: result.txDigest,
+    error: result.error,
+    rejectionCheck: result.rejectionCheck,
+    rejectionReason: result.rejectionReason,
+  };
+
+  const hasPayload = result.status === 'success' || result.status === 'simulated';
+  const payload: SwapOutput | undefined = hasPayload
+    ? {
         fromToken: intent.params.coinTypeIn,
         toToken: intent.params.coinTypeOut,
-        amountIn: intent.params.amountIn,
-        amountOut: (meta?.['expectedOutput'] as string | undefined) ?? '0',
+        amountIn: parseFloat(intent.params.amountIn),
+        amountOut: parseFloat((meta?.['expectedOutput'] as string | undefined) ?? '0'),
         valueUsd: tradeValueUsd ?? null,
-        gasCost: result.gasUsed ?? 0,
-        route: (meta?.['provider'] as string | undefined) ?? 'unknown',
-      };
-      return { cliOutput: output, exitCode: 0 };
-    }
+      }
+    : undefined;
 
-    case 'simulated': {
-      const priceImpact = meta?.['priceImpact'] as number | undefined;
-      const output: SimulatedResponse = {
-        status: 'simulated',
-        chain: intent.chainId,
-        action: intent.action,
-        fromToken: intent.params.coinTypeIn,
-        toToken: intent.params.coinTypeOut,
-        amountIn: intent.params.amountIn,
-        expectedOutput: (meta?.['expectedOutput'] as string | undefined) ?? '0',
-        provider: (meta?.['provider'] as string | undefined) ?? 'unknown',
-        ...(priceImpact !== undefined ? { priceImpact } : {}),
-        gasEstimate: result.gasUsed ?? 0,
-      };
-      return { cliOutput: output, exitCode: 0 };
-    }
-
-    case 'rejected': {
-      const output: RejectionResponse = {
-        status: 'rejected',
-        chain: intent.chainId,
-        action: intent.action,
-        check: result.rejectionCheck ?? 'unknown',
-        reason: result.rejectionReason ?? 'policy_rejected',
-        detail: result.rejectionReason ?? 'Trade rejected by policy engine',
-      };
-      return { cliOutput: output, exitCode: 3 };
-    }
-
-    case 'simulation_failed': {
-      const output: ErrorResponse = {
-        status: 'error',
-        message: `Simulation failed: ${result.error ?? 'unknown error'}`,
-      };
-      return { cliOutput: output, exitCode: 4 };
-    }
-
-    case 'error': {
-      const output: ErrorResponse = {
-        status: 'error',
-        message: result.error ?? 'Unknown pipeline error',
-      };
-      return { cliOutput: output, exitCode: 1 };
-    }
-  }
+  return {
+    cliOutput: { ...base, ...(payload !== undefined ? { payload } : {}) },
+    exitCode: EXIT_CODES[result.status],
+  };
 }

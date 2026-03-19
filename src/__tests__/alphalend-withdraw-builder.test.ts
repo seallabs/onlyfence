@@ -8,10 +8,14 @@ import type { LendingLog } from '../db/lending-log.js';
 // Mock AlphaLend SDK
 const mockWithdraw = vi.fn();
 const mockGetUserPositionCapId = vi.fn();
+const mockGetMarketsChain = vi.fn();
+const mockGetUserPortfolioFromPositionCapId = vi.fn();
 
 vi.mock('@alphafi/alphalend-sdk', () => ({
   AlphalendClient: class MockAlphalendClient {
     withdraw = mockWithdraw;
+    getMarketsChain = mockGetMarketsChain;
+    getUserPortfolioFromPositionCapId = mockGetUserPortfolioFromPositionCapId;
   },
   getUserPositionCapId: (...args: unknown[]) => mockGetUserPositionCapId(...args),
   MAX_U64: BigInt('18446744073709551615'),
@@ -47,7 +51,11 @@ describe('AlphaLendWithdrawBuilder', () => {
   let mockLendingLog: LendingLog;
 
   beforeEach(() => {
-    mockAlphalendClient = { withdraw: mockWithdraw } as unknown as AlphalendClient;
+    mockAlphalendClient = {
+      withdraw: mockWithdraw,
+      getMarketsChain: mockGetMarketsChain,
+      getUserPortfolioFromPositionCapId: mockGetUserPortfolioFromPositionCapId,
+    } as unknown as AlphalendClient;
     mockSuiClient = {} as unknown as SuiClient;
     mockLendingLog = {
       logActivity: vi.fn().mockReturnValue(1),
@@ -80,7 +88,12 @@ describe('AlphaLendWithdrawBuilder', () => {
     it('uses MAX_U64 when withdrawAll is true', async () => {
       const fakeTx = { kind: 'transaction', setSenderIfNotSet: vi.fn() };
       const fakeCapId = '0xcap123';
+      mockGetMarketsChain.mockResolvedValue([{ market: { id: 1, coinType: '0x2::sui::SUI' } }]);
       mockGetUserPositionCapId.mockResolvedValue(fakeCapId);
+      mockGetUserPortfolioFromPositionCapId.mockResolvedValue({
+        borrowedAmounts: new Map(),
+        suppliedAmounts: new Map(),
+      });
       mockWithdraw.mockResolvedValue(fakeTx);
 
       const builder = new AlphaLendWithdrawBuilder(
@@ -104,7 +117,12 @@ describe('AlphaLendWithdrawBuilder', () => {
     it('passes priceUpdateCoinTypes with coinType', async () => {
       const fakeTx = { kind: 'transaction', setSenderIfNotSet: vi.fn() };
       const fakeCapId = '0xcap123';
+      mockGetMarketsChain.mockResolvedValue([{ market: { id: 1, coinType: '0x2::sui::SUI' } }]);
       mockGetUserPositionCapId.mockResolvedValue(fakeCapId);
+      mockGetUserPortfolioFromPositionCapId.mockResolvedValue({
+        borrowedAmounts: new Map(),
+        suppliedAmounts: new Map(),
+      });
       mockWithdraw.mockResolvedValue(fakeTx);
 
       const builder = new AlphaLendWithdrawBuilder(

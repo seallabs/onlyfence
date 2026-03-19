@@ -22,12 +22,12 @@ export interface FinishContext<Response = unknown> {
   };
 }
 
-export interface ActionBuilder<T extends ActionIntent = ActionIntent> {
+export interface ActionBuilder<T extends ActionIntent = ActionIntent, R = unknown> {
   readonly builderId: string;
   readonly chain: string;
   validate(intent: T): void;
   build(intent: T): Promise<BuiltTransaction>;
-  finish?(context: FinishContext): void;
+  finish?(context: FinishContext<R>): void;
 }
 type BuilderKey = `${string}:${string}:${string}`;
 

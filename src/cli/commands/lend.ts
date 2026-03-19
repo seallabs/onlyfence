@@ -1,11 +1,11 @@
 import type { Command } from 'commander';
-import { resolveTokenAddress, scaleToSmallestUnit } from '../../chain/sui/tokens.js';
 import {
   fetchAllMarkets,
   fetchMarketDetail,
   fetchPortfolio,
   resolveMarketId,
 } from '../../chain/sui/alphalend/markets.js';
+import { buildSuiSigner } from '../../chain/sui/signer.js';
 import type { ActionBuilder } from '../../core/action-builder.js';
 import type {
   BorrowIntent,
@@ -13,6 +13,7 @@ import type {
   ChainId,
   ClaimRewardsIntent,
   PipelineResult,
+  PipelineStatus,
   RepayIntent,
   SupplyIntent,
   WithdrawIntent,
@@ -23,16 +24,10 @@ import type { PolicyContext } from '../../policy/context.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { loadSessionKeyBytes } from '../../wallet/session.js';
-import { buildSuiSigner } from '../../chain/sui/signer.js';
 import type { AppComponents } from '../bootstrap.js';
-import type {
-  CliOutput,
-  ErrorResponse,
-  LendingSimulatedResponse,
-  LendingSuccessResponse,
-  RejectionResponse,
-} from '../output.js';
+import type { CliOutput, LendingOutput, LendingRewardsOutput } from '../output.js';
 import { printJsonOutput } from '../output.js';
+import { resolveTokenInput } from '../resolve.js';
 import { withComponents } from '../with-components.js';
 
 /** Shared fallback MEV protector for chains without a registered protector. */
@@ -158,22 +153,26 @@ async function executeTokenLendingAction(
 
     log.info({ action, token, amount: amountStr, chain, watchOnly }, 'Lend command invoked');
 
+    // Get chain adapter (needed for token resolution and pipeline)
+    const chainAdapter = chainAdapterFactory.get(chain);
+
     // === Resolve CLI inputs to stable internal representations ===
-    const coinType = resolveTokenAddress(token.toUpperCase());
-    const decimals = await coinMetadataService.getDecimals(coinType, chain);
-    const scaledAmount = scaleToSmallestUnit(amountStr, decimals);
+    // resolveTokenInput handles alias resolution (case-insensitive),
+    // coin type normalization, decimal fetching, and amount scaling.
+    const resolved = await resolveTokenInput(token, amountStr, chainAdapter, coinMetadataService);
+    const { coinType, symbol, scaledAmount } = resolved;
 
     // Resolve market ID (auto from coinType or explicit)
     const marketId = await resolveMarketId(alphalendClient, coinType, options.market);
 
-    // Resolve USD price from oracle
+    // Resolve USD price from oracle (uses canonical symbol from registry)
     let tradeValueUsd: number | undefined;
     try {
-      const price = await oracle.getPrice(token.toUpperCase());
+      const price = await oracle.getPrice(symbol);
       tradeValueUsd = parseFloat(amountStr) * price;
     } catch (err: unknown) {
       log.warn(
-        { token, error: toErrorMessage(err) },
+        { token: symbol, error: toErrorMessage(err) },
         'Oracle price unavailable; USD spending limits will not be enforced',
       );
       tradeValueUsd = undefined;
@@ -209,9 +208,6 @@ async function executeTokenLendingAction(
       intent,
     ) as ActionBuilder<TokenLendingIntent>;
 
-    // Get chain adapter
-    const chainAdapter = chainAdapterFactory.get(chain);
-
     // Get MEV protector (fallback to NoOp)
     const mevProtector = mevProtectors.get(chain) ?? FALLBACK_MEV_PROTECTOR;
 
@@ -234,9 +230,12 @@ async function executeTokenLendingAction(
     process.exitCode = output.exitCode;
   } catch (err: unknown) {
     log.error({ err: toErrorMessage(err) }, `Lend ${action} failed`);
-    const errorOutput: ErrorResponse = {
+    const errorOutput: CliOutput = {
       status: 'error',
-      message: toErrorMessage(err),
+      action,
+      chainId,
+      address: '',
+      error: toErrorMessage(err),
     };
     printJsonOutput(errorOutput);
     process.exitCode = 1;
@@ -385,9 +384,12 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
         process.exitCode = output.exitCode;
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Claim rewards failed');
-        const errorOutput: ErrorResponse = {
+        const errorOutput: CliOutput = {
           status: 'error',
-          message: toErrorMessage(err),
+          action: 'claim_rewards',
+          chainId,
+          address: '',
+          error: toErrorMessage(err),
         };
         printJsonOutput(errorOutput);
         process.exitCode = 1;
@@ -413,18 +415,12 @@ function registerMarketsQuery(parent: Command, getComponents: () => AppComponent
 
       try {
         const markets = await fetchAllMarkets(alphalendClient);
-        printJsonOutput({
-          status: 'success',
-          action: 'markets',
-          data: markets,
-        } as unknown as CliOutput);
+        console.log(
+          JSON.stringify({ status: 'success', action: 'markets', data: markets }, null, 2),
+        );
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Failed to fetch markets');
-        const errorOutput: ErrorResponse = {
-          status: 'error',
-          message: toErrorMessage(err),
-        };
-        printJsonOutput(errorOutput);
+        console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
         process.exitCode = 1;
       }
     });
@@ -441,24 +437,17 @@ function registerMarketDetailQuery(parent: Command, getComponents: () => AppComp
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { alphalendClient, logger } = components;
+      const { alphalendClient, chainAdapterFactory, logger } = components;
       const log = logger.child({ command: 'lend-market' });
 
       try {
-        const coinType = resolveTokenAddress(token.toUpperCase());
+        const chainAdapter = chainAdapterFactory.get('sui');
+        const coinType = chainAdapter.resolveTokenAddress(token);
         const detail = await fetchMarketDetail(alphalendClient, coinType);
-        printJsonOutput({
-          status: 'success',
-          action: 'market',
-          data: detail,
-        } as unknown as CliOutput);
+        console.log(JSON.stringify({ status: 'success', action: 'market', data: detail }, null, 2));
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Failed to fetch market detail');
-        const errorOutput: ErrorResponse = {
-          status: 'error',
-          message: toErrorMessage(err),
-        };
-        printJsonOutput(errorOutput);
+        console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
         process.exitCode = 1;
       }
     });
@@ -490,18 +479,12 @@ function registerPortfolioQuery(parent: Command, getComponents: () => AppCompone
         }
 
         const portfolio = await fetchPortfolio(alphalendClient, wallet.address);
-        printJsonOutput({
-          status: 'success',
-          action: 'portfolio',
-          data: portfolio,
-        } as unknown as CliOutput);
+        console.log(
+          JSON.stringify({ status: 'success', action: 'portfolio', data: portfolio }, null, 2),
+        );
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Failed to fetch portfolio');
-        const errorOutput: ErrorResponse = {
-          status: 'error',
-          message: toErrorMessage(err),
-        };
-        printJsonOutput(errorOutput);
+        console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
         process.exitCode = 1;
       }
     });
@@ -509,11 +492,23 @@ function registerPortfolioQuery(parent: Command, getComponents: () => AppCompone
 
 // --- Result mapping ---
 
+/** Exit codes by pipeline status */
+const EXIT_CODES: Record<PipelineStatus, number> = {
+  success: 0,
+  simulated: 0,
+  rejected: 3,
+  simulation_failed: 4,
+  error: 1,
+};
+
+/** Lending payload union */
+type LendingPayload = LendingOutput | LendingRewardsOutput;
+
 /**
  * Result of mapping a PipelineResult to CLI output.
  */
 interface MappedOutput {
-  readonly cliOutput: CliOutput;
+  readonly cliOutput: CliOutput<LendingPayload>;
   readonly exitCode: number;
 }
 
@@ -523,71 +518,36 @@ interface MappedOutput {
 function mapLendingResultToOutput(
   result: PipelineResult,
   intent: TokenLendingIntent | ClaimRewardsIntent,
-  action: string,
+  action: LendingAction | 'claim_rewards',
   tradeValueUsd: number | undefined,
 ): MappedOutput {
-  const tokenInfo =
-    intent.action !== 'claim_rewards'
-      ? {
-          token: intent.params.coinType,
-          amount: intent.params.amount,
-          marketId: intent.params.marketId,
-        }
-      : {};
+  const base: CliOutput<LendingPayload> = {
+    status: result.status,
+    action,
+    chainId: intent.chainId,
+    address: intent.walletAddress,
+    gasUsed: result.gasUsed,
+    txDigest: result.txDigest,
+    protocol: 'alphalend',
+    error: result.error,
+    rejectionCheck: result.rejectionCheck,
+    rejectionReason: result.rejectionReason,
+  };
 
-  switch (result.status) {
-    case 'success': {
-      const output: LendingSuccessResponse = {
-        status: 'success',
-        chain: intent.chainId,
-        action,
-        txDigest: result.txDigest ?? '',
-        protocol: 'alphalend',
-        ...tokenInfo,
-        valueUsd: tradeValueUsd ?? null,
-        gasCost: result.gasUsed ?? 0,
-      };
-      return { cliOutput: output, exitCode: 0 };
-    }
+  const hasPayload = result.status === 'success' || result.status === 'simulated';
+  let payload: LendingPayload | undefined;
 
-    case 'simulated': {
-      const output: LendingSimulatedResponse = {
-        status: 'simulated',
-        chain: intent.chainId,
-        action,
-        protocol: 'alphalend',
-        ...tokenInfo,
-        gasEstimate: result.gasUsed ?? 0,
-      };
-      return { cliOutput: output, exitCode: 0 };
-    }
-
-    case 'rejected': {
-      const output: RejectionResponse = {
-        status: 'rejected',
-        chain: intent.chainId,
-        action,
-        check: result.rejectionCheck ?? 'unknown',
-        reason: result.rejectionReason ?? 'policy_rejected',
-        detail: result.rejectionReason ?? 'Action rejected by policy engine',
-      };
-      return { cliOutput: output, exitCode: 3 };
-    }
-
-    case 'simulation_failed': {
-      const output: ErrorResponse = {
-        status: 'error',
-        message: `Simulation failed: ${result.error ?? 'unknown error'}`,
-      };
-      return { cliOutput: output, exitCode: 4 };
-    }
-
-    case 'error': {
-      const output: ErrorResponse = {
-        status: 'error',
-        message: result.error ?? 'Unknown pipeline error',
-      };
-      return { cliOutput: output, exitCode: 1 };
-    }
+  if (hasPayload && intent.action !== 'claim_rewards') {
+    payload = {
+      token: intent.params.coinType,
+      amount: parseFloat(intent.params.amount),
+      marketId: intent.params.marketId,
+      valueUsd: tradeValueUsd ?? null,
+    };
   }
+
+  return {
+    cliOutput: { ...base, ...(payload !== undefined ? { payload } : {}) },
+    exitCode: EXIT_CODES[result.status],
+  };
 }

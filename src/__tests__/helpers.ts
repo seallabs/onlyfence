@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { Logger } from 'pino';
 import { vi } from 'vitest';
 import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
+import { resolveTokenAddress } from '../chain/sui/tokens.js';
 import type { BorrowIntent, SupplyIntent, SwapIntent } from '../core/action-types.js';
 import type { LendingRecord } from '../db/lending-log.js';
 import type { TradeRecord } from '../db/trade-log.js';
@@ -50,8 +51,8 @@ export function createIntent(
     action: 'swap',
     walletAddress: '0xabc',
     params: {
-      coinTypeIn: '0x2::sui::SUI',
-      coinTypeOut: '0xdba3::usdc::USDC',
+      coinTypeIn: resolveTokenAddress('SUI'),
+      coinTypeOut: resolveTokenAddress('USDC'),
       amountIn: '100000000',
       slippageBps: 100,
       ...paramOverrides,
@@ -118,7 +119,7 @@ export function createSupplyIntent(
     action: 'supply',
     walletAddress: '0xabc',
     params: {
-      coinType: '0x2::sui::SUI',
+      coinType: resolveTokenAddress('SUI'),
       amount: '1000000000',
       protocol: 'alphalend',
       marketId: '1',
@@ -141,7 +142,7 @@ export function createBorrowIntent(
     action: 'borrow',
     walletAddress: '0xabc',
     params: {
-      coinType: '0x2::sui::SUI',
+      coinType: resolveTokenAddress('SUI'),
       amount: '500000000',
       protocol: 'alphalend',
       marketId: '1',

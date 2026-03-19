@@ -12,6 +12,7 @@ import type {
 import type { SwapIntent } from '../../../core/action-types.js';
 import type { TradeLog } from '../../../db/trade-log.js';
 import { toErrorMessage } from '../../../utils/index.js';
+import type { SuiTxResponse } from '../adapter.js';
 import type { SwapEventAmounts } from './events.js';
 import { parseSwapEvent } from './events.js';
 
@@ -37,7 +38,7 @@ interface BestQuote {
  * Each builder owns: validate -> build -> finish for its operation type.
  * The pipeline doesn't know what kind of operation it is.
  */
-export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
+export class SuiSwapBuilder implements ActionBuilder<SwapIntent, SuiTxResponse> {
   readonly builderId = '7k-swap';
   readonly chain = 'sui';
   private readonly metaAg: MetaAg;
@@ -135,7 +136,7 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
    * Called by the pipeline after rejection, watch-only simulation, or
    * successful execution.
    */
-  finish(context: FinishContext): void {
+  finish(context: FinishContext<SuiTxResponse>): void {
     const { intent, status, metadata, rawResponse, txDigest, gasUsed, rejection } = context;
 
     if (intent.action !== 'swap') return;
@@ -165,9 +166,8 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent> {
     });
   }
 
-  parseAmounts(rawResponse: unknown): SwapEventAmounts | undefined {
-    if (typeof rawResponse !== 'object' || rawResponse === null) return undefined;
-    const events = (rawResponse as Record<string, unknown>)['events'];
+  parseAmounts(rawResponse: SuiTxResponse): SwapEventAmounts | undefined {
+    const events = rawResponse.events;
     if (!Array.isArray(events)) return undefined;
     return parseSwapEvent(events as { type: string; parsedJson: unknown }[]);
   }

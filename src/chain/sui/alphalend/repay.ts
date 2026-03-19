@@ -8,7 +8,7 @@ import type {
 } from '../../../core/action-builder.js';
 import type { RepayIntent } from '../../../core/action-types.js';
 import type { LendingLog } from '../../../db/lending-log.js';
-import { coinTypeToSymbol } from '../tokens.js';
+import { coinTypeToSymbol, isSuiCoinType } from '../tokens.js';
 import { parseLendingEvent } from './events.js';
 
 /**
@@ -58,7 +58,7 @@ export class AlphaLendRepayBuilder implements ActionBuilder<RepayIntent> {
     const transaction = await this.alphalendClient.repay({
       marketId,
       amount: bufferedAmount,
-      coinType,
+      coinType: isSuiCoinType(coinType) ? '0x2::sui::SUI' : coinType,
       positionCapId,
       address: intent.walletAddress,
     });

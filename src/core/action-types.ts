@@ -16,6 +16,10 @@ export type DeFiAction =
   | 'lp_withdraw';
 export type Chain = 'sui';
 export type ChainId = `${Chain}:${string}`;
+export type LendingProtocol = 'alphalend' | 'suilend' | 'navi';
+export type DexProtocol = 'cetus_clmm' | 'bluefin_clmm';
+export type AggregatorProtocol = '7k_meta_ag';
+export type DefiProtocol = LendingProtocol | DexProtocol | AggregatorProtocol;
 
 /** Base intent -- all actions share these fields */
 export interface ActionIntentBase {

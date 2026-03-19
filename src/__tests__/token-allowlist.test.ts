@@ -1,17 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
+import { resolveTokenAddress, tryResolveTokenAddress } from '../chain/sui/tokens.js';
 import { openMemoryDatabase } from '../db/connection.js';
 import { createIntent, createContext, createSupplyIntent } from './helpers.js';
 import type { ClaimRewardsIntent } from '../core/action-types.js';
 import type { ChainConfig } from '../types/config.js';
 import type Database from 'better-sqlite3';
 
+/** Resolved canonical coin type for SUI */
+const SUI_COIN_TYPE = resolveTokenAddress('SUI');
+/** Resolved canonical coin type for USDC */
+const USDC_COIN_TYPE = resolveTokenAddress('USDC');
+
 describe('TokenAllowlistCheck', () => {
   let check: TokenAllowlistCheck;
   let db: Database.Database;
 
   beforeEach(() => {
-    check = new TokenAllowlistCheck();
+    check = new TokenAllowlistCheck(tryResolveTokenAddress);
     db = openMemoryDatabase();
   });
 
@@ -27,8 +33,8 @@ describe('TokenAllowlistCheck', () => {
     };
     const intent = createIntent({
       params: {
-        coinTypeIn: '0x2::sui::SUI',
-        coinTypeOut: '0xdba3::usdc::USDC',
+        coinTypeIn: SUI_COIN_TYPE,
+        coinTypeOut: USDC_COIN_TYPE,
         amountIn: '100',
         slippageBps: 100,
       },
@@ -38,15 +44,15 @@ describe('TokenAllowlistCheck', () => {
     expect(result.status).toBe('pass');
   });
 
-  it('should pass with case-insensitive token matching', async () => {
+  it('should pass with case-insensitive allowlist matching', async () => {
     const config: ChainConfig = {
       rpc: 'https://rpc.example.com',
-      allowlist: { tokens: ['SUI', 'USDC'] },
+      allowlist: { tokens: ['sui', 'usdc'] },
     };
     const intent = createIntent({
       params: {
-        coinTypeIn: '0x2::sui::sui',
-        coinTypeOut: '0xdba3::usdc::usdc',
+        coinTypeIn: SUI_COIN_TYPE,
+        coinTypeOut: USDC_COIN_TYPE,
         amountIn: '100',
         slippageBps: 100,
       },
@@ -61,10 +67,11 @@ describe('TokenAllowlistCheck', () => {
       rpc: 'https://rpc.example.com',
       allowlist: { tokens: ['SUI', 'USDC'] },
     };
+    const scamCoinType = resolveTokenAddress('0xdead::scam::SCAM');
     const intent = createIntent({
       params: {
-        coinTypeIn: '0xdead::scam::SCAM',
-        coinTypeOut: '0xdba3::usdc::USDC',
+        coinTypeIn: scamCoinType,
+        coinTypeOut: USDC_COIN_TYPE,
         amountIn: '100',
         slippageBps: 100,
       },
@@ -74,7 +81,7 @@ describe('TokenAllowlistCheck', () => {
     expect(result.status).toBe('reject');
     expect(result.reason).toBe('token_not_allowed');
     expect(result.metadata?.['direction']).toBe('from');
-    expect(result.metadata?.['token']).toBe('SCAM');
+    expect(result.metadata?.['token']).toBe(scamCoinType);
   });
 
   it('should reject when toToken is not in the allowlist', async () => {
@@ -82,10 +89,11 @@ describe('TokenAllowlistCheck', () => {
       rpc: 'https://rpc.example.com',
       allowlist: { tokens: ['SUI', 'USDC'] },
     };
+    const scamCoinType = resolveTokenAddress('0xdead::scam::SCAM');
     const intent = createIntent({
       params: {
-        coinTypeIn: '0x2::sui::SUI',
-        coinTypeOut: '0xdead::scam::SCAM',
+        coinTypeIn: SUI_COIN_TYPE,
+        coinTypeOut: scamCoinType,
         amountIn: '100',
         slippageBps: 100,
       },
@@ -95,7 +103,7 @@ describe('TokenAllowlistCheck', () => {
     expect(result.status).toBe('reject');
     expect(result.reason).toBe('token_not_allowed');
     expect(result.metadata?.['direction']).toBe('to');
-    expect(result.metadata?.['token']).toBe('SCAM');
+    expect(result.metadata?.['token']).toBe(scamCoinType);
   });
 
   it('should pass when allowlist config is missing', async () => {
@@ -104,8 +112,8 @@ describe('TokenAllowlistCheck', () => {
     };
     const intent = createIntent({
       params: {
-        coinTypeIn: '0xdead::any::ANY_TOKEN',
-        coinTypeOut: '0xdead::what::WHATEVER',
+        coinTypeIn: resolveTokenAddress('0xdead::any::ANY_TOKEN'),
+        coinTypeOut: resolveTokenAddress('0xdead::what::WHATEVER'),
         amountIn: '100',
         slippageBps: 100,
       },
@@ -138,7 +146,7 @@ describe('TokenAllowlistCheck', () => {
     };
     const intent = createSupplyIntent({
       params: {
-        coinType: '0x2::sui::SUI',
+        coinType: SUI_COIN_TYPE,
         amount: '1000000000',
         protocol: 'alphalend',
         marketId: '1',
@@ -154,9 +162,10 @@ describe('TokenAllowlistCheck', () => {
       rpc: 'https://rpc.example.com',
       allowlist: { tokens: ['SUI', 'USDC'] },
     };
+    const scamCoinType = resolveTokenAddress('0xdead::scam::SCAM');
     const intent = createSupplyIntent({
       params: {
-        coinType: '0xdead::scam::SCAM',
+        coinType: scamCoinType,
         amount: '1000000000',
         protocol: 'alphalend',
         marketId: '1',
@@ -166,6 +175,6 @@ describe('TokenAllowlistCheck', () => {
 
     expect(result.status).toBe('reject');
     expect(result.reason).toBe('token_not_allowed');
-    expect(result.metadata?.['token']).toBe('SCAM');
+    expect(result.metadata?.['token']).toBe(scamCoinType);
   });
 });

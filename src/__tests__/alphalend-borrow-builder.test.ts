@@ -8,10 +8,14 @@ import type { LendingLog } from '../db/lending-log.js';
 // Mock AlphaLend SDK
 const mockBorrow = vi.fn();
 const mockGetUserPositionCapId = vi.fn();
+const mockGetMarketsChain = vi.fn();
+const mockGetUserPortfolioFromPositionCapId = vi.fn();
 
 vi.mock('@alphafi/alphalend-sdk', () => ({
   AlphalendClient: class MockAlphalendClient {
     borrow = mockBorrow;
+    getMarketsChain = mockGetMarketsChain;
+    getUserPortfolioFromPositionCapId = mockGetUserPortfolioFromPositionCapId;
   },
   getUserPositionCapId: (...args: unknown[]) => mockGetUserPositionCapId(...args),
 }));
@@ -46,7 +50,11 @@ describe('AlphaLendBorrowBuilder', () => {
   let mockLendingLog: LendingLog;
 
   beforeEach(() => {
-    mockAlphalendClient = { borrow: mockBorrow } as unknown as AlphalendClient;
+    mockAlphalendClient = {
+      borrow: mockBorrow,
+      getMarketsChain: mockGetMarketsChain,
+      getUserPortfolioFromPositionCapId: mockGetUserPortfolioFromPositionCapId,
+    } as unknown as AlphalendClient;
     mockSuiClient = {} as unknown as SuiClient;
     mockLendingLog = {
       logActivity: vi.fn().mockReturnValue(1),
@@ -79,7 +87,12 @@ describe('AlphaLendBorrowBuilder', () => {
     it('fetches positionCapId, calls borrow with priceUpdateCoinTypes', async () => {
       const fakeTx = { kind: 'transaction', setSenderIfNotSet: vi.fn() };
       const fakeCapId = '0xcap123';
+      mockGetMarketsChain.mockResolvedValue([{ market: { id: 1, coinType: '0x2::sui::SUI' } }]);
       mockGetUserPositionCapId.mockResolvedValue(fakeCapId);
+      mockGetUserPortfolioFromPositionCapId.mockResolvedValue({
+        borrowedAmounts: new Map(),
+        suppliedAmounts: new Map(),
+      });
       mockBorrow.mockResolvedValue(fakeTx);
 
       const builder = new AlphaLendBorrowBuilder(
@@ -115,6 +128,7 @@ describe('AlphaLendBorrowBuilder', () => {
     });
 
     it('throws if no position exists (no positionCapId)', async () => {
+      mockGetMarketsChain.mockResolvedValue([{ market: { id: 1, coinType: '0x2::sui::SUI' } }]);
       mockGetUserPositionCapId.mockResolvedValue(undefined);
 
       const builder = new AlphaLendBorrowBuilder(

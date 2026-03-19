@@ -6,7 +6,7 @@ import type {
 } from '../../../core/action-builder.js';
 import type { SupplyIntent } from '../../../core/action-types.js';
 import type { LendingLog } from '../../../db/lending-log.js';
-import { coinTypeToSymbol } from '../tokens.js';
+import { coinTypeToSymbol, isSuiCoinType } from '../tokens.js';
 import { parseLendingEvent } from './events.js';
 
 /**
@@ -41,7 +41,7 @@ export class AlphaLendSupplyBuilder implements ActionBuilder<SupplyIntent> {
     const tx = await this.alphalendClient.supply({
       marketId: intent.params.marketId,
       amount: BigInt(intent.params.amount),
-      coinType: intent.params.coinType,
+      coinType: isSuiCoinType(intent.params.coinType) ? '0x2::sui::SUI' : intent.params.coinType,
       address: intent.walletAddress,
     });
     tx?.setSenderIfNotSet(intent.walletAddress);
@@ -49,7 +49,6 @@ export class AlphaLendSupplyBuilder implements ActionBuilder<SupplyIntent> {
     if (tx === undefined) {
       throw new Error('AlphaLend supply returned undefined — coin not found on-chain');
     }
-
     return {
       transaction: tx,
       metadata: {

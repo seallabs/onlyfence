@@ -7,6 +7,7 @@ import {
   isKnownToken,
   resolveTokenAddress,
 } from '../chain/sui/tokens.js';
+import { normalizeStructTag } from '@mysten/sui/utils';
 import type { BalanceResult, Signer, SimulationResult, TxResult } from '../types/result.js';
 
 // Mock SuiJsonRpcClient so SuiAdapter can be constructed
@@ -153,7 +154,7 @@ describe('SuiAdapter', () => {
 
 describe('SUI Token Registry', () => {
   it('should resolve known token symbols', () => {
-    expect(resolveTokenAddress('SUI')).toBe('0x2::sui::SUI');
+    expect(resolveTokenAddress('SUI')).toBe(normalizeStructTag('0x2::sui::SUI'));
     expect(resolveTokenAddress('USDC')).toContain('::usdc::USDC');
     expect(resolveTokenAddress('USDT')).toContain('::celer_usdt_coin::CELER_USDT_COIN');
     expect(resolveTokenAddress('wUSDT')).toContain('::coin::COIN');
@@ -161,15 +162,15 @@ describe('SUI Token Registry', () => {
     expect(resolveTokenAddress('WAL')).toContain('::wal::WAL');
   });
 
-  it('should pass through raw coin types unchanged', () => {
+  it('should normalize raw coin types via normalizeStructTag', () => {
     const rawCoinType =
       '0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC';
-    expect(resolveTokenAddress(rawCoinType)).toBe(rawCoinType);
+    expect(resolveTokenAddress(rawCoinType)).toBe(normalizeStructTag(rawCoinType));
   });
 
-  it('should pass through arbitrary coin types without registry lookup', () => {
+  it('should normalize arbitrary coin types without registry lookup', () => {
     const unknownCoinType = '0xabc123::my_module::MY_TOKEN';
-    expect(resolveTokenAddress(unknownCoinType)).toBe(unknownCoinType);
+    expect(resolveTokenAddress(unknownCoinType)).toBe(normalizeStructTag(unknownCoinType));
   });
 
   it('should throw on unknown token symbol', () => {
@@ -180,9 +181,18 @@ describe('SUI Token Registry', () => {
     expect(() => resolveTokenAddress('FAKE')).toThrow('Known tokens:');
   });
 
-  it('should be case-sensitive for alias lookup', () => {
-    expect(() => resolveTokenAddress('sui')).toThrow('Unknown Sui token symbol');
-    expect(() => resolveTokenAddress('Usdc')).toThrow('Unknown Sui token symbol');
+  it('should resolve aliases case-insensitively', () => {
+    expect(resolveTokenAddress('sui')).toBe(resolveTokenAddress('SUI'));
+    expect(resolveTokenAddress('usdc')).toBe(resolveTokenAddress('USDC'));
+    expect(resolveTokenAddress('Hasui')).toBe(resolveTokenAddress('haSUI'));
+  });
+
+  it('should normalize both short and long form coin types to the same canonical form', () => {
+    const shortForm = '0x2::sui::SUI';
+    const longForm = '0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI';
+    // Both forms resolve to the same normalizeStructTag output
+    expect(resolveTokenAddress(shortForm)).toBe(resolveTokenAddress(longForm));
+    expect(resolveTokenAddress(shortForm)).toBe(normalizeStructTag(shortForm));
   });
 
   it('isKnownToken should return true for registered tokens', () => {
@@ -204,7 +214,7 @@ describe('SUI Token Registry', () => {
   });
 
   it('coinTypeToSymbol should reverse-resolve known coin types', () => {
-    expect(coinTypeToSymbol('0x2::sui::SUI')).toBe('SUI');
+    expect(coinTypeToSymbol(normalizeStructTag('0x2::sui::SUI'))).toBe('SUI');
     expect(coinTypeToSymbol(SUI_TOKEN_MAP['USDC']!)).toBe('USDC');
     expect(coinTypeToSymbol(SUI_TOKEN_MAP['DEEP']!)).toBe('DEEP');
   });

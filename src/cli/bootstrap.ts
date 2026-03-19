@@ -11,7 +11,7 @@ import { AlphaLendClaimRewardsBuilder } from '../chain/sui/alphalend/claim-rewar
 import { AlphaLendRepayBuilder } from '../chain/sui/alphalend/repay.js';
 import { AlphaLendSupplyBuilder } from '../chain/sui/alphalend/supply.js';
 import { AlphaLendWithdrawBuilder } from '../chain/sui/alphalend/withdraw.js';
-import { SUI_KNOWN_DECIMALS } from '../chain/sui/tokens.js';
+import { SUI_KNOWN_DECIMALS, tryResolveTokenAddress } from '../chain/sui/tokens.js';
 import { CONFIG_PATH, loadConfig } from '../config/loader.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
 import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
@@ -143,7 +143,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
 export function buildPolicyRegistry(_config: AppConfig): PolicyCheckRegistry {
   const registry = new PolicyCheckRegistry();
 
-  registry.register(new TokenAllowlistCheck());
+  registry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
   registry.register(new SpendingLimitCheck());
 
   return registry;

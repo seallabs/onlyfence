@@ -1,5 +1,5 @@
+import { normalizeStructTag } from '@mysten/sui/utils';
 import BigNumber from 'bignumber.js';
-import { extractTokenSymbol } from '../../utils/index.js';
 
 /**
  * Token entry in the Sui token registry.
@@ -524,20 +524,31 @@ const SUI_TOKEN_REGISTRY: readonly TokenEntry[] = [
 
 /**
  * Sui mainnet coin type addresses for well-known tokens.
- * Maps alias -> fully-qualified Move coin type.
+ * Maps alias -> normalized fully-qualified Move coin type.
+ *
+ * All coin types are passed through `normalizeStructTag` at build time
+ * so that lookups always match the canonical form returned by `resolveTokenAddress`.
  *
  * Format: <package_id>::<module>::<struct>
  */
 export const SUI_TOKEN_MAP: Readonly<Record<string, string>> = Object.fromEntries(
-  SUI_TOKEN_REGISTRY.map(({ alias, coinType }) => [alias, coinType]),
+  SUI_TOKEN_REGISTRY.map(({ alias, coinType }) => [alias, normalizeStructTag(coinType)]),
 );
 
 /**
- * Reverse mapping from coin type address to alias.
+ * Reverse mapping from normalized coin type address to alias.
  * Built once at module load from SUI_TOKEN_REGISTRY.
  */
 const COIN_TYPE_TO_SYMBOL = new Map<string, string>(
-  SUI_TOKEN_REGISTRY.map(({ alias, coinType }) => [coinType, alias]),
+  SUI_TOKEN_REGISTRY.map(({ alias, coinType }) => [normalizeStructTag(coinType), alias]),
+);
+
+/**
+ * Case-insensitive alias lookup: uppercased alias -> original alias.
+ * Used as fallback when exact-case match fails.
+ */
+const ALIAS_UPPER_MAP: Readonly<Record<string, string>> = Object.fromEntries(
+  SUI_TOKEN_REGISTRY.map(({ alias }) => [alias.toUpperCase(), alias]),
 );
 
 /**
@@ -547,7 +558,7 @@ const COIN_TYPE_TO_SYMBOL = new Map<string, string>(
  * @returns The token symbol, or undefined if not in the registry
  */
 export function coinTypeToSymbol(coinType: string): string | undefined {
-  return COIN_TYPE_TO_SYMBOL.get(coinType);
+  return COIN_TYPE_TO_SYMBOL.get(isCoinType(coinType) ? normalizeStructTag(coinType) : coinType);
 }
 
 /**
@@ -560,21 +571,35 @@ function isCoinType(input: string): boolean {
 /**
  * Resolve a token symbol or coin type to its Sui mainnet coin type address.
  *
- * If the input already contains "::" it is treated as a raw coin type and
- * returned as-is. Otherwise it is looked up by exact alias (case-sensitive).
+ * - If the input contains "::" it is treated as a raw coin type, normalized
+ *   (leading-zero stripping on the address prefix), and returned.
+ * - Otherwise it is looked up by exact alias first (case-sensitive), then by
+ *   case-insensitive fallback.
  *
- * @param symbolOrCoinType - Token alias (e.g., "SUI", "haSUI") or fully-qualified coin type
+ * @param symbolOrCoinType - Token alias (e.g., "SUI", "sui", "haSUI") or fully-qualified coin type
  * @returns The fully-qualified Sui coin type address
  * @throws if the input is a symbol that is not found in the registry
  */
 export function resolveTokenAddress(symbolOrCoinType: string): string {
   if (isCoinType(symbolOrCoinType)) {
-    return symbolOrCoinType;
+    return normalizeStructTag(symbolOrCoinType);
   }
 
-  const address = SUI_TOKEN_MAP[symbolOrCoinType];
-  if (address !== undefined) {
-    return address;
+  // Exact case-sensitive match (preserves mixed-case aliases like haSUI, wBTC)
+  const exact = SUI_TOKEN_MAP[symbolOrCoinType];
+  if (exact !== undefined) {
+    return exact;
+  }
+
+  // Case-insensitive fallback (handles "sui", "usdc", "hasui", etc.)
+  const canonical = ALIAS_UPPER_MAP[symbolOrCoinType.toUpperCase()];
+  if (canonical !== undefined) {
+    // canonical is guaranteed to exist in SUI_TOKEN_MAP since ALIAS_UPPER_MAP
+    // is derived from the same SUI_TOKEN_REGISTRY entries.
+    const resolved = SUI_TOKEN_MAP[canonical];
+    if (resolved !== undefined) {
+      return resolved;
+    }
   }
 
   throw new Error(
@@ -583,27 +608,56 @@ export function resolveTokenAddress(symbolOrCoinType: string): string {
 }
 
 /**
+ * Non-throwing variant of resolveTokenAddress.
+ *
+ * Returns the canonical coin type if the input can be resolved, or undefined
+ * if the alias is unknown. Coin type inputs (containing "::") are always
+ * normalized and returned.
+ */
+export function tryResolveTokenAddress(symbolOrCoinType: string): string | undefined {
+  if (isCoinType(symbolOrCoinType)) {
+    return normalizeStructTag(symbolOrCoinType);
+  }
+
+  const exact = SUI_TOKEN_MAP[symbolOrCoinType];
+  if (exact !== undefined) return exact;
+
+  const canonical = ALIAS_UPPER_MAP[symbolOrCoinType.toUpperCase()];
+  if (canonical !== undefined) {
+    return SUI_TOKEN_MAP[canonical];
+  }
+
+  return undefined;
+}
+
+/**
  * Known decimals for well-known Sui tokens, keyed by fully-qualified coin type.
  */
 export const SUI_KNOWN_DECIMALS: Readonly<Record<string, number>> = Object.fromEntries(
-  SUI_TOKEN_REGISTRY.map(({ coinType, decimals }) => [coinType, decimals]),
+  SUI_TOKEN_REGISTRY.map(({ coinType, decimals }) => [normalizeStructTag(coinType), decimals]),
 );
 
 /**
  * Resolve a coin type to its human-readable symbol.
- * Falls back to extracting the last segment of the coin type (e.g., "SUI" from "0x2::sui::SUI").
+ *
+ * Returns the registry alias when the coin type is known (e.g., "SUI", "haSUI", "HIPPO").
+ * For unregistered coin types, returns the normalized coin type address as-is
+ * to avoid false-positive matches (multiple coin types can share the same
+ * Move struct name, e.g., `::coin::COIN`).
  */
 export function resolveSymbol(coinType: string): string {
-  const known = COIN_TYPE_TO_SYMBOL.get(coinType);
+  const normalized = isCoinType(coinType) ? normalizeStructTag(coinType) : coinType;
+  const known = COIN_TYPE_TO_SYMBOL.get(normalized);
   if (known !== undefined) return known;
-  return extractTokenSymbol(coinType);
+  return normalized;
 }
 
 /**
  * Get known decimals for a coin type, or undefined if not in the registry.
  */
 export function getKnownDecimals(coinType: string): number | undefined {
-  return SUI_KNOWN_DECIMALS[coinType];
+  const normalized = isCoinType(coinType) ? normalizeStructTag(coinType) : coinType;
+  return SUI_KNOWN_DECIMALS[normalized];
 }
 
 /**
@@ -690,3 +744,11 @@ export function getRegistryEntries(): readonly TokenEntry[] {
 export const REGISTRY_ALIASES_UPPER: ReadonlySet<string> = new Set(
   SUI_TOKEN_REGISTRY.map((e) => e.alias.toUpperCase()),
 );
+
+export const isSuiCoinType = (coinType: string): boolean => {
+  try {
+    return normalizeStructTag(coinType) === normalizeStructTag('0x2::sui::SUI');
+  } catch {
+    return false;
+  }
+};

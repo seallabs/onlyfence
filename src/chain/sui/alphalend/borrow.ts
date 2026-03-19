@@ -1,5 +1,4 @@
 import type { AlphalendClient } from '@alphafi/alphalend-sdk';
-import { getUserPositionCapId } from '@alphafi/alphalend-sdk';
 import type { SuiClient } from '@mysten/sui/client';
 import type {
   ActionBuilder,
@@ -9,6 +8,7 @@ import type {
 import type { BorrowIntent } from '../../../core/action-types.js';
 import type { LendingLog } from '../../../db/lending-log.js';
 import { coinTypeToSymbol } from '../tokens.js';
+import { AlphaLendBase } from './base.js';
 import { parseLendingEvent } from './events.js';
 
 /**
@@ -18,15 +18,17 @@ import { parseLendingEvent } from './events.js';
  * Fetches the user's position cap ID, then delegates to the AlphaLend SDK
  * to build the borrow transaction. Logs the activity to LendingLog.
  */
-export class AlphaLendBorrowBuilder implements ActionBuilder<BorrowIntent> {
+export class AlphaLendBorrowBuilder extends AlphaLendBase implements ActionBuilder<BorrowIntent> {
   readonly builderId = 'alphalend-borrow';
   readonly chain = 'sui';
 
   constructor(
-    private readonly alphalendClient: AlphalendClient,
-    private readonly suiClient: SuiClient,
+    alphalendClient: AlphalendClient,
+    suiClient: SuiClient,
     private readonly lendingLog: LendingLog,
-  ) {}
+  ) {
+    super(alphalendClient, suiClient);
+  }
 
   validate(intent: BorrowIntent): void {
     if (intent.params.coinType === '') {
@@ -41,13 +43,11 @@ export class AlphaLendBorrowBuilder implements ActionBuilder<BorrowIntent> {
   }
 
   async build(intent: BorrowIntent): Promise<BuiltTransaction> {
-    const network = intent.chainId.split(':')[1] ?? 'mainnet';
-
-    const positionCapId = await getUserPositionCapId(this.suiClient, network, intent.walletAddress);
-
-    if (positionCapId === undefined) {
-      throw new Error('No position found. Supply collateral first.');
-    }
+    const { priceUpdateCoinTypes, positionCapId } = await this.getBuildContext(
+      intent.chainId.split(':')[1] ?? 'mainnet',
+      intent.walletAddress,
+      intent.params.coinType,
+    );
 
     const tx = await this.alphalendClient.borrow({
       marketId: intent.params.marketId,
@@ -55,7 +55,7 @@ export class AlphaLendBorrowBuilder implements ActionBuilder<BorrowIntent> {
       coinType: intent.params.coinType,
       positionCapId,
       address: intent.walletAddress,
-      priceUpdateCoinTypes: [intent.params.coinType],
+      priceUpdateCoinTypes: Array.from(priceUpdateCoinTypes),
     });
     tx.setSenderIfNotSet(intent.walletAddress);
 

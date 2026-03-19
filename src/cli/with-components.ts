@@ -1,6 +1,4 @@
 import type { AppComponents } from './bootstrap.js';
-import type { ErrorResponse } from './output.js';
-import { printJsonOutput } from './output.js';
 import { toErrorMessage } from '../utils/index.js';
 
 /**
@@ -19,11 +17,7 @@ export function withComponents(getComponents: () => AppComponents): AppComponent
   try {
     return getComponents();
   } catch (err: unknown) {
-    const errorOutput: ErrorResponse = {
-      status: 'error',
-      message: toErrorMessage(err),
-    };
-    printJsonOutput(errorOutput);
+    console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
     process.exitCode = 1;
     return undefined;
   }

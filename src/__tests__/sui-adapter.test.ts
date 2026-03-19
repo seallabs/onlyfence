@@ -3,14 +3,14 @@ import type { Signer } from '../types/result.js';
 
 // Mock @mysten/sui/jsonRpc before importing the adapter
 const mockGetAllBalances = vi.fn();
-const mockDryRunTransactionBlock = vi.fn();
+const mockDevInspectTransactionBlock = vi.fn();
 const mockExecuteTransactionBlock = vi.fn();
 
 vi.mock('@mysten/sui/jsonRpc', () => {
   return {
     SuiJsonRpcClient: class MockSuiJsonRpcClient {
       getAllBalances = mockGetAllBalances;
-      dryRunTransactionBlock = mockDryRunTransactionBlock;
+      devInspectTransactionBlock = mockDevInspectTransactionBlock;
       executeTransactionBlock = mockExecuteTransactionBlock;
     },
   };
@@ -86,7 +86,7 @@ describe('SuiAdapter', () => {
       });
     });
 
-    it('uses coin type as token name for unknown tokens', async () => {
+    it('uses normalized coin type as token name for unknown tokens', async () => {
       const unknownCoinType = '0xabc123::foo::BAR';
       mockGetAllBalances.mockResolvedValue([
         { coinType: unknownCoinType, totalBalance: '100', coinObjectCount: 1, lockedBalance: {} },
@@ -95,7 +95,9 @@ describe('SuiAdapter', () => {
       const adapter = new SuiAdapter(createMockClient());
       const result = await adapter.getBalance('0x' + 'b'.repeat(64));
 
-      expect(result.balances[0]?.token).toBe('BAR');
+      // Unknown tokens return the normalized coin type address (not struct name)
+      // to avoid false-positive ambiguity
+      expect(result.balances[0]?.token).toContain('::foo::BAR');
       // Unknown tokens default to 9 decimals
       expect(result.balances[0]?.decimals).toBe(9);
     });
@@ -117,13 +119,16 @@ describe('SuiAdapter', () => {
       const bytes = await adapter.buildTransactionBytes(fakeTx);
 
       expect(bytes).toEqual(new Uint8Array([1, 2, 3]));
-      expect(mockBuild).toHaveBeenCalledWith({ client: expect.anything() });
+      expect(mockBuild).toHaveBeenCalledWith({
+        client: expect.anything(),
+        onlyTransactionKind: true,
+      });
     });
   });
 
   describe('simulate', () => {
     it('returns success with gas estimate on successful dry run', async () => {
-      mockDryRunTransactionBlock.mockResolvedValue({
+      mockDevInspectTransactionBlock.mockResolvedValue({
         effects: {
           status: { status: 'success' },
           gasUsed: {
@@ -143,7 +148,7 @@ describe('SuiAdapter', () => {
     });
 
     it('returns failure with error for failed dry run', async () => {
-      mockDryRunTransactionBlock.mockResolvedValue({
+      mockDevInspectTransactionBlock.mockResolvedValue({
         effects: {
           status: { status: 'failure', error: 'InsufficientGas' },
           gasUsed: {
@@ -162,7 +167,7 @@ describe('SuiAdapter', () => {
     });
 
     it('re-throws network/RPC errors instead of catching them', async () => {
-      mockDryRunTransactionBlock.mockRejectedValue(new Error('Network timeout'));
+      mockDevInspectTransactionBlock.mockRejectedValue(new Error('Network timeout'));
 
       const adapter = new SuiAdapter(createMockClient());
       await expect(adapter.simulate(new Uint8Array([1, 2]), '0xsender')).rejects.toThrow(
