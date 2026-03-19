@@ -11,7 +11,9 @@ import type { BalanceResult, Signer, SimulationResult, TxResult } from '../types
 
 // Mock SuiJsonRpcClient so SuiAdapter can be constructed
 vi.mock('@mysten/sui/jsonRpc', () => ({
-  SuiJsonRpcClient: class MockSuiJsonRpcClient {},
+  SuiJsonRpcClient: class MockSuiJsonRpcClient {
+    constructor(_opts: Record<string, unknown>) {}
+  },
 }));
 
 vi.mock('@mysten/bcs', () => ({
@@ -101,13 +103,15 @@ describe('ChainAdapterFactory', () => {
 // ---------------------------------------------------------------------------
 
 describe('SuiAdapter', () => {
-  // SuiAdapter now requires an rpcUrl, imported lazily to use mocked deps
+  // SuiAdapter requires a SuiJsonRpcClient, imported lazily to use mocked deps
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let adapter: any;
 
   beforeEach(async () => {
     const { SuiAdapter } = await import('../chain/sui/adapter.js');
-    adapter = new SuiAdapter('https://rpc.example.com');
+    const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
+    const mockClient = new SuiJsonRpcClient({ url: 'https://rpc.example.com', network: 'mainnet' });
+    adapter = new SuiAdapter(mockClient);
   });
 
   it('should have chain set to "sui"', () => {

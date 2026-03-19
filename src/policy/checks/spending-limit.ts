@@ -16,6 +16,14 @@ export class SpendingLimitCheck implements PolicyCheck {
   readonly description = 'Enforces per-trade and rolling 24-hour USD spending limits';
 
   evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult> {
+    if (
+      intent.action === 'claim_rewards' ||
+      intent.action === 'withdraw' ||
+      intent.action === 'borrow'
+    ) {
+      return Promise.resolve({ status: 'pass' });
+    }
+
     const limits = ctx.config.limits;
 
     if (limits === undefined) {
@@ -34,6 +42,7 @@ export class SpendingLimitCheck implements PolicyCheck {
 
     const tradeValueUsd = ctx.tradeValueUsd;
 
+    // max_single_trade applies to ALL actions (swap + lending)
     if (tradeValueUsd > limits.max_single_trade) {
       return Promise.resolve({
         status: 'reject',
@@ -48,22 +57,25 @@ export class SpendingLimitCheck implements PolicyCheck {
       });
     }
 
-    const rolling24h = ctx.tradeLog.getRolling24hVolume(intent.chainId);
+    // max_24h_volume applies to swaps only
+    if (intent.action === 'swap') {
+      const rolling24h = ctx.tradeLog.getRolling24hVolume(intent.chainId);
 
-    const projectedVolume = rolling24h + tradeValueUsd;
-    if (projectedVolume > limits.max_24h_volume) {
-      return Promise.resolve({
-        status: 'reject',
-        reason: 'exceeds_24h_volume',
-        detail:
-          `24h volume $${rolling24h.toFixed(2)} + $${tradeValueUsd.toFixed(2)} = ` +
-          `$${projectedVolume.toFixed(2)} exceeds limit of $${limits.max_24h_volume.toFixed(2)}`,
-        metadata: {
-          limit: limits.max_24h_volume,
-          current: rolling24h,
-          requested: tradeValueUsd,
-        },
-      });
+      const projectedVolume = rolling24h + tradeValueUsd;
+      if (projectedVolume > limits.max_24h_volume) {
+        return Promise.resolve({
+          status: 'reject',
+          reason: 'exceeds_24h_volume',
+          detail:
+            `24h volume $${rolling24h.toFixed(2)} + $${tradeValueUsd.toFixed(2)} = ` +
+            `$${projectedVolume.toFixed(2)} exceeds limit of $${limits.max_24h_volume.toFixed(2)}`,
+          metadata: {
+            limit: limits.max_24h_volume,
+            current: rolling24h,
+            requested: tradeValueUsd,
+          },
+        });
+      }
     }
 
     return Promise.resolve({ status: 'pass' });

@@ -1,8 +1,9 @@
 import type Database from 'better-sqlite3';
-import { vi } from 'vitest';
 import type { Logger } from 'pino';
+import { vi } from 'vitest';
 import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
-import type { SwapIntent } from '../core/action-types.js';
+import type { BorrowIntent, SupplyIntent, SwapIntent } from '../core/action-types.js';
+import type { LendingRecord } from '../db/lending-log.js';
 import type { TradeRecord } from '../db/trade-log.js';
 import { TradeLog } from '../db/trade-log.js';
 import type { OracleClient } from '../oracle/client.js';
@@ -100,6 +101,73 @@ export function createTradeRecord(overrides?: Partial<TradeRecord>): TradeRecord
     value_usd: 98.0,
     tx_digest: '0xdigest123',
     gas_cost: 0.0021,
+    policy_decision: 'approved',
+    ...overrides,
+  };
+}
+
+/**
+ * Create a SupplyIntent with sensible defaults, overridable via partial.
+ */
+export function createSupplyIntent(
+  overrides?: Partial<SupplyIntent> & { params?: Partial<SupplyIntent['params']> },
+): SupplyIntent {
+  const { params: paramOverrides, ...rest } = overrides ?? {};
+  return {
+    chainId: SUI_CHAIN_ID,
+    action: 'supply',
+    walletAddress: '0xabc',
+    params: {
+      coinType: '0x2::sui::SUI',
+      amount: '1000000000',
+      protocol: 'alphalend',
+      marketId: '1',
+      ...paramOverrides,
+    },
+    valueUsd: undefined,
+    ...rest,
+  };
+}
+
+/**
+ * Create a BorrowIntent with sensible defaults, overridable via partial.
+ */
+export function createBorrowIntent(
+  overrides?: Partial<BorrowIntent> & { params?: Partial<BorrowIntent['params']> },
+): BorrowIntent {
+  const { params: paramOverrides, ...rest } = overrides ?? {};
+  return {
+    chainId: SUI_CHAIN_ID,
+    action: 'borrow',
+    walletAddress: '0xabc',
+    params: {
+      coinType: '0x2::sui::SUI',
+      amount: '500000000',
+      protocol: 'alphalend',
+      marketId: '1',
+      ...paramOverrides,
+    },
+    valueUsd: undefined,
+    ...rest,
+  };
+}
+
+/**
+ * Create a LendingRecord with sensible defaults, overridable via partial.
+ */
+export function createLendingRecord(overrides?: Partial<LendingRecord>): LendingRecord {
+  return {
+    chain_id: SUI_CHAIN_ID,
+    wallet_address: '0xabc',
+    action: 'supply',
+    protocol: 'alphalend',
+    market_id: '1',
+    coin_type: '0x2::sui::SUI',
+    token_symbol: 'SUI',
+    amount: '1000000000',
+    value_usd: 100.0,
+    tx_digest: '0xdigest123',
+    gas_cost: 0.002,
     policy_decision: 'approved',
     ...overrides,
   };

@@ -30,8 +30,7 @@ export class TokenAllowlistCheck implements PolicyCheck {
   }
 
   evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult> {
-    // Only swap intents need token allowlist checking
-    if (intent.action !== 'swap') {
+    if (intent.action === 'claim_rewards') {
       return Promise.resolve({ status: 'pass' });
     }
 
@@ -43,34 +42,56 @@ export class TokenAllowlistCheck implements PolicyCheck {
 
     const allowedTokens = this.getAllowedSet(allowlist.tokens);
 
-    const fromSymbol = resolveSymbol(intent.params.coinTypeIn);
-    const fromTokenUpper = fromSymbol.toUpperCase();
-    if (!allowedTokens.has(fromTokenUpper)) {
-      return Promise.resolve({
-        status: 'reject' as const,
-        reason: 'token_not_allowed',
-        detail: `Source token "${fromSymbol}" is not in the allowlist for chain "${intent.chainId}"`,
-        metadata: {
-          token: fromSymbol,
-          direction: 'from',
-          allowedTokens: [...allowlist.tokens],
-        },
-      });
+    // Swap intents: check both source and destination tokens
+    if (intent.action === 'swap') {
+      const fromSymbol = resolveSymbol(intent.params.coinTypeIn);
+      const fromTokenUpper = fromSymbol.toUpperCase();
+      if (!allowedTokens.has(fromTokenUpper)) {
+        return Promise.resolve({
+          status: 'reject' as const,
+          reason: 'token_not_allowed',
+          detail: `Source token "${fromSymbol}" is not in the allowlist for chain "${intent.chainId}"`,
+          metadata: {
+            token: fromSymbol,
+            direction: 'from',
+            allowedTokens: [...allowlist.tokens],
+          },
+        });
+      }
+
+      const toSymbol = resolveSymbol(intent.params.coinTypeOut);
+      const toTokenUpper = toSymbol.toUpperCase();
+      if (!allowedTokens.has(toTokenUpper)) {
+        return Promise.resolve({
+          status: 'reject' as const,
+          reason: 'token_not_allowed',
+          detail: `Destination token "${toSymbol}" is not in the allowlist for chain "${intent.chainId}"`,
+          metadata: {
+            token: toSymbol,
+            direction: 'to',
+            allowedTokens: [...allowlist.tokens],
+          },
+        });
+      }
+
+      return Promise.resolve({ status: 'pass' as const });
     }
 
-    const toSymbol = resolveSymbol(intent.params.coinTypeOut);
-    const toTokenUpper = toSymbol.toUpperCase();
-    if (!allowedTokens.has(toTokenUpper)) {
-      return Promise.resolve({
-        status: 'reject' as const,
-        reason: 'token_not_allowed',
-        detail: `Destination token "${toSymbol}" is not in the allowlist for chain "${intent.chainId}"`,
-        metadata: {
-          token: toSymbol,
-          direction: 'to',
-          allowedTokens: [...allowlist.tokens],
-        },
-      });
+    // Lending actions (supply, borrow, withdraw, repay): single coinType check
+    if ('coinType' in intent.params) {
+      const symbol = resolveSymbol(intent.params.coinType);
+      const symbolUpper = symbol.toUpperCase();
+      if (!allowedTokens.has(symbolUpper)) {
+        return Promise.resolve({
+          status: 'reject' as const,
+          reason: 'token_not_allowed',
+          detail: `Token "${symbol}" is not in the allowlist for chain "${intent.chainId}"`,
+          metadata: {
+            token: symbol,
+            allowedTokens: [...allowlist.tokens],
+          },
+        });
+      }
     }
 
     return Promise.resolve({ status: 'pass' as const });

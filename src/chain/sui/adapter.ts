@@ -1,6 +1,6 @@
 import { toBase64 } from '@mysten/bcs';
 import { messageWithIntent } from '@mysten/sui/cryptography';
-import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import type { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { blake2b } from '@noble/hashes/blake2.js';
 import type { BalanceResult, Signer, SimulationResult, TxResult } from '../../types/result.js';
 import type { ChainAdapter } from '../adapter.js';
@@ -39,15 +39,15 @@ export const SUI_CHAIN_ID = 'sui:mainnet' as const;
 
 export class SuiAdapter implements ChainAdapter {
   readonly chain = 'sui' as const;
-  private readonly client: SuiJsonRpcClient;
+  readonly suiClient: SuiJsonRpcClient;
   readonly chainId = SUI_CHAIN_ID;
 
-  constructor(rpcUrl: string, network: 'mainnet' | 'testnet' = 'mainnet') {
-    this.client = new SuiJsonRpcClient({ url: rpcUrl, network });
+  constructor(client: SuiJsonRpcClient) {
+    this.suiClient = client;
   }
 
   async getBalance(address: string): Promise<BalanceResult> {
-    const balances = await this.client.getAllBalances({ owner: address });
+    const balances = await this.suiClient.getAllBalances({ owner: address });
 
     return {
       address,
@@ -71,12 +71,12 @@ export class SuiAdapter implements ChainAdapter {
       throw new Error('Expected a Sui Transaction object with a build() method');
     }
     const tx = transaction as { build(opts: { client: SuiJsonRpcClient }): Promise<Uint8Array> };
-    return tx.build({ client: this.client });
+    return tx.build({ client: this.suiClient });
   }
 
   async simulate(txBytes: Uint8Array, _sender: string): Promise<SimulationResult> {
     // Network/RPC errors propagate — only dry-run logic failures return { success: false }.
-    const result = await this.client.dryRunTransactionBlock({
+    const result = await this.suiClient.dryRunTransactionBlock({
       transactionBlock: txBytes,
     });
 
@@ -113,7 +113,7 @@ export class SuiAdapter implements ChainAdapter {
     const signatureBase64 = toBase64(suiSignature);
 
     // 5. Submit the transaction
-    const result = await this.client.executeTransactionBlock({
+    const result = await this.suiClient.executeTransactionBlock({
       transactionBlock: txBytes,
       signature: signatureBase64,
       options: { showEffects: true, showEvents: true },

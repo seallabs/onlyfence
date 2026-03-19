@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@7kprotocol/sdk-ts": "^4.0.0",
+    "@alphafi/alphalend-sdk": "^1.1.27",
     "@bluefin-exchange/bluefin7k-aggregator-sdk": "5.1.6",
     "@cetusprotocol/aggregator-sdk": "^1.4.5",
     "@flowx-finance/sdk": "^1.15.0",

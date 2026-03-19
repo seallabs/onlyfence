@@ -60,9 +60,45 @@ export interface SimulatedResponse {
 }
 
 /**
+ * Successful lending action response.
+ */
+export interface LendingSuccessResponse {
+  readonly status: 'success';
+  readonly chain: string;
+  readonly action: string;
+  readonly txDigest: string;
+  readonly protocol: string;
+  readonly token?: string;
+  readonly amount?: string;
+  readonly marketId?: string;
+  readonly valueUsd: number | null;
+  readonly gasCost: number;
+}
+
+/**
+ * Simulated lending action response (watch-only mode).
+ */
+export interface LendingSimulatedResponse {
+  readonly status: 'simulated';
+  readonly chain: string;
+  readonly action: string;
+  readonly protocol: string;
+  readonly token?: string;
+  readonly amount?: string;
+  readonly marketId?: string;
+  readonly gasEstimate: number;
+}
+
+/**
  * Union of all CLI output types.
  */
-export type CliOutput = SuccessResponse | RejectionResponse | ErrorResponse | SimulatedResponse;
+export type CliOutput =
+  | SuccessResponse
+  | RejectionResponse
+  | ErrorResponse
+  | SimulatedResponse
+  | LendingSuccessResponse
+  | LendingSimulatedResponse;
 
 /**
  * Format a CLI output object as a JSON string for stdout.

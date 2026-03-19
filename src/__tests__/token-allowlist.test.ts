@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
 import { openMemoryDatabase } from '../db/connection.js';
-import { createIntent, createContext } from './helpers.js';
+import { createIntent, createContext, createSupplyIntent } from './helpers.js';
+import type { ClaimRewardsIntent } from '../core/action-types.js';
 import type { ChainConfig } from '../types/config.js';
 import type Database from 'better-sqlite3';
 
@@ -112,5 +113,59 @@ describe('TokenAllowlistCheck', () => {
     const result = await check.evaluate(intent, createContext(config, db));
 
     expect(result.status).toBe('pass');
+  });
+
+  it('should pass for claim_rewards action (no token to check)', async () => {
+    const config: ChainConfig = {
+      rpc: 'https://rpc.example.com',
+      allowlist: { tokens: ['SUI', 'USDC'] },
+    };
+    const intent: ClaimRewardsIntent = {
+      chainId: 'sui:mainnet',
+      action: 'claim_rewards',
+      walletAddress: '0xabc',
+      params: { protocol: 'alphalend' },
+    };
+    const result = await check.evaluate(intent, createContext(config, db));
+
+    expect(result.status).toBe('pass');
+  });
+
+  it('should pass for supply intent when token is in allowlist', async () => {
+    const config: ChainConfig = {
+      rpc: 'https://rpc.example.com',
+      allowlist: { tokens: ['SUI', 'USDC'] },
+    };
+    const intent = createSupplyIntent({
+      params: {
+        coinType: '0x2::sui::SUI',
+        amount: '1000000000',
+        protocol: 'alphalend',
+        marketId: '1',
+      },
+    });
+    const result = await check.evaluate(intent, createContext(config, db));
+
+    expect(result.status).toBe('pass');
+  });
+
+  it('should reject supply intent when token is NOT in allowlist', async () => {
+    const config: ChainConfig = {
+      rpc: 'https://rpc.example.com',
+      allowlist: { tokens: ['SUI', 'USDC'] },
+    };
+    const intent = createSupplyIntent({
+      params: {
+        coinType: '0xdead::scam::SCAM',
+        amount: '1000000000',
+        protocol: 'alphalend',
+        marketId: '1',
+      },
+    });
+    const result = await check.evaluate(intent, createContext(config, db));
+
+    expect(result.status).toBe('reject');
+    expect(result.reason).toBe('token_not_allowed');
+    expect(result.metadata?.['token']).toBe('SCAM');
   });
 });

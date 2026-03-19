@@ -79,6 +79,35 @@ const MIGRATIONS: readonly string[] = [
     updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (coin_type, chain_id)
   )`,
+
+  `CREATE TABLE IF NOT EXISTS lending_activities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chain_id TEXT NOT NULL,
+    wallet_address TEXT NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('supply', 'borrow', 'withdraw', 'repay', 'claim_rewards')),
+    protocol TEXT NOT NULL,
+    market_id TEXT,
+    coin_type TEXT,
+    token_symbol TEXT,
+    amount TEXT,
+    value_usd REAL,
+    tx_digest TEXT,
+    gas_cost REAL,
+    policy_decision TEXT NOT NULL CHECK (policy_decision IN ('approved', 'rejected')),
+    rejection_reason TEXT,
+    rejection_check TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (wallet_address) REFERENCES wallets(address)
+  )`,
+
+  `CREATE INDEX IF NOT EXISTS idx_lending_chain_created
+    ON lending_activities(chain_id, created_at)`,
+
+  `CREATE INDEX IF NOT EXISTS idx_lending_wallet
+    ON lending_activities(wallet_address)`,
+
+  `CREATE INDEX IF NOT EXISTS idx_lending_protocol_action
+    ON lending_activities(protocol, action)`,
 ];
 
 /**

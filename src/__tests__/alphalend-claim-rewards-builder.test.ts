@@ -1,0 +1,147 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { ClaimRewardsIntent } from '../core/action-types.js';
+import type { FinishContext } from '../core/action-builder.js';
+import type { AlphalendClient } from '@alphafi/alphalend-sdk';
+import type { SuiClient } from '@mysten/sui/client';
+import type { LendingLog } from '../db/lending-log.js';
+
+// Mock AlphaLend SDK
+const mockClaimRewards = vi.fn();
+const mockGetUserPositionCapId = vi.fn();
+
+vi.mock('@alphafi/alphalend-sdk', () => ({
+  AlphalendClient: class MockAlphalendClient {
+    claimRewards = mockClaimRewards;
+  },
+  getUserPositionCapId: (...args: unknown[]) => mockGetUserPositionCapId(...args),
+}));
+
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+let AlphaLendClaimRewardsBuilder: typeof import('../chain/sui/alphalend/claim-rewards.js').AlphaLendClaimRewardsBuilder;
+
+beforeEach(async () => {
+  vi.clearAllMocks();
+  const mod = await import('../chain/sui/alphalend/claim-rewards.js');
+  AlphaLendClaimRewardsBuilder = mod.AlphaLendClaimRewardsBuilder;
+});
+
+function makeClaimRewardsIntent(): ClaimRewardsIntent {
+  return {
+    action: 'claim_rewards',
+    chainId: 'sui:mainnet',
+    walletAddress: '0x' + 'a'.repeat(64),
+    params: {
+      protocol: 'alphalend',
+    },
+  };
+}
+
+describe('AlphaLendClaimRewardsBuilder', () => {
+  let mockAlphalendClient: AlphalendClient;
+  let mockSuiClient: SuiClient;
+  let mockLendingLog: LendingLog;
+
+  beforeEach(() => {
+    mockAlphalendClient = { claimRewards: mockClaimRewards } as unknown as AlphalendClient;
+    mockSuiClient = {} as unknown as SuiClient;
+    mockLendingLog = {
+      logActivity: vi.fn().mockReturnValue(1),
+    } as unknown as LendingLog;
+  });
+
+  describe('validate', () => {
+    it('does not throw (no params to validate)', () => {
+      const builder = new AlphaLendClaimRewardsBuilder(
+        mockAlphalendClient,
+        mockSuiClient,
+        mockLendingLog,
+      );
+      expect(() => builder.validate(makeClaimRewardsIntent())).not.toThrow();
+    });
+  });
+
+  describe('build', () => {
+    it('fetches positionCapId and calls claimRewards', async () => {
+      const fakeTx = { kind: 'transaction', setSenderIfNotSet: vi.fn() };
+      const fakeCapId = '0xcap123';
+      mockGetUserPositionCapId.mockResolvedValue(fakeCapId);
+      mockClaimRewards.mockResolvedValue(fakeTx);
+
+      const builder = new AlphaLendClaimRewardsBuilder(
+        mockAlphalendClient,
+        mockSuiClient,
+        mockLendingLog,
+      );
+      const intent = makeClaimRewardsIntent();
+      const result = await builder.build(intent);
+
+      expect(mockGetUserPositionCapId).toHaveBeenCalledWith(
+        mockSuiClient,
+        expect.any(String),
+        intent.walletAddress,
+      );
+      expect(mockClaimRewards).toHaveBeenCalledWith(
+        expect.objectContaining({
+          positionCapId: fakeCapId,
+          address: intent.walletAddress,
+          claimAndDepositAlpha: false,
+          claimAndDepositAll: false,
+        }),
+      );
+      expect(result.transaction).toBeDefined();
+      expect(result.metadata).toEqual(
+        expect.objectContaining({
+          action: 'claim_rewards',
+          protocol: 'alphalend',
+        }),
+      );
+    });
+
+    it('throws if no position exists', async () => {
+      mockGetUserPositionCapId.mockResolvedValue(undefined);
+
+      const builder = new AlphaLendClaimRewardsBuilder(
+        mockAlphalendClient,
+        mockSuiClient,
+        mockLendingLog,
+      );
+      await expect(builder.build(makeClaimRewardsIntent())).rejects.toThrow(/position/i);
+    });
+  });
+
+  describe('finish', () => {
+    it('logs with nullable coin_type, token_symbol, and amount', () => {
+      const builder = new AlphaLendClaimRewardsBuilder(
+        mockAlphalendClient,
+        mockSuiClient,
+        mockLendingLog,
+      );
+      const intent = makeClaimRewardsIntent();
+      const context: FinishContext = {
+        intent,
+        status: 'approved',
+        txDigest: '0xdigest',
+        gasUsed: 0.002,
+      };
+
+      builder.finish!(context);
+
+      expect(mockLendingLog.logActivity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'claim_rewards',
+          protocol: 'alphalend',
+          policy_decision: 'approved',
+          tx_digest: '0xdigest',
+          gas_cost: 0.002,
+        }),
+      );
+
+      // Verify nullable fields are not set or are undefined
+      const logCall = (mockLendingLog.logActivity as ReturnType<typeof vi.fn>).mock
+        .calls[0]![0] as Record<string, unknown>;
+      expect(logCall['coin_type']).toBeUndefined();
+      expect(logCall['token_symbol']).toBeUndefined();
+      expect(logCall['amount']).toBeUndefined();
+    });
+  });
+});

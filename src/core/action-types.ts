@@ -5,7 +5,15 @@
  */
 
 /** Supported DeFi actions -- extend this union to add new action types */
-export type DeFiAction = 'swap' | 'supply' | 'lp_deposit' | 'lp_withdraw';
+export type DeFiAction =
+  | 'swap'
+  | 'supply'
+  | 'borrow'
+  | 'withdraw'
+  | 'repay'
+  | 'claim_rewards'
+  | 'lp_deposit'
+  | 'lp_withdraw';
 export type Chain = 'sui';
 export type ChainId = `${Chain}:${string}`;
 
@@ -28,18 +36,71 @@ export interface SwapIntent extends ActionIntentBase {
   readonly tradeValueUsd?: number | undefined;
 }
 
-/** Supply-specific intent (future -- included for union completeness) */
+/** Supply-specific intent */
 export interface SupplyIntent extends ActionIntentBase {
   readonly action: 'supply';
   readonly params: {
     readonly coinType: string;
     readonly amount: string;
     readonly protocol: string;
+    readonly marketId: string;
+  };
+  readonly valueUsd?: number | undefined;
+}
+
+/** Borrow-specific intent */
+export interface BorrowIntent extends ActionIntentBase {
+  readonly action: 'borrow';
+  readonly params: {
+    readonly coinType: string;
+    readonly amount: string;
+    readonly protocol: string;
+    readonly marketId: string;
+  };
+  readonly valueUsd?: number | undefined;
+}
+
+/** Withdraw-specific intent */
+export interface WithdrawIntent extends ActionIntentBase {
+  readonly action: 'withdraw';
+  readonly params: {
+    readonly coinType: string;
+    readonly amount: string;
+    readonly protocol: string;
+    readonly marketId: string;
+    readonly withdrawAll?: boolean;
+  };
+  readonly valueUsd?: number | undefined;
+}
+
+/** Repay-specific intent */
+export interface RepayIntent extends ActionIntentBase {
+  readonly action: 'repay';
+  readonly params: {
+    readonly coinType: string;
+    readonly amount: string;
+    readonly protocol: string;
+    readonly marketId: string;
+  };
+  readonly valueUsd?: number | undefined;
+}
+
+/** Claim rewards intent — no specific token or amount */
+export interface ClaimRewardsIntent extends ActionIntentBase {
+  readonly action: 'claim_rewards';
+  readonly params: {
+    readonly protocol: string;
   };
 }
 
 /** Discriminated union -- the single intent type used everywhere */
-export type ActionIntent = SwapIntent | SupplyIntent;
+export type ActionIntent =
+  | SwapIntent
+  | SupplyIntent
+  | BorrowIntent
+  | WithdrawIntent
+  | RepayIntent
+  | ClaimRewardsIntent;
 
 /** Pipeline result status */
 export type PipelineStatus = 'success' | 'simulated' | 'rejected' | 'simulation_failed' | 'error';
