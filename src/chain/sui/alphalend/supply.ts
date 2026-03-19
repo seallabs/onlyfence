@@ -6,8 +6,8 @@ import type {
 } from '../../../core/action-builder.js';
 import type { SupplyIntent } from '../../../core/action-types.js';
 import type { LendingLog } from '../../../db/lending-log.js';
-import { coinTypeToSymbol, isSuiCoinType } from '../tokens.js';
-import { parseLendingEvent } from './events.js';
+import { isSuiCoinType } from '../tokens.js';
+import { finishLendingActivity } from './base.js';
 
 /**
  * AlphaLend supply builder for Sui.
@@ -44,11 +44,10 @@ export class AlphaLendSupplyBuilder implements ActionBuilder<SupplyIntent> {
       coinType: isSuiCoinType(intent.params.coinType) ? '0x2::sui::SUI' : intent.params.coinType,
       address: intent.walletAddress,
     });
-    tx?.setSenderIfNotSet(intent.walletAddress);
-
     if (tx === undefined) {
       throw new Error('AlphaLend supply returned undefined — coin not found on-chain');
     }
+    tx.setSenderIfNotSet(intent.walletAddress);
     return {
       transaction: tx,
       metadata: {
@@ -62,38 +61,6 @@ export class AlphaLendSupplyBuilder implements ActionBuilder<SupplyIntent> {
   }
 
   finish(context: FinishContext): void {
-    const intent = context.intent as SupplyIntent;
-    const actualAmount = this.parseAmount(context) ?? intent.params.amount;
-
-    const tokenSymbol = coinTypeToSymbol(intent.params.coinType);
-
-    this.lendingLog.logActivity({
-      chain_id: intent.chainId,
-      wallet_address: intent.walletAddress,
-      action: 'supply',
-      protocol: 'alphalend',
-      market_id: intent.params.marketId,
-      coin_type: intent.params.coinType,
-      amount: actualAmount,
-      policy_decision: context.status,
-      ...(tokenSymbol !== undefined ? { token_symbol: tokenSymbol } : {}),
-      ...(context.txDigest !== undefined ? { tx_digest: context.txDigest } : {}),
-      ...(context.gasUsed !== undefined ? { gas_cost: context.gasUsed } : {}),
-      ...(context.rejection?.reason !== undefined
-        ? { rejection_reason: context.rejection.reason }
-        : {}),
-      ...(context.rejection?.check !== undefined
-        ? { rejection_check: context.rejection.check }
-        : {}),
-      ...(intent.valueUsd !== undefined ? { value_usd: intent.valueUsd } : {}),
-    });
-  }
-
-  private parseAmount(context: FinishContext): string | undefined {
-    if (context.rawResponse === undefined) return undefined;
-    const raw = context.rawResponse as Record<string, unknown>;
-    const events = raw['events'];
-    if (!Array.isArray(events)) return undefined;
-    return parseLendingEvent(events as { type: string; parsedJson: unknown }[], 'supply')?.amount;
+    finishLendingActivity(context, 'supply', this.lendingLog);
   }
 }

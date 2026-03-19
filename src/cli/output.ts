@@ -76,6 +76,23 @@ export interface CliOutput<T extends ActionPayload = ActionPayload> {
   readonly rejectionReason?: string | undefined;
 }
 
+/** Exit codes by pipeline status */
+export const EXIT_CODES: Record<PipelineStatus, number> = {
+  success: 0,
+  simulated: 0,
+  rejected: 3,
+  simulation_failed: 4,
+  error: 1,
+};
+
+/**
+ * Result of mapping a PipelineResult to CLI output.
+ */
+export interface MappedOutput<T extends ActionPayload = ActionPayload> {
+  readonly cliOutput: CliOutput<T>;
+  readonly exitCode: number;
+}
+
 /**
  * Format a CLI output object as a JSON string for stdout.
  *

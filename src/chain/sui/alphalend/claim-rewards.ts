@@ -8,6 +8,7 @@ import type {
 } from '../../../core/action-builder.js';
 import type { ClaimRewardsIntent } from '../../../core/action-types.js';
 import type { LendingLog } from '../../../db/lending-log.js';
+import { finishLendingActivity } from './base.js';
 
 /**
  * AlphaLend claim rewards builder for Sui.
@@ -57,19 +58,6 @@ export class AlphaLendClaimRewardsBuilder implements ActionBuilder<ClaimRewardsI
   }
 
   finish(context: FinishContext): void {
-    const { intent, status, txDigest, gasUsed, rejection } = context;
-    if (intent.action !== 'claim_rewards') return;
-
-    this.lendingLog.logActivity({
-      chain_id: intent.chainId,
-      wallet_address: intent.walletAddress,
-      action: 'claim_rewards',
-      protocol: 'alphalend',
-      policy_decision: status,
-      ...(txDigest !== undefined ? { tx_digest: txDigest } : {}),
-      ...(gasUsed !== undefined ? { gas_cost: gasUsed } : {}),
-      ...(rejection?.reason !== undefined ? { rejection_reason: rejection.reason } : {}),
-      ...(rejection?.check !== undefined ? { rejection_check: rejection.check } : {}),
-    });
+    finishLendingActivity(context, 'claim_rewards', this.lendingLog);
   }
 }

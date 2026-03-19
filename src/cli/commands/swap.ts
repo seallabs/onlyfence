@@ -1,13 +1,7 @@
 import type { Command } from 'commander';
 import { buildSuiSigner } from '../../chain/sui/signer.js';
 import type { ActionBuilder } from '../../core/action-builder.js';
-import type {
-  Chain,
-  ChainId,
-  PipelineResult,
-  PipelineStatus,
-  SwapIntent,
-} from '../../core/action-types.js';
+import type { Chain, ChainId, PipelineResult, SwapIntent } from '../../core/action-types.js';
 import { NoOpMevProtector } from '../../core/mev-protector.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
 import type { PolicyContext } from '../../policy/context.js';
@@ -15,8 +9,8 @@ import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { loadSessionKeyBytes } from '../../wallet/session.js';
 import type { AppComponents } from '../bootstrap.js';
-import type { CliOutput, SwapOutput } from '../output.js';
-import { printJsonOutput } from '../output.js';
+import type { CliOutput, MappedOutput, SwapOutput } from '../output.js';
+import { EXIT_CODES, printJsonOutput } from '../output.js';
 import { resolveTokenInput } from '../resolve.js';
 import { withComponents } from '../with-components.js';
 
@@ -190,23 +184,6 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
         }
       },
     );
-}
-
-/** Exit codes by pipeline status */
-const EXIT_CODES: Record<PipelineStatus, number> = {
-  success: 0,
-  simulated: 0,
-  rejected: 3,
-  simulation_failed: 4,
-  error: 1,
-};
-
-/**
- * Result of mapping a PipelineResult to CLI output.
- */
-interface MappedOutput {
-  readonly cliOutput: CliOutput<SwapOutput>;
-  readonly exitCode: number;
 }
 
 /**

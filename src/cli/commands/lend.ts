@@ -13,7 +13,6 @@ import type {
   ChainId,
   ClaimRewardsIntent,
   PipelineResult,
-  PipelineStatus,
   RepayIntent,
   SupplyIntent,
   WithdrawIntent,
@@ -25,8 +24,8 @@ import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { loadSessionKeyBytes } from '../../wallet/session.js';
 import type { AppComponents } from '../bootstrap.js';
-import type { CliOutput, LendingOutput, LendingRewardsOutput } from '../output.js';
-import { printJsonOutput } from '../output.js';
+import type { CliOutput, LendingOutput, LendingRewardsOutput, MappedOutput } from '../output.js';
+import { EXIT_CODES, printJsonOutput } from '../output.js';
 import { resolveTokenInput } from '../resolve.js';
 import { withComponents } from '../with-components.js';
 
@@ -162,21 +161,20 @@ async function executeTokenLendingAction(
     const resolved = await resolveTokenInput(token, amountStr, chainAdapter, coinMetadataService);
     const { coinType, symbol, scaledAmount } = resolved;
 
-    // Resolve market ID (auto from coinType or explicit)
-    const marketId = await resolveMarketId(alphalendClient, coinType, options.market);
-
-    // Resolve USD price from oracle (uses canonical symbol from registry)
-    let tradeValueUsd: number | undefined;
-    try {
-      const price = await oracle.getPrice(symbol);
-      tradeValueUsd = parseFloat(amountStr) * price;
-    } catch (err: unknown) {
-      log.warn(
-        { token: symbol, error: toErrorMessage(err) },
-        'Oracle price unavailable; USD spending limits will not be enforced',
-      );
-      tradeValueUsd = undefined;
-    }
+    // Resolve market ID and USD price in parallel (independent operations)
+    const [marketId, tradeValueUsd] = await Promise.all([
+      resolveMarketId(alphalendClient, coinType, options.market),
+      oracle
+        .getPrice(symbol)
+        .then((price) => parseFloat(amountStr) * price)
+        .catch((err: unknown) => {
+          log.warn(
+            { token: symbol, error: toErrorMessage(err) },
+            'Oracle price unavailable; USD spending limits will not be enforced',
+          );
+          return undefined;
+        }),
+    ]);
 
     // Build intent
     const intent = buildTokenIntent(
@@ -492,25 +490,8 @@ function registerPortfolioQuery(parent: Command, getComponents: () => AppCompone
 
 // --- Result mapping ---
 
-/** Exit codes by pipeline status */
-const EXIT_CODES: Record<PipelineStatus, number> = {
-  success: 0,
-  simulated: 0,
-  rejected: 3,
-  simulation_failed: 4,
-  error: 1,
-};
-
 /** Lending payload union */
 type LendingPayload = LendingOutput | LendingRewardsOutput;
-
-/**
- * Result of mapping a PipelineResult to CLI output.
- */
-interface MappedOutput {
-  readonly cliOutput: CliOutput<LendingPayload>;
-  readonly exitCode: number;
-}
 
 /**
  * Map a PipelineResult to a CliOutput and process exit code for lending actions.
@@ -520,7 +501,7 @@ function mapLendingResultToOutput(
   intent: TokenLendingIntent | ClaimRewardsIntent,
   action: LendingAction | 'claim_rewards',
   tradeValueUsd: number | undefined,
-): MappedOutput {
+): MappedOutput<LendingPayload> {
   const base: CliOutput<LendingPayload> = {
     status: result.status,
     action,

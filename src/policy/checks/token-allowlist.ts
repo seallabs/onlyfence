@@ -94,19 +94,17 @@ export class TokenAllowlistCheck implements PolicyCheck {
       return Promise.resolve({ status: 'pass' as const });
     }
 
-    // Lending actions (supply, repay): single coinType check
-    if ('coinType' in intent.params) {
-      if (!allowedAddresses.has(intent.params.coinType)) {
-        return Promise.resolve({
-          status: 'reject' as const,
-          reason: 'token_not_allowed',
-          detail: `Token "${intent.params.coinType}" is not in the allowlist for chain "${intent.chainId}"`,
-          metadata: {
-            token: intent.params.coinType,
-            allowedTokens: [...allowlist.tokens],
-          },
-        });
-      }
+    // Remaining actions (supply, borrow, withdraw, repay): single coinType check
+    if (!allowedAddresses.has(intent.params.coinType)) {
+      return Promise.resolve({
+        status: 'reject' as const,
+        reason: 'token_not_allowed',
+        detail: `Token "${intent.params.coinType}" is not in the allowlist for chain "${intent.chainId}"`,
+        metadata: {
+          token: intent.params.coinType,
+          allowedTokens: [...allowlist.tokens],
+        },
+      });
     }
 
     return Promise.resolve({ status: 'pass' as const });

@@ -7,9 +7,7 @@ import type {
 } from '../../../core/action-builder.js';
 import type { BorrowIntent } from '../../../core/action-types.js';
 import type { LendingLog } from '../../../db/lending-log.js';
-import { coinTypeToSymbol } from '../tokens.js';
-import { AlphaLendBase } from './base.js';
-import { parseLendingEvent } from './events.js';
+import { AlphaLendBase, finishLendingActivity } from './base.js';
 
 /**
  * AlphaLend borrow builder for Sui.
@@ -72,38 +70,6 @@ export class AlphaLendBorrowBuilder extends AlphaLendBase implements ActionBuild
   }
 
   finish(context: FinishContext): void {
-    const intent = context.intent as BorrowIntent;
-    const actualAmount = this.parseAmount(context) ?? intent.params.amount;
-
-    const tokenSymbol = coinTypeToSymbol(intent.params.coinType);
-
-    this.lendingLog.logActivity({
-      chain_id: intent.chainId,
-      wallet_address: intent.walletAddress,
-      action: 'borrow',
-      protocol: 'alphalend',
-      market_id: intent.params.marketId,
-      coin_type: intent.params.coinType,
-      amount: actualAmount,
-      policy_decision: context.status,
-      ...(tokenSymbol !== undefined ? { token_symbol: tokenSymbol } : {}),
-      ...(context.txDigest !== undefined ? { tx_digest: context.txDigest } : {}),
-      ...(context.gasUsed !== undefined ? { gas_cost: context.gasUsed } : {}),
-      ...(context.rejection?.reason !== undefined
-        ? { rejection_reason: context.rejection.reason }
-        : {}),
-      ...(context.rejection?.check !== undefined
-        ? { rejection_check: context.rejection.check }
-        : {}),
-      ...(intent.valueUsd !== undefined ? { value_usd: intent.valueUsd } : {}),
-    });
-  }
-
-  private parseAmount(context: FinishContext): string | undefined {
-    if (context.rawResponse === undefined) return undefined;
-    const raw = context.rawResponse as Record<string, unknown>;
-    const events = raw['events'];
-    if (!Array.isArray(events)) return undefined;
-    return parseLendingEvent(events as { type: string; parsedJson: unknown }[], 'borrow')?.amount;
+    finishLendingActivity(context, 'borrow', this.lendingLog);
   }
 }

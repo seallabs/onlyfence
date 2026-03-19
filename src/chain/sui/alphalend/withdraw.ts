@@ -8,9 +8,7 @@ import type {
 } from '../../../core/action-builder.js';
 import type { WithdrawIntent } from '../../../core/action-types.js';
 import type { LendingLog } from '../../../db/lending-log.js';
-import { coinTypeToSymbol } from '../tokens.js';
-import { AlphaLendBase } from './base.js';
-import { parseLendingEvent } from './events.js';
+import { AlphaLendBase, finishLendingActivity } from './base.js';
 
 /**
  * AlphaLend withdraw builder for Sui.
@@ -83,35 +81,6 @@ export class AlphaLendWithdrawBuilder
   }
 
   finish(context: FinishContext): void {
-    const { intent, status, txDigest, gasUsed, rejection } = context;
-    if (intent.action !== 'withdraw') return;
-
-    const { coinType, amount, marketId } = intent.params;
-    const actualAmount = this.parseAmount(context) ?? amount;
-
-    this.lendingLog.logActivity({
-      chain_id: intent.chainId,
-      wallet_address: intent.walletAddress,
-      action: 'withdraw',
-      protocol: 'alphalend',
-      market_id: marketId,
-      coin_type: coinType,
-      token_symbol: coinTypeToSymbol(coinType) ?? coinType,
-      amount: actualAmount,
-      policy_decision: status,
-      ...(txDigest !== undefined ? { tx_digest: txDigest } : {}),
-      ...(gasUsed !== undefined ? { gas_cost: gasUsed } : {}),
-      ...(rejection?.reason !== undefined ? { rejection_reason: rejection.reason } : {}),
-      ...(rejection?.check !== undefined ? { rejection_check: rejection.check } : {}),
-      ...(intent.valueUsd !== undefined ? { value_usd: intent.valueUsd } : {}),
-    });
-  }
-
-  private parseAmount(context: FinishContext): string | undefined {
-    if (context.rawResponse === undefined) return undefined;
-    const raw = context.rawResponse as Record<string, unknown>;
-    const events = raw['events'];
-    if (!Array.isArray(events)) return undefined;
-    return parseLendingEvent(events as { type: string; parsedJson: unknown }[], 'withdraw')?.amount;
+    finishLendingActivity(context, 'withdraw', this.lendingLog);
   }
 }
