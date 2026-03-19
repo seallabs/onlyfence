@@ -52,7 +52,7 @@ export function Table<T>({ columns, data, highlightRow }: TableProps<T>): ReactE
       </Box>
 
       {/* Separator */}
-      <Text color={theme.muted}>{'─'.repeat(totalWidth)}</Text>
+      <Text color={theme.body}>{'─'.repeat(totalWidth)}</Text>
 
       {/* Data rows */}
       {data.length === 0 ? (
@@ -66,15 +66,17 @@ export function Table<T>({ columns, data, highlightRow }: TableProps<T>): ReactE
             <Box key={String(i)}>
               {columns.map((col) => {
                 const raw = col.accessor(row);
-                // Truncate to column width (leave 1 char padding)
                 const maxLen = col.width - 1;
                 const value = truncate(raw, maxLen);
                 const padded = col.align === 'right' ? value.padStart(maxLen) : value;
-                const cellColor =
-                  col.color?.(row) ?? (isHighlighted ? theme.highlight : theme.eyes);
+                const customColor = col.color?.(row);
+                const cellColor = customColor ?? (isHighlighted ? theme.highlight : theme.eyes);
+                const shouldDim = !isHighlighted && customColor === undefined && i % 2 === 1;
                 return (
                   <Box key={col.header} width={col.width}>
-                    <Text color={cellColor}>{padded}</Text>
+                    <Text color={cellColor} dimColor={shouldDim}>
+                      {padded}
+                    </Text>
                   </Box>
                 );
               })}

@@ -1,27 +1,17 @@
 import { Box, Text, useInput } from 'ink';
 import { useState, useEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
-import { theme } from '../theme.js';
+import { policyDecisionColor, theme } from '../theme.js';
 import { useTui } from '../context.js';
 import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
 import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
+import { Panel } from '../components/Panel.js';
 import { formatSmallestUnit } from '../../chain/sui/tokens.js';
 import { extractTokenSymbol } from '../../utils/index.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
 const PAGE_SIZE = 15;
-
-function statusColor(row: TradeRow): string | undefined {
-  switch (row.policy_decision) {
-    case 'approved':
-      return theme.success;
-    case 'rejected':
-      return theme.error;
-    default:
-      return theme.warning;
-  }
-}
 
 const COLUMNS: readonly Column<TradeRow>[] = [
   { header: 'ID', width: 6, accessor: (r) => String(r.id) },
@@ -52,7 +42,7 @@ const COLUMNS: readonly Column<TradeRow>[] = [
     header: 'Status',
     width: 12,
     accessor: (r) => r.policy_decision,
-    color: statusColor,
+    color: (r) => policyDecisionColor(r.policy_decision),
   },
   {
     header: 'Tx Digest',
@@ -118,22 +108,13 @@ export function TradeHistory(): ReactElement {
         </Text>
       </Box>
 
-      <Box flexDirection="column" borderStyle="single" borderColor={theme.shadow} paddingX={1}>
+      <Panel>
         <Table columns={COLUMNS} data={data.trades} highlightRow={selectedRow} />
-      </Box>
+      </Panel>
 
       {/* Detail panel for selected trade */}
       {selected !== undefined && (
-        <Box
-          flexDirection="column"
-          borderStyle="single"
-          borderColor={theme.body}
-          paddingX={1}
-          marginTop={1}
-        >
-          <Text color={theme.body} bold>
-            {'Trade Detail'}
-          </Text>
+        <Panel title="Trade Detail" marginTop={1} borderColor={theme.body}>
           <Box>
             <Box flexDirection="column" width="50%">
               <Text color={theme.eyes}>{`ID:        ${selected.id}`}</Text>
@@ -165,7 +146,7 @@ export function TradeHistory(): ReactElement {
           {selected.tx_digest !== null && (
             <Text color={theme.muted}>{`Tx: ${selected.tx_digest}`}</Text>
           )}
-        </Box>
+        </Panel>
       )}
 
       <Box marginTop={1}>

@@ -13,13 +13,17 @@ interface HeaderProps {
 
 export function Header({ activeTab }: HeaderProps): ReactElement {
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={theme.shadow} paddingX={1}>
-      {/* Shortcuts bar — k9s style */}
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.panelBorder} paddingX={1}>
+      {/* Shortcuts bar */}
       <Box flexWrap="wrap">
         {TAB_NAMES.map((tab, i) => (
           <Box key={tab} marginRight={1}>
             <Text color={theme.highlight} bold>{`<${i + 1}>`}</Text>
-            <Text color={activeTab === i ? theme.eyes : theme.muted} bold={activeTab === i}>
+            <Text
+              color={activeTab === i ? theme.eyes : theme.muted}
+              bold={activeTab === i}
+              underline={activeTab === i}
+            >
               {` ${tab}`}
             </Text>
           </Box>
@@ -57,20 +61,20 @@ export function Header({ activeTab }: HeaderProps): ReactElement {
           <Text color={theme.highlight} bold>
             {'Release Notes'}
           </Text>
-          <Text color={theme.muted}>{'─'.repeat(50)}</Text>
+          <Text color={theme.body}>{'─'.repeat(50)}</Text>
           <Box>
             <Box width={10}>
-              <Text color={theme.muted} bold>
+              <Text color={theme.body} bold>
                 {'Version'}
               </Text>
             </Box>
             <Box width={14}>
-              <Text color={theme.muted} bold>
+              <Text color={theme.body} bold>
                 {'Date'}
               </Text>
             </Box>
             <Box>
-              <Text color={theme.muted} bold>
+              <Text color={theme.body} bold>
                 {'Changes'}
               </Text>
             </Box>
