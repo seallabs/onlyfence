@@ -1,22 +1,44 @@
 import { Box, Text, useInput } from 'ink';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { theme } from '../theme.js';
 import { useTui } from '../context.js';
 import { TextInput } from '../components/TextInput.js';
+import { TokenSelectPopup } from '../components/TokenSelectPopup.js';
 import { updateConfigFile } from '../../config/loader.js';
 import { setNestedValue } from '../../config/utils.js';
-import { toErrorMessage } from '../../utils/index.js';
+import { parseTokenList, toErrorMessage } from '../../utils/index.js';
 
 const FIELD_LABELS = [
   'RPC Endpoint',
   'Max Single Trade (USD)',
   'Max 24h Volume (USD)',
-  'Allowed Tokens (comma-separated)',
+  'Allowed Tokens',
 ] as const;
 
+/** Field index for the Allowed Tokens row. */
+const TOKENS_FIELD = 3;
+
+function PolicyHeader({
+  activeChain,
+  dirty,
+}: {
+  readonly activeChain: string;
+  readonly dirty: boolean;
+}): ReactElement {
+  return (
+    <Box marginBottom={1}>
+      <Text color={theme.highlight} bold>
+        {'Policy Configuration'}
+      </Text>
+      <Text color={theme.muted}>{`  ─  Chain: ${activeChain}`}</Text>
+      {dirty && <Text color={theme.warning}>{' [Modified]'}</Text>}
+    </Box>
+  );
+}
+
 export function PolicyConfig(): ReactElement {
-  const { config, activeChain, reloadConfig, mode, setMode } = useTui();
+  const { config, activeChain, reloadConfig, mode, setMode, coinMetadataService } = useTui();
 
   const chainConfig = config.chain[activeChain];
 
@@ -35,6 +57,10 @@ export function PolicyConfig(): ReactElement {
   const [editValue, setEditValue] = useState('');
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [showTokenPopup, setShowTokenPopup] = useState(false);
+
+  // Derive token list for the popup
+  const tokenList = useMemo(() => parseTokenList(tokens), [tokens]);
 
   // Sync local state when config changes externally
   useEffect(() => {
@@ -67,6 +93,12 @@ export function PolicyConfig(): ReactElement {
   );
 
   const startEditing = useCallback(() => {
+    if (selectedField === TOKENS_FIELD) {
+      // Open multiselect popup instead of inline text edit
+      setShowTokenPopup(true);
+      setMode('edit');
+      return;
+    }
     setEditValue(getFieldValue(selectedField));
     setMode('edit');
   }, [selectedField, getFieldValue, setMode]);
@@ -82,9 +114,6 @@ export function PolicyConfig(): ReactElement {
       case 2:
         setMax24hVolume(editValue);
         break;
-      case 3:
-        setTokens(editValue);
-        break;
     }
     setDirty(true);
     setMode('navigate');
@@ -94,6 +123,23 @@ export function PolicyConfig(): ReactElement {
   const cancelEdit = useCallback(() => {
     setMode('navigate');
     setStatus(null);
+  }, [setMode]);
+
+  // Token popup callbacks
+  const handleTokensConfirm = useCallback(
+    (selected: readonly string[]) => {
+      setTokens(selected.join(', '));
+      setShowTokenPopup(false);
+      setDirty(true);
+      setMode('navigate');
+      setStatus({ kind: 'success', text: 'Modified (press s to save)' });
+    },
+    [setMode],
+  );
+
+  const handleTokensCancel = useCallback(() => {
+    setShowTokenPopup(false);
+    setMode('navigate');
   }, [setMode]);
 
   const saveConfig = useCallback(() => {
@@ -110,10 +156,7 @@ export function PolicyConfig(): ReactElement {
         return;
       }
 
-      const parsedTokens = tokens
-        .split(',')
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
+      const parsedTokens = parseTokenList(tokens);
       if (parsedTokens.length === 0) {
         setStatus({ kind: 'error', text: 'At least one token must be in the allowlist' });
         return;
@@ -150,15 +193,25 @@ export function PolicyConfig(): ReactElement {
     { isActive: mode === 'navigate' },
   );
 
+  // ── Token popup overlay ─────────────────────────────────────────────
+  if (showTokenPopup) {
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        <PolicyHeader activeChain={activeChain} dirty={dirty} />
+        <TokenSelectPopup
+          initialTokens={tokenList}
+          coinMetadataService={coinMetadataService}
+          onConfirm={handleTokensConfirm}
+          onCancel={handleTokensCancel}
+        />
+      </Box>
+    );
+  }
+
+  // ── Normal field editor ─────────────────────────────────────────────
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Box marginBottom={1}>
-        <Text color={theme.highlight} bold>
-          {'Policy Configuration'}
-        </Text>
-        <Text color={theme.muted}>{`  ─  Chain: ${activeChain}`}</Text>
-        {dirty && <Text color={theme.warning}>{' [Modified]'}</Text>}
-      </Box>
+      <PolicyHeader activeChain={activeChain} dirty={dirty} />
 
       <Box flexDirection="column" borderStyle="single" borderColor={theme.shadow} paddingX={1}>
         {FIELD_LABELS.map((label, i) => {

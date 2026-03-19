@@ -4,7 +4,7 @@ import { extractTokenSymbol } from '../../utils/index.js';
 /**
  * Token entry in the Sui token registry.
  */
-interface TokenEntry {
+export interface TokenEntry {
   readonly alias: string;
   readonly coinType: string;
   readonly decimals: number;
@@ -674,3 +674,19 @@ export function formatSmallestUnit(raw: string, coinType: string): string {
 export function isKnownToken(symbol: string): boolean {
   return symbol in SUI_TOKEN_MAP;
 }
+
+/**
+ * Return a read-only snapshot of the full token registry.
+ * Useful for UI components that need to enumerate all known tokens.
+ */
+export function getRegistryEntries(): readonly TokenEntry[] {
+  return SUI_TOKEN_REGISTRY;
+}
+
+/**
+ * Pre-computed set of uppercased registry aliases.
+ * Avoids rebuilding the set on every component mount.
+ */
+export const REGISTRY_ALIASES_UPPER: ReadonlySet<string> = new Set(
+  SUI_TOKEN_REGISTRY.map((e) => e.alias.toUpperCase()),
+);
