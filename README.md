@@ -439,7 +439,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 <p align="center">
   <img src="static/img/logo/png/logo-72.png" width="36" alt="OnlyFence" />
   <br />
-  <sub>Built by <a href="https://github.com/seallabs">Seal Labs</a> &middot; Powered by <a href="https://7k.ag">7K Aggregator</a></sub>
+  <sub>Built by <a href="https://github.com/seallabs">Seal Labs</a> &middot; Powered by <a href="https://7k.ag">7K DeFi</a></sub>
   <br />
   <sub>
     <a href="#install">Install</a> &middot;

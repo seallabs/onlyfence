@@ -156,12 +156,28 @@ describe('SUI Token Registry', () => {
     expect(resolveTokenAddress('WAL')).toContain('::wal::WAL');
   });
 
+  it('should pass through raw coin types unchanged', () => {
+    const rawCoinType =
+      '0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC';
+    expect(resolveTokenAddress(rawCoinType)).toBe(rawCoinType);
+  });
+
+  it('should pass through arbitrary coin types without registry lookup', () => {
+    const unknownCoinType = '0xabc123::my_module::MY_TOKEN';
+    expect(resolveTokenAddress(unknownCoinType)).toBe(unknownCoinType);
+  });
+
   it('should throw on unknown token symbol', () => {
     expect(() => resolveTokenAddress('SCAMCOIN')).toThrow('Unknown Sui token symbol "SCAMCOIN"');
   });
 
   it('should include known tokens list in error message', () => {
     expect(() => resolveTokenAddress('FAKE')).toThrow('Known tokens:');
+  });
+
+  it('should resolve symbol aliases case-insensitively', () => {
+    expect(resolveTokenAddress('sui')).toBe('0x2::sui::SUI');
+    expect(resolveTokenAddress('Usdc')).toContain('::usdc::USDC');
   });
 
   it('isKnownToken should return true for registered tokens', () => {

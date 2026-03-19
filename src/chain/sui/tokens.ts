@@ -46,17 +46,32 @@ export function coinTypeToSymbol(coinType: string): string | undefined {
 }
 
 /**
- * Resolve a token symbol to its Sui mainnet coin type address.
- *
- * @param symbol - The token symbol (case-sensitive, e.g., "SUI", "USDC")
- * @returns The fully-qualified Sui coin type address
- * @throws if the symbol is not found in the registry
+ * Check whether a string is a fully-qualified Move coin type (contains "::").
  */
-export function resolveTokenAddress(symbol: string): string {
-  const address = SUI_TOKEN_MAP[symbol];
+function isCoinType(input: string): boolean {
+  return input.includes('::');
+}
+
+/**
+ * Resolve a token symbol or coin type to its Sui mainnet coin type address.
+ *
+ * If the input already contains "::" it is treated as a raw coin type and
+ * returned as-is. Otherwise it is looked up (case-insensitively) as a symbol
+ * alias in SUI_TOKEN_MAP.
+ *
+ * @param symbolOrCoinType - Token symbol (e.g., "SUI", "sui") or fully-qualified coin type
+ * @returns The fully-qualified Sui coin type address
+ * @throws if the input is a symbol that is not found in the registry
+ */
+export function resolveTokenAddress(symbolOrCoinType: string): string {
+  if (isCoinType(symbolOrCoinType)) {
+    return symbolOrCoinType;
+  }
+  const upper = symbolOrCoinType.toUpperCase();
+  const address = SUI_TOKEN_MAP[upper];
   if (address === undefined) {
     throw new Error(
-      `Unknown Sui token symbol "${symbol}". Known tokens: ${Object.keys(SUI_TOKEN_MAP).join(', ')}`,
+      `Unknown Sui token symbol "${symbolOrCoinType}". Known tokens: ${Object.keys(SUI_TOKEN_MAP).join(', ')}`,
     );
   }
   return address;
