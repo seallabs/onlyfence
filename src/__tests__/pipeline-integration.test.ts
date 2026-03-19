@@ -10,6 +10,7 @@ import type { ChainConfig } from '../types/config.js';
 import type { PolicyContext } from '../policy/context.js';
 import { PolicyCheckRegistry } from '../policy/registry.js';
 import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
+import { tryResolveTokenAddress } from '../chain/sui/tokens.js';
 import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { TradeLog } from '../db/trade-log.js';
 import { openMemoryDatabase } from '../db/connection.js';
@@ -152,7 +153,7 @@ describe('Pipeline Integration Tests', () => {
     tradeLog = new TradeLog(db);
 
     policyRegistry = new PolicyCheckRegistry();
-    policyRegistry.register(new TokenAllowlistCheck());
+    policyRegistry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
     policyRegistry.register(new SpendingLimitCheck());
 
     policyContext = {

@@ -1,9 +1,17 @@
 import type Database from 'better-sqlite3';
 import type { Logger } from 'pino';
+import type { AlphalendClient } from '@alphafi/alphalend-sdk';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { ChainAdapterFactory } from '../chain/factory.js';
 import { SuiSwapBuilder } from '../chain/sui/7k/swap.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
-import { SUI_KNOWN_DECIMALS } from '../chain/sui/tokens.js';
+import { createAlphaLendClient } from '../chain/sui/alphalend/client.js';
+import { AlphaLendBorrowBuilder } from '../chain/sui/alphalend/borrow.js';
+import { AlphaLendClaimRewardsBuilder } from '../chain/sui/alphalend/claim-rewards.js';
+import { AlphaLendRepayBuilder } from '../chain/sui/alphalend/repay.js';
+import { AlphaLendSupplyBuilder } from '../chain/sui/alphalend/supply.js';
+import { AlphaLendWithdrawBuilder } from '../chain/sui/alphalend/withdraw.js';
+import { SUI_KNOWN_DECIMALS, tryResolveTokenAddress } from '../chain/sui/tokens.js';
 import { CONFIG_PATH, loadConfig } from '../config/loader.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
 import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
@@ -13,6 +21,7 @@ import { NoodlesCoinMetadataService } from '../data/coin-metadata.js';
 import { CliEventLog } from '../db/cli-events.js';
 import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
 import { DB_PATH, openDatabase } from '../db/connection.js';
+import { LendingLog } from '../db/lending-log.js';
 import { TradeLog } from '../db/trade-log.js';
 import { getLogger } from '../logger/index.js';
 import type { OracleClient } from '../oracle/client.js';
@@ -31,6 +40,8 @@ export interface AppComponents {
   readonly config: AppConfig;
   readonly oracle: OracleClient;
   readonly tradeLog: TradeLog;
+  readonly lendingLog: LendingLog;
+  readonly alphalendClient: AlphalendClient;
   readonly cliEventLog: CliEventLog;
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
@@ -69,10 +80,21 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
 
   const oracle = new CoinGeckoOracle();
   const tradeLog = new TradeLog(db);
+  const lendingLog = new LendingLog(db);
   const cliEventLog = new CliEventLog(db);
   const policyRegistry = buildPolicyRegistry(config);
-  const chainAdapterFactory = buildChainAdapterFactory();
-  const actionBuilderRegistry = buildActionBuilderRegistry(tradeLog);
+  const suiClient = new SuiJsonRpcClient({
+    url: process.env['SUI_RPC_URL'] ?? SUI_MAINNET_RPC,
+    network: 'mainnet',
+  });
+  const alphalendClient = createAlphaLendClient(suiClient, 'mainnet');
+  const chainAdapterFactory = buildChainAdapterFactory(suiClient);
+  const actionBuilderRegistry = buildActionBuilderRegistry(
+    tradeLog,
+    alphalendClient,
+    suiClient,
+    lendingLog,
+  );
   const mevProtectors = buildMevProtectors();
   const coinMetadataService = buildCoinMetadataService(db);
 
@@ -95,6 +117,8 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     config,
     oracle,
     tradeLog,
+    lendingLog,
+    alphalendClient,
     cliEventLog,
     policyRegistry,
     chainAdapterFactory,
@@ -119,7 +143,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
 export function buildPolicyRegistry(_config: AppConfig): PolicyCheckRegistry {
   const registry = new PolicyCheckRegistry();
 
-  registry.register(new TokenAllowlistCheck());
+  registry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
   registry.register(new SpendingLimitCheck());
 
   return registry;
@@ -128,14 +152,15 @@ export function buildPolicyRegistry(_config: AppConfig): PolicyCheckRegistry {
 /**
  * Build a chain adapter factory with all supported adapters registered.
  *
+ * @param suiClient - Shared SuiJsonRpcClient instance
  * @returns ChainAdapterFactory with SuiAdapter registered
  */
 /** Default Sui mainnet RPC endpoint. */
 const SUI_MAINNET_RPC = 'https://fullnode.mainnet.sui.io:443';
 
-export function buildChainAdapterFactory(): ChainAdapterFactory {
+export function buildChainAdapterFactory(suiClient: SuiJsonRpcClient): ChainAdapterFactory {
   const factory = new ChainAdapterFactory();
-  factory.register(new SuiAdapter(process.env['SUI_RPC_URL'] ?? SUI_MAINNET_RPC));
+  factory.register(new SuiAdapter(suiClient));
   return factory;
 }
 
@@ -148,13 +173,49 @@ export function buildChainAdapterFactory(): ChainAdapterFactory {
  * @param tradeLog - Trade log instance for builders that log trades
  * @returns ActionBuilderRegistry with SuiSwapBuilder factory registered
  */
-export function buildActionBuilderRegistry(tradeLog: TradeLog): ActionBuilderRegistry {
+export function buildActionBuilderRegistry(
+  tradeLog: TradeLog,
+  alphalendClient: AlphalendClient,
+  suiClient: SuiJsonRpcClient,
+  lendingLog: LendingLog,
+): ActionBuilderRegistry {
   const registry = new ActionBuilderRegistry();
 
   registry.registerFactory('sui', 'swap', '7k', (intent) => {
     const slippageBps = intent.action === 'swap' ? intent.params.slippageBps : 100;
     return new SuiSwapBuilder(tradeLog, slippageBps);
   });
+
+  registry.registerFactory(
+    'sui',
+    'supply',
+    'alphalend',
+    (_intent) => new AlphaLendSupplyBuilder(alphalendClient, lendingLog),
+  );
+  registry.registerFactory(
+    'sui',
+    'borrow',
+    'alphalend',
+    (_intent) => new AlphaLendBorrowBuilder(alphalendClient, suiClient, lendingLog),
+  );
+  registry.registerFactory(
+    'sui',
+    'withdraw',
+    'alphalend',
+    (_intent) => new AlphaLendWithdrawBuilder(alphalendClient, suiClient, lendingLog),
+  );
+  registry.registerFactory(
+    'sui',
+    'repay',
+    'alphalend',
+    (_intent) => new AlphaLendRepayBuilder(alphalendClient, suiClient, lendingLog),
+  );
+  registry.registerFactory(
+    'sui',
+    'claim_rewards',
+    'alphalend',
+    (_intent) => new AlphaLendClaimRewardsBuilder(alphalendClient, suiClient, lendingLog),
+  );
 
   return registry;
 }

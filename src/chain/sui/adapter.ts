@@ -1,10 +1,19 @@
 import { toBase64 } from '@mysten/bcs';
 import { messageWithIntent } from '@mysten/sui/cryptography';
-import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import type {
+  DevInspectResults,
+  SuiJsonRpcClient,
+  SuiTransactionBlockResponse,
+} from '@mysten/sui/jsonRpc';
+import type { Transaction } from '@mysten/sui/transactions';
 import { blake2b } from '@noble/hashes/blake2.js';
 import type { BalanceResult, Signer, SimulationResult, TxResult } from '../../types/result.js';
 import type { ChainAdapter } from '../adapter.js';
-import { getKnownDecimals, resolveSymbol } from './tokens.js';
+import {
+  getKnownDecimals,
+  resolveTokenAddress,
+  resolveSymbol as resolveTokenSymbol,
+} from './tokens.js';
 
 /** Default decimals for unknown Sui tokens. */
 const DEFAULT_DECIMALS = 9;
@@ -26,6 +35,8 @@ function computeGas(gasUsed: {
   );
 }
 
+export type SuiTxResponse = SuiTransactionBlockResponse | DevInspectResults;
+
 /**
  * Sui blockchain adapter implementing the ChainAdapter interface.
  *
@@ -39,22 +50,30 @@ export const SUI_CHAIN_ID = 'sui:mainnet' as const;
 
 export class SuiAdapter implements ChainAdapter {
   readonly chain = 'sui' as const;
-  private readonly client: SuiJsonRpcClient;
+  readonly suiClient: SuiJsonRpcClient;
   readonly chainId = SUI_CHAIN_ID;
 
-  constructor(rpcUrl: string, network: 'mainnet' | 'testnet' = 'mainnet') {
-    this.client = new SuiJsonRpcClient({ url: rpcUrl, network });
+  constructor(client: SuiJsonRpcClient) {
+    this.suiClient = client;
+  }
+
+  resolveTokenAddress(symbolOrAddress: string): string {
+    return resolveTokenAddress(symbolOrAddress);
+  }
+
+  resolveTokenSymbol(coinType: string): string {
+    return resolveTokenSymbol(coinType);
   }
 
   async getBalance(address: string): Promise<BalanceResult> {
-    const balances = await this.client.getAllBalances({ owner: address });
+    const balances = await this.suiClient.getAllBalances({ owner: address });
 
     return {
       address,
       balances: balances.map((b) => {
         const decimals = getKnownDecimals(b.coinType) ?? DEFAULT_DECIMALS;
         return {
-          token: resolveSymbol(b.coinType),
+          token: resolveTokenSymbol(b.coinType),
           amount: BigInt(b.totalBalance),
           decimals,
         };
@@ -62,22 +81,15 @@ export class SuiAdapter implements ChainAdapter {
     };
   }
 
-  async buildTransactionBytes(transaction: unknown): Promise<Uint8Array> {
-    if (
-      typeof transaction !== 'object' ||
-      transaction === null ||
-      typeof (transaction as Record<string, unknown>)['build'] !== 'function'
-    ) {
-      throw new Error('Expected a Sui Transaction object with a build() method');
-    }
-    const tx = transaction as { build(opts: { client: SuiJsonRpcClient }): Promise<Uint8Array> };
-    return tx.build({ client: this.client });
+  async buildTransactionBytes(transaction: Transaction): Promise<Uint8Array> {
+    return transaction.build({ client: this.suiClient, onlyTransactionKind: true });
   }
 
-  async simulate(txBytes: Uint8Array, _sender: string): Promise<SimulationResult> {
+  async simulate(txBytes: Uint8Array, sender: string): Promise<SimulationResult> {
     // Network/RPC errors propagate — only dry-run logic failures return { success: false }.
-    const result = await this.client.dryRunTransactionBlock({
+    const result = await this.suiClient.devInspectTransactionBlock({
       transactionBlock: txBytes,
+      sender,
     });
 
     const gasEstimate = computeGas(result.effects.gasUsed);
@@ -113,7 +125,7 @@ export class SuiAdapter implements ChainAdapter {
     const signatureBase64 = toBase64(suiSignature);
 
     // 5. Submit the transaction
-    const result = await this.client.executeTransactionBlock({
+    const result = await this.suiClient.executeTransactionBlock({
       transactionBlock: txBytes,
       signature: signatureBase64,
       options: { showEffects: true, showEvents: true },

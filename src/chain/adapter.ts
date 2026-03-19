@@ -5,6 +5,7 @@ import type { BalanceResult, Signer, SimulationResult, TxResult } from '../types
  * Interface for chain-specific adapters that handle blockchain interactions.
  *
  * Each supported blockchain implements this interface to provide:
+ * - Token resolution (alias ↔ canonical address)
  * - Balance queries
  * - Transaction building, simulation, signing, and submission
  *
@@ -17,6 +18,31 @@ export interface ChainAdapter {
 
   /** CAIP-2 chain identifier for DB storage and diagnostics (e.g., "sui:mainnet", "eip155:1") */
   readonly chainId: ChainId;
+
+  /**
+   * Resolve a token alias or raw address to its canonical coin type.
+   *
+   * Accepts both human-readable aliases ("SUI", "USDC") and raw addresses
+   * ("0x2::sui::SUI"). Implementations MUST:
+   * - Support case-insensitive alias lookup
+   * - Normalize raw addresses to their canonical form
+   *
+   * @param symbolOrAddress - Token alias or raw coin type / contract address
+   * @returns Canonical coin type / address string
+   * @throws if the input cannot be resolved
+   */
+  resolveTokenAddress(symbolOrAddress: string): string;
+
+  /**
+   * Resolve a canonical coin type back to its human-readable symbol.
+   *
+   * Returns the registry alias when the coin type is known (e.g., "SUI", "haSUI").
+   * For unregistered coin types, returns the normalized coin type address as-is
+   *
+   * @param tokenAddress - Fully-qualified canonical coin type
+   * @returns Registry alias if known, otherwise the normalized coin type address
+   */
+  resolveTokenSymbol(tokenAddress: string): string;
 
   /**
    * Get token balances for an address.

@@ -3,14 +3,14 @@ import type { Signer } from '../types/result.js';
 
 // Mock @mysten/sui/jsonRpc before importing the adapter
 const mockGetAllBalances = vi.fn();
-const mockDryRunTransactionBlock = vi.fn();
+const mockDevInspectTransactionBlock = vi.fn();
 const mockExecuteTransactionBlock = vi.fn();
 
 vi.mock('@mysten/sui/jsonRpc', () => {
   return {
     SuiJsonRpcClient: class MockSuiJsonRpcClient {
       getAllBalances = mockGetAllBalances;
-      dryRunTransactionBlock = mockDryRunTransactionBlock;
+      devInspectTransactionBlock = mockDevInspectTransactionBlock;
       executeTransactionBlock = mockExecuteTransactionBlock;
     },
   };
@@ -23,17 +23,32 @@ vi.mock('@mysten/bcs', () => ({
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 let SuiAdapter: typeof import('../chain/sui/adapter.js').SuiAdapter;
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+let SuiJsonRpcClient: typeof import('@mysten/sui/jsonRpc').SuiJsonRpcClient;
 
 beforeEach(async () => {
   vi.clearAllMocks();
   const mod = await import('../chain/sui/adapter.js');
   SuiAdapter = mod.SuiAdapter;
+  const rpcMod = await import('@mysten/sui/jsonRpc');
+  SuiJsonRpcClient = rpcMod.SuiJsonRpcClient;
 });
+
+/** Create a mock SuiJsonRpcClient instance for testing. */
+function createMockClient() {
+  return new SuiJsonRpcClient({ url: 'https://rpc.example.com', network: 'mainnet' });
+}
 
 describe('SuiAdapter', () => {
   it('has chain set to "sui"', () => {
-    const adapter = new SuiAdapter('https://rpc.example.com');
+    const adapter = new SuiAdapter(createMockClient());
     expect(adapter.chain).toBe('sui');
+  });
+
+  it('exposes suiClient as a readonly property', () => {
+    const client = createMockClient();
+    const adapter = new SuiAdapter(client);
+    expect(adapter.suiClient).toBe(client);
   });
 
   describe('getBalance', () => {
@@ -54,7 +69,7 @@ describe('SuiAdapter', () => {
         },
       ]);
 
-      const adapter = new SuiAdapter('https://rpc.example.com');
+      const adapter = new SuiAdapter(createMockClient());
       const result = await adapter.getBalance('0x' + 'a'.repeat(64));
 
       expect(result.address).toBe('0x' + 'a'.repeat(64));
@@ -71,16 +86,18 @@ describe('SuiAdapter', () => {
       });
     });
 
-    it('uses coin type as token name for unknown tokens', async () => {
+    it('uses normalized coin type as token name for unknown tokens', async () => {
       const unknownCoinType = '0xabc123::foo::BAR';
       mockGetAllBalances.mockResolvedValue([
         { coinType: unknownCoinType, totalBalance: '100', coinObjectCount: 1, lockedBalance: {} },
       ]);
 
-      const adapter = new SuiAdapter('https://rpc.example.com');
+      const adapter = new SuiAdapter(createMockClient());
       const result = await adapter.getBalance('0x' + 'b'.repeat(64));
 
-      expect(result.balances[0]?.token).toBe('BAR');
+      // Unknown tokens return the normalized coin type address (not struct name)
+      // to avoid false-positive ambiguity
+      expect(result.balances[0]?.token).toContain('::foo::BAR');
       // Unknown tokens default to 9 decimals
       expect(result.balances[0]?.decimals).toBe(9);
     });
@@ -88,7 +105,7 @@ describe('SuiAdapter', () => {
     it('propagates RPC errors', async () => {
       mockGetAllBalances.mockRejectedValue(new Error('RPC connection failed'));
 
-      const adapter = new SuiAdapter('https://rpc.example.com');
+      const adapter = new SuiAdapter(createMockClient());
       await expect(adapter.getBalance('0xabc')).rejects.toThrow('RPC connection failed');
     });
   });
@@ -98,17 +115,20 @@ describe('SuiAdapter', () => {
       const mockBuild = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]));
       const fakeTx = { build: mockBuild };
 
-      const adapter = new SuiAdapter('https://rpc.example.com');
+      const adapter = new SuiAdapter(createMockClient());
       const bytes = await adapter.buildTransactionBytes(fakeTx);
 
       expect(bytes).toEqual(new Uint8Array([1, 2, 3]));
-      expect(mockBuild).toHaveBeenCalledWith({ client: expect.anything() });
+      expect(mockBuild).toHaveBeenCalledWith({
+        client: expect.anything(),
+        onlyTransactionKind: true,
+      });
     });
   });
 
   describe('simulate', () => {
     it('returns success with gas estimate on successful dry run', async () => {
-      mockDryRunTransactionBlock.mockResolvedValue({
+      mockDevInspectTransactionBlock.mockResolvedValue({
         effects: {
           status: { status: 'success' },
           gasUsed: {
@@ -119,7 +139,7 @@ describe('SuiAdapter', () => {
         },
       });
 
-      const adapter = new SuiAdapter('https://rpc.example.com');
+      const adapter = new SuiAdapter(createMockClient());
       const result = await adapter.simulate(new Uint8Array([1, 2]), '0xsender');
 
       expect(result.success).toBe(true);
@@ -128,7 +148,7 @@ describe('SuiAdapter', () => {
     });
 
     it('returns failure with error for failed dry run', async () => {
-      mockDryRunTransactionBlock.mockResolvedValue({
+      mockDevInspectTransactionBlock.mockResolvedValue({
         effects: {
           status: { status: 'failure', error: 'InsufficientGas' },
           gasUsed: {
@@ -139,7 +159,7 @@ describe('SuiAdapter', () => {
         },
       });
 
-      const adapter = new SuiAdapter('https://rpc.example.com');
+      const adapter = new SuiAdapter(createMockClient());
       const result = await adapter.simulate(new Uint8Array([1, 2]), '0xsender');
 
       expect(result.success).toBe(false);
@@ -147,9 +167,9 @@ describe('SuiAdapter', () => {
     });
 
     it('re-throws network/RPC errors instead of catching them', async () => {
-      mockDryRunTransactionBlock.mockRejectedValue(new Error('Network timeout'));
+      mockDevInspectTransactionBlock.mockRejectedValue(new Error('Network timeout'));
 
-      const adapter = new SuiAdapter('https://rpc.example.com');
+      const adapter = new SuiAdapter(createMockClient());
       await expect(adapter.simulate(new Uint8Array([1, 2]), '0xsender')).rejects.toThrow(
         'Network timeout',
       );
@@ -179,7 +199,7 @@ describe('SuiAdapter', () => {
         },
       });
 
-      const adapter = new SuiAdapter('https://rpc.example.com');
+      const adapter = new SuiAdapter(createMockClient());
       const txBytes = new Uint8Array([10, 20, 30]);
       const result = await adapter.signAndSubmit(txBytes, signer);
 
@@ -218,7 +238,7 @@ describe('SuiAdapter', () => {
         },
       });
 
-      const adapter = new SuiAdapter('https://rpc.example.com');
+      const adapter = new SuiAdapter(createMockClient());
       const result = await adapter.signAndSubmit(new Uint8Array([1]), signer);
 
       expect(result.status).toBe('failure');
@@ -234,7 +254,7 @@ describe('SuiAdapter', () => {
 
       mockExecuteTransactionBlock.mockRejectedValue(new Error('RPC auth failed'));
 
-      const adapter = new SuiAdapter('https://rpc.example.com');
+      const adapter = new SuiAdapter(createMockClient());
       await expect(adapter.signAndSubmit(new Uint8Array([1]), signer)).rejects.toThrow(
         'RPC auth failed',
       );

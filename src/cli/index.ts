@@ -6,6 +6,7 @@ import type { AppComponents } from './bootstrap.js';
 import {
   registerSetupCommand,
   registerSwapCommand,
+  registerLendCommand,
   registerQueryCommand,
   registerConfigCommand,
   registerWalletCommand,
@@ -90,6 +91,7 @@ export function createProgram(): { program: Command; cleanup: () => void } {
   // Register commands
   registerSetupCommand(program);
   registerSwapCommand(program, getComponents);
+  registerLendCommand(program, getComponents);
   registerQueryCommand(program, getComponents);
   registerConfigCommand(program);
   registerWalletCommand(program, getComponents);

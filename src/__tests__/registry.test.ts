@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { PolicyCheckRegistry } from '../policy/registry.js';
 import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
+import { resolveTokenAddress, tryResolveTokenAddress } from '../chain/sui/tokens.js';
 import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { openMemoryDatabase } from '../db/connection.js';
 import { createIntent, createContext } from './helpers.js';
@@ -26,7 +27,7 @@ describe('PolicyCheckRegistry', () => {
   });
 
   it('should register checks and track them', () => {
-    registry.register(new TokenAllowlistCheck());
+    registry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
     registry.register(new SpendingLimitCheck());
 
     expect(registry.size).toBe(2);
@@ -34,13 +35,15 @@ describe('PolicyCheckRegistry', () => {
   });
 
   it('should reject duplicate check names', () => {
-    registry.register(new TokenAllowlistCheck());
+    registry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
 
-    expect(() => registry.register(new TokenAllowlistCheck())).toThrow('already registered');
+    expect(() => registry.register(new TokenAllowlistCheck(tryResolveTokenAddress))).toThrow(
+      'already registered',
+    );
   });
 
   it('should pass all checks when intent is valid', async () => {
-    registry.register(new TokenAllowlistCheck());
+    registry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
     registry.register(new SpendingLimitCheck());
 
     const intent = createIntent();
@@ -51,13 +54,13 @@ describe('PolicyCheckRegistry', () => {
   });
 
   it('should short-circuit on first rejection (token check fails first)', async () => {
-    registry.register(new TokenAllowlistCheck());
+    registry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
     registry.register(new SpendingLimitCheck());
 
     const intent = createIntent({
       params: {
-        coinTypeIn: '0xdead::scam::SCAM',
-        coinTypeOut: '0xdba3::usdc::USDC',
+        coinTypeIn: resolveTokenAddress('0xdead::scam::SCAM'),
+        coinTypeOut: resolveTokenAddress('USDC'),
         amountIn: '100',
         slippageBps: 100,
       },
@@ -71,7 +74,7 @@ describe('PolicyCheckRegistry', () => {
   });
 
   it('should reach spending limit check when tokens pass', async () => {
-    registry.register(new TokenAllowlistCheck());
+    registry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
     registry.register(new SpendingLimitCheck());
 
     const intent = createIntent();

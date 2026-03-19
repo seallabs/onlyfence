@@ -117,7 +117,14 @@ export {
 export { createProgram } from './cli/index.js';
 export { bootstrap, buildPolicyRegistry, buildChainAdapterFactory } from './cli/bootstrap.js';
 export type { AppComponents } from './cli/bootstrap.js';
-export type { SuccessResponse, RejectionResponse, ErrorResponse, CliOutput } from './cli/output.js';
+export type {
+  CliOutput,
+  SwapOutput,
+  LendingOutput,
+  LendingRewardsOutput,
+  LPOutput,
+  ActionPayload,
+} from './cli/output.js';
 export { formatJsonOutput, printJsonOutput } from './cli/output.js';
 
 // Logger

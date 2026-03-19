@@ -6,6 +6,7 @@
       "name": "onlyfence",
       "dependencies": {
         "@7kprotocol/sdk-ts": "^4.0.0",
+        "@alphafi/alphalend-sdk": "^1.1.27",
         "@bluefin-exchange/bluefin7k-aggregator-sdk": "5.1.6",
         "@cetusprotocol/aggregator-sdk": "^1.4.5",
         "@flowx-finance/sdk": "^1.15.0",
@@ -51,6 +52,8 @@
     "@7kprotocol/sdk-ts": ["@7kprotocol/sdk-ts@4.0.0", "", { "dependencies": { "uuid": "^13.0.0" }, "optionalDependencies": { "@bluefin-exchange/bluefin7k-aggregator-sdk": "^5.1.4", "@cetusprotocol/aggregator-sdk": "^1.4.1", "@flowx-finance/sdk": "^1.13.8" }, "peerDependencies": { "@mysten/sui": "^1.44.0", "@pythnetwork/pyth-sui-js": "^2.2.0" } }, "sha512-Q2DEXgugdaokquAWaiS7Y8PwJf+PD1m+J0WLQGt/53oWVx+kG0Z0WiOxDE4BDM7s6FfREjFq7QqfGPQenMy1OA=="],
 
     "@alcalzone/ansi-tokenize": ["@alcalzone/ansi-tokenize@0.2.5", "", { "dependencies": { "ansi-styles": "^6.2.1", "is-fullwidth-code-point": "^5.0.0" } }, "sha512-3NX/MpTdroi0aKz134A6RC2Gb2iXVECN4QaAXnvCIxxIm3C3AVB1mkUe8NaaiyvOpDfsrqWhYtj+Q6a62RrTsw=="],
+
+    "@alphafi/alphalend-sdk": ["@alphafi/alphalend-sdk@1.1.27", "", { "dependencies": { "@7kprotocol/sdk-ts": "^3.4.1", "@pythnetwork/pyth-sui-js": "^2.2.0", "bech32": "^2.0.0", "decimal.js": "^10.5.0", "dotenv": "^17.2.2", "tslib": "^2.8.1" }, "peerDependencies": { "@mysten/sui": "1.45.0" } }, "sha512-eQEC6QTu4Jq4eDc7ktMhgnMtAhhGldpD+ecU+dlvEAlAdyEtem7ckrAusxRpH6QkLbb/sNFxLrufz/7KCCnqqA=="],
 
     "@bluefin-exchange/bluefin7k-aggregator-sdk": ["@bluefin-exchange/bluefin7k-aggregator-sdk@5.1.6", "", { "dependencies": { "uuid": "^13.0.0" }, "peerDependencies": { "@mysten/sui": "^1.44.0", "@pythnetwork/pyth-sui-js": "^2.1.0" } }, "sha512-szZv4DRLznpNecmyzEO6ZdzXfa7QC50VeekZqz7csF+AP2VueoYSoOLbIEi9kddeZBf5G6OdmA5WivqrUPcN8Q=="],
 
@@ -534,6 +537,8 @@
 
     "debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" } }, "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA=="],
 
+    "decimal.js": ["decimal.js@10.6.0", "", {}, "sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg=="],
+
     "decompress-response": ["decompress-response@6.0.0", "", { "dependencies": { "mimic-response": "^3.1.0" } }, "sha512-aW35yZM6Bb/4oJlZncMH2LCoZtJXTRxES17vE3hoRiowU2kWHaJKFkSBDnDR+cm9J+9QhXmREyIfv0pji9ejCQ=="],
 
     "deep-extend": ["deep-extend@0.6.0", "", {}, "sha512-LOHxIOaPYdHlJRtCQfDIVZtfw/ufM8+rVj649RIHzcm/vGwQRXFt6OPqIFWsm2XEMrNIEtWR64sY1LEKD2vAOA=="],
@@ -548,7 +553,7 @@
 
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
 
-    "dotenv": ["dotenv@16.6.1", "", {}, "sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow=="],
+    "dotenv": ["dotenv@17.3.1", "", {}, "sha512-IO8C/dzEb6O3F9/twg6ZLXz164a2fhTnEWb95H23Dm4OuN+92NmEAlTrupP9VW6Jm3sO26tQlqyvyi4CsnY9GA=="],
 
     "dunder-proto": ["dunder-proto@1.0.1", "", { "dependencies": { "call-bind-apply-helpers": "^1.0.1", "es-errors": "^1.3.0", "gopd": "^1.2.0" } }, "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A=="],
 
@@ -1039,6 +1044,10 @@
     "yoga-layout": ["yoga-layout@3.2.1", "", {}, "sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ=="],
 
     "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+
+    "@alphafi/alphalend-sdk/@7kprotocol/sdk-ts": ["@7kprotocol/sdk-ts@3.6.0", "", { "dependencies": { "uuid": "^13.0.0" }, "optionalDependencies": { "@bluefin-exchange/bluefin7k-aggregator-sdk": "^5.1.4", "@cetusprotocol/aggregator-sdk": "^1.4.1", "@flowx-finance/sdk": "^1.13.8" }, "peerDependencies": { "@mysten/sui": "^1.44.0", "@pythnetwork/pyth-sui-js": "^2.2.0" } }, "sha512-Cks1qc3ozY3jqrS9ZtXkA6oyrFe4jpF43OJiWiFsuIUkseVafKN1nU8kfiXFGKiRvYBAOW6st2J6SpcDMy06Zw=="],
+
+    "@cetusprotocol/aggregator-sdk/dotenv": ["dotenv@16.6.1", "", {}, "sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow=="],
 
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
 
