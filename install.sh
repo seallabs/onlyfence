@@ -314,7 +314,7 @@ main() {
         "${BIN_DIR}/fence" setup </dev/tty
       else
         info "No interactive terminal detected — skipping setup wizard."
-        printf "\n${BOLD}Get started:${RESET}\n"
+        printf "\n%bGet started:%b\n" "$BOLD" "$RESET"
         printf "  fence setup        # Initialize wallet and config\n"
         printf "  fence --help       # See all commands\n\n"
       fi
@@ -322,7 +322,7 @@ main() {
       if [ -f "${INSTALL_DIR}/keystore" ]; then
         ok "Existing wallet and config preserved."
       fi
-      printf "\n${BOLD}Get started:${RESET}\n"
+      printf "\n%bGet started:%b\n" "$BOLD" "$RESET"
       printf "  fence setup        # Re-run setup wizard\n"
       printf "  fence --help       # See all commands\n\n"
     fi
