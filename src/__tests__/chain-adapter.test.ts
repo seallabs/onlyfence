@@ -151,7 +151,8 @@ describe('SUI Token Registry', () => {
   it('should resolve known token symbols', () => {
     expect(resolveTokenAddress('SUI')).toBe('0x2::sui::SUI');
     expect(resolveTokenAddress('USDC')).toContain('::usdc::USDC');
-    expect(resolveTokenAddress('USDT')).toContain('::coin::COIN');
+    expect(resolveTokenAddress('USDT')).toContain('::celer_usdt_coin::CELER_USDT_COIN');
+    expect(resolveTokenAddress('wUSDT')).toContain('::coin::COIN');
     expect(resolveTokenAddress('DEEP')).toContain('::deep::DEEP');
     expect(resolveTokenAddress('WAL')).toContain('::wal::WAL');
   });
@@ -175,9 +176,9 @@ describe('SUI Token Registry', () => {
     expect(() => resolveTokenAddress('FAKE')).toThrow('Known tokens:');
   });
 
-  it('should resolve symbol aliases case-insensitively', () => {
-    expect(resolveTokenAddress('sui')).toBe('0x2::sui::SUI');
-    expect(resolveTokenAddress('Usdc')).toContain('::usdc::USDC');
+  it('should be case-sensitive for alias lookup', () => {
+    expect(() => resolveTokenAddress('sui')).toThrow('Unknown Sui token symbol');
+    expect(() => resolveTokenAddress('Usdc')).toThrow('Unknown Sui token symbol');
   });
 
   it('isKnownToken should return true for registered tokens', () => {
