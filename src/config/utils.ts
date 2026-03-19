@@ -20,6 +20,14 @@ export function getNestedValue(obj: unknown, keyPath: string): unknown {
 }
 
 /**
+ * Validate that a key segment used in a dot-notation path is safe and
+ * cannot be used to pollute Object.prototype or other prototypes.
+ */
+function isSafeKeySegment(segment: string): boolean {
+  return segment !== '__proto__' && segment !== 'constructor' && segment !== 'prototype';
+}
+
+/**
  * Set a nested value on an object using a dot-notation key path.
  * Creates intermediate objects as needed.
  *
@@ -40,6 +48,9 @@ export function setNestedValue(
     if (part === undefined || part === '') {
       throw new Error(`Invalid key path: "${keyPath}"`);
     }
+    if (!isSafeKeySegment(part)) {
+      throw new Error(`Unsafe key segment "${part}" in key path: "${keyPath}"`);
+    }
     const next = current[part];
     if (next === undefined || next === null || typeof next !== 'object') {
       const newObj: Record<string, unknown> = {};
@@ -53,6 +64,9 @@ export function setNestedValue(
   const lastPart = parts[parts.length - 1];
   if (lastPart === undefined || lastPart === '') {
     throw new Error(`Invalid key path: "${keyPath}"`);
+  }
+  if (!isSafeKeySegment(lastPart)) {
+    throw new Error(`Unsafe key segment "${lastPart}" in key path: "${keyPath}"`);
   }
   current[lastPart] = value;
 }
