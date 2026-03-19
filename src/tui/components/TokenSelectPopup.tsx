@@ -1,9 +1,13 @@
 import { Box, Text, useInput } from 'ink';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { getRegistryEntries, REGISTRY_ALIASES_UPPER } from '../../chain/sui/tokens.js';
+import {
+  getRegistryEntries,
+  REGISTRY_ALIASES_UPPER,
+  resolveSymbol,
+} from '../../chain/sui/tokens.js';
 import type { CoinMetadataService } from '../../data/coin-metadata.js';
-import { extractTokenSymbol, toErrorMessage } from '../../utils/index.js';
+import { toErrorMessage } from '../../utils/index.js';
 import { theme } from '../theme.js';
 
 /** Maximum number of rows visible in the scrollable token list. */
@@ -173,7 +177,7 @@ export function TokenSelectPopup({
         .then((meta) => {
           if (!mountedRef.current) return;
           setDiscovered({
-            symbol: meta.symbol !== '' ? meta.symbol : extractTokenSymbol(coinType),
+            symbol: meta.symbol !== '' ? meta.symbol : resolveSymbol(coinType),
             decimals: meta.decimals,
             coinType: meta.coinType,
           });

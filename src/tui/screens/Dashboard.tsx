@@ -13,7 +13,6 @@ import {
   formatSmallestUnit,
   resolveSymbol,
 } from '../../chain/sui/tokens.js';
-import { extractTokenSymbol } from '../../utils/index.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
 interface DashboardData {
@@ -39,8 +38,8 @@ const VOLUME_CRITICAL_THRESHOLD = 95;
 const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
   { header: 'Time', width: 16, accessor: (r) => shortTime(r.created_at) },
   { header: 'Chain', width: 6, accessor: (r) => r.chain_id },
-  { header: 'From', width: 8, accessor: (r) => extractTokenSymbol(r.from_token) },
-  { header: 'To', width: 8, accessor: (r) => extractTokenSymbol(r.to_token) },
+  { header: 'From', width: 8, accessor: (r) => resolveSymbol(r.from_token) },
+  { header: 'To', width: 8, accessor: (r) => resolveSymbol(r.to_token) },
   {
     header: 'Amount In',
     width: 16,

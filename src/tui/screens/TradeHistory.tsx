@@ -7,8 +7,7 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
 import { Table } from '../components/Table.js';
 import type { Column } from '../components/Table.js';
 import { Panel } from '../components/Panel.js';
-import { formatSmallestUnit } from '../../chain/sui/tokens.js';
-import { extractTokenSymbol } from '../../utils/index.js';
+import { formatSmallestUnit, resolveSymbol } from '../../chain/sui/tokens.js';
 import type { TradeRow } from '../../db/trade-log.js';
 
 const PAGE_SIZE = 15;
@@ -18,8 +17,8 @@ const COLUMNS: readonly Column<TradeRow>[] = [
   { header: 'Time', width: 20, accessor: (r) => r.created_at },
   { header: 'Chain', width: 6, accessor: (r) => r.chain_id },
   { header: 'Action', width: 8, accessor: (r) => r.action },
-  { header: 'From', width: 8, accessor: (r) => extractTokenSymbol(r.from_token) },
-  { header: 'To', width: 8, accessor: (r) => extractTokenSymbol(r.to_token) },
+  { header: 'From', width: 8, accessor: (r) => resolveSymbol(r.from_token) },
+  { header: 'To', width: 8, accessor: (r) => resolveSymbol(r.to_token) },
   {
     header: 'Amount In',
     width: 16,
@@ -128,10 +127,10 @@ export function TradeHistory(): ReactElement {
             <Box flexDirection="column" width="50%">
               <Text
                 color={theme.eyes}
-              >{`Amount In:  ${formatSmallestUnit(selected.amount_in, selected.from_token)} ${extractTokenSymbol(selected.from_token)}`}</Text>
+              >{`Amount In:  ${formatSmallestUnit(selected.amount_in, selected.from_token)} ${resolveSymbol(selected.from_token)}`}</Text>
               <Text
                 color={theme.eyes}
-              >{`Amount Out: ${selected.amount_out !== null ? `${formatSmallestUnit(selected.amount_out, selected.to_token)} ${extractTokenSymbol(selected.to_token)}` : '-'}`}</Text>
+              >{`Amount Out: ${selected.amount_out !== null ? `${formatSmallestUnit(selected.amount_out, selected.to_token)} ${resolveSymbol(selected.to_token)}` : '-'}`}</Text>
               <Text
                 color={theme.eyes}
               >{`USD Value:  ${selected.value_usd !== null ? `$${selected.value_usd.toFixed(2)}` : '-'}`}</Text>

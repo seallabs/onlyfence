@@ -1,6 +1,6 @@
 import type { ActionIntent } from '../../core/action-types.js';
 import type { CheckResult } from '../../types/result.js';
-import { extractTokenSymbol } from '../../utils/index.js';
+import { resolveSymbol } from '../../chain/sui/tokens.js';
 import type { PolicyCheck } from '../check.js';
 import type { PolicyContext } from '../context.js';
 
@@ -43,7 +43,7 @@ export class TokenAllowlistCheck implements PolicyCheck {
 
     const allowedTokens = this.getAllowedSet(allowlist.tokens);
 
-    const fromSymbol = extractTokenSymbol(intent.params.coinTypeIn);
+    const fromSymbol = resolveSymbol(intent.params.coinTypeIn);
     const fromTokenUpper = fromSymbol.toUpperCase();
     if (!allowedTokens.has(fromTokenUpper)) {
       return Promise.resolve({
@@ -58,7 +58,7 @@ export class TokenAllowlistCheck implements PolicyCheck {
       });
     }
 
-    const toSymbol = extractTokenSymbol(intent.params.coinTypeOut);
+    const toSymbol = resolveSymbol(intent.params.coinTypeOut);
     const toTokenUpper = toSymbol.toUpperCase();
     if (!allowedTokens.has(toTokenUpper)) {
       return Promise.resolve({
