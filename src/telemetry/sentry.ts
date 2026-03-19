@@ -2,8 +2,8 @@ import * as Sentry from '@sentry/node';
 import { scrubSensitiveData } from './scrubber.js';
 import { CURRENT_VERSION } from '../update/index.js';
 
-// TODO: Replace with actual Sentry DSN before release
-const SENTRY_DSN = 'https://TODO@o000000.ingest.us.sentry.io/0000000';
+const SENTRY_DSN =
+  'https://31639c0da4dc3a24f47eef0222a1122c@o4510985021358080.ingest.de.sentry.io/4511068579823696';
 
 let initialized = false;
 

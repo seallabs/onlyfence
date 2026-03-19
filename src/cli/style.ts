@@ -144,7 +144,7 @@ export function printLogo(version?: string): void {
 
   // Right-side text lines aligned to octopus rows
   const highlight = COLORS.light;
-  const verStr = version !== undefined && version !== '' ? dim(`v${version}`) : '';
+  const verStr = version !== undefined && version !== '' ? dim(version) : '';
   const title = isTTY ? `\x1b[1m${fg(highlight)}OnlyFence${RESET}` : 'OnlyFence';
   const rightLines = ['', `${title} ${verStr}`, dim('AI Trading Guardrails'), ''];
 

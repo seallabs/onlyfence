@@ -58,7 +58,7 @@ case "$OS" in linux*) OS="linux" ;; darwin*) OS="darwin" ;; esac
 ARCH=$(uname -m)
 case "$ARCH" in x86_64|amd64) ARCH="x64" ;; aarch64|arm64) ARCH="arm64" ;; esac
 
-TARBALL="onlyfence-v${VERSION}-${OS}-${ARCH}.tar.gz"
+TARBALL="onlyfence-${VERSION}-${OS}-${ARCH}.tar.gz"
 TARBALL_PATH="${OUTPUT_DIR}/${TARBALL}"
 
 # ─── Step 1: Build standalone tarball ─────────────────────────────────────────
@@ -112,7 +112,7 @@ echo "==> Verifying installation..."
 
 if [ -x "$FENCE_BIN" ]; then
   FENCE_VERSION=$("$FENCE_BIN" --version 2>/dev/null || echo "unknown")
-  echo "==> SUCCESS: fence v${FENCE_VERSION}"
+  echo "==> SUCCESS: fence ${FENCE_VERSION}"
 else
   echo "error: fence binary not found or not executable at ${FENCE_BIN}" >&2
   exit 1
@@ -120,6 +120,8 @@ fi
 
 # ─── Step 3b: Verify installer setup behavior ──────────────────────────────
 # Helper to run install.sh with no TTY and check output for expected message.
+# Uses setsid to detach from the controlling terminal so /dev/tty is
+# inaccessible — simulating a true no-TTY environment (e.g. CI).
 run_install_expect() {
   local install_dir="$1" expected="$2" label="$3"
   local output
@@ -129,7 +131,8 @@ run_install_expect() {
     ONLYFENCE_VERSION="${VERSION}" \
     ONLYFENCE_INSTALL_DIR="${install_dir}" \
     ONLYFENCE_SKIP_PATH_SETUP=1 \
-    sh "${PROJECT_ROOT}/install.sh" 2>&1 </dev/null || true
+    perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die "exec: $!"' \
+      sh "${PROJECT_ROOT}/install.sh" 2>&1 </dev/null || true
   )
   if echo "$output" | grep -q "$expected"; then
     echo "==> PASS: ${label}"

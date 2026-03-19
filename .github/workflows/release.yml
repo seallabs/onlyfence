@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["[0-9]*"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -42,8 +42,7 @@ jobs:
 
       - name: Build standalone tarball
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          ./scripts/package-standalone.sh "$VERSION"
+          ./scripts/package-standalone.sh "${GITHUB_REF_NAME}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -66,11 +65,10 @@ jobs:
           mkdir -p /tmp/release-artifacts
           cp artifacts/*.tar.gz /tmp/release-artifacts/
 
-          VERSION="${GITHUB_REF_NAME#v}"
           INSTALL_DIR=$(mktemp -d)
 
           ONLYFENCE_BASE_URL="file:///tmp/release-artifacts" \
-          ONLYFENCE_VERSION="$VERSION" \
+          ONLYFENCE_VERSION="${GITHUB_REF_NAME}" \
           ONLYFENCE_INSTALL_DIR="$INSTALL_DIR" \
           ONLYFENCE_SKIP_PATH_SETUP=1 \
           ONLYFENCE_SKIP_SETUP=1 \

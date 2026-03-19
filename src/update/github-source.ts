@@ -42,12 +42,10 @@ export class GitHubReleasesSource implements UpdateSource {
       throw new UpdateSourceError('Unexpected GitHub API response: tag_name is not a string');
     }
 
-    const version = tagName.replace(/^v/, '');
-
-    if (!VERSION_PATTERN.test(version)) {
+    if (!VERSION_PATTERN.test(tagName)) {
       throw new UpdateSourceError(`Invalid version format in tag_name: "${tagName}"`);
     }
 
-    return version;
+    return tagName;
   }
 }
