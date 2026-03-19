@@ -50,7 +50,7 @@ export function registerUpdateCheckHook(
 
     if (status.kind === 'update-available') {
       process.stderr.write(
-        `\nOnlyFence v${status.latestVersion} is available (current: v${currentVersion}). Run "fence update" to install.\n\n`,
+        `\nOnlyFence ${status.latestVersion} is available (current: ${currentVersion}). Run "fence update" to install.\n\n`,
       );
     }
 

@@ -31,7 +31,7 @@ export function registerUpdateCommand(
         const status = await checker.checkFromSource(currentVersion);
 
         if (status.kind === 'up-to-date') {
-          console.log(`Already on the latest version (v${currentVersion}).`);
+          console.log(`Already on the latest version (${currentVersion}).`);
           return;
         }
 
@@ -41,7 +41,7 @@ export function registerUpdateCommand(
           return;
         }
 
-        console.log(`Update available: v${status.currentVersion} → v${status.latestVersion}`);
+        console.log(`Update available: ${status.currentVersion} → ${status.latestVersion}`);
 
         if (options.checkOnly) {
           console.log('Run "fence update" to install.');
@@ -54,9 +54,9 @@ export function registerUpdateCommand(
           return;
         }
 
-        console.log(`Installing v${status.latestVersion}...`);
+        console.log(`Installing ${status.latestVersion}...`);
         await installer.install(status.latestVersion);
-        console.log(`\nUpdate complete! Restart fence to use v${status.latestVersion}.`);
+        console.log(`\nUpdate complete! Restart fence to use ${status.latestVersion}.`);
       } catch (err: unknown) {
         console.error(`Error: ${toErrorMessage(err)}`);
         process.exitCode = 1;

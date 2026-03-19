@@ -3,7 +3,7 @@
 #
 # Usage: ./scripts/package-standalone.sh [version]
 #
-# Output: dist-standalone/onlyfence-v<version>-<os>-<arch>.tar.gz
+# Output: dist-standalone/onlyfence-<version>-<os>-<arch>.tar.gz
 #
 # The tarball contains:
 #   lib/          — compiled JS (production dist)
@@ -32,11 +32,11 @@ case "$(uname -m)" in
   *)              echo "error: Unsupported arch: $(uname -m)" >&2; exit 1 ;;
 esac
 
-TARBALL_NAME="onlyfence-v${VERSION}-${OS}-${ARCH}.tar.gz"
+TARBALL_NAME="onlyfence-${VERSION}-${OS}-${ARCH}.tar.gz"
 STAGING_DIR="${PROJECT_ROOT}/dist-standalone/staging"
 OUTPUT_DIR="${PROJECT_ROOT}/dist-standalone"
 
-echo "==> Building OnlyFence v${VERSION} for ${OS}-${ARCH}"
+echo "==> Building OnlyFence ${VERSION} for ${OS}-${ARCH}"
 
 # Step 1: Clean
 rm -rf "$STAGING_DIR"

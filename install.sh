@@ -4,7 +4,7 @@
 #
 # Respects:
 #   ONLYFENCE_INSTALL_DIR  - installation directory (default: ~/.onlyfence)
-#   ONLYFENCE_VERSION      - specific version to install (default: latest)
+#   ONLYFENCE_VERSION      - specific version to install, used as-is (e.g. 0.1.0-beta.2)
 #   ONLYFENCE_REPO         - GitHub repo (default: seallabs/onlyfence)
 #   ONLYFENCE_SKIP_SETUP   - skip auto-running fence setup after install (for testing)
 
@@ -28,15 +28,52 @@ if [ -t 1 ]; then
   YELLOW='\033[0;33m'
   BLUE='\033[0;34m'
   BOLD='\033[1m'
+  DIM='\033[2m'
   RESET='\033[0m'
 else
-  RED='' GREEN='' YELLOW='' BLUE='' BOLD='' RESET=''
+  RED='' GREEN='' YELLOW='' BLUE='' BOLD='' DIM='' RESET=''
 fi
 
 info()  { printf "${BLUE}info${RESET}  %s\n" "$*"; }
 warn()  { printf "${YELLOW}warn${RESET}  %s\n" "$*"; }
 error() { printf "${RED}error${RESET} %s\n" "$*" >&2; }
 ok()    { printf "${GREEN}ok${RESET}    %s\n" "$*"; }
+
+# ─── Banner ──────────────────────────────────────────────────────────────────
+
+print_banner() {
+  if [ ! -t 1 ]; then
+    printf "\nOnlyFence Installer\n\n"
+    return
+  fi
+
+  # True-color ANSI codes for octopus logo
+  # L=#60a5fa  M=#3b82f6  D=#2563eb  E=#e0f2fe
+  _fL='\033[38;2;96;165;250m'
+  _fM='\033[38;2;59;130;246m'
+  _fD='\033[38;2;37;99;235m'
+  _fE='\033[38;2;224;242;254m'
+  _bL='\033[48;2;96;165;250m'
+  _bM='\033[48;2;59;130;246m'
+
+  # 9×8 pixel art packed into 4 terminal rows via ▀/▄ half-blocks
+  # Row pairs: (0,1) (2,3) (4,5) (6,7)
+  _r1=" ${_fM}▄${RESET}${_fL}${_bM}▀▀▀▀▀${RESET}${_fM}▄${RESET} "
+  _r2=" ${_bM}${_fM}▀${_fE}▀${_fM}▀${_fD}▀${_fM}▀${_fE}▀${_fM}▀${RESET} "
+  _r3="${_fM}▄${RESET}${_fD}▀${_fD}${_bM}▀▀${RESET}${_fD}▀${_fD}${_bM}▀▀${RESET}${_fD}▀${RESET}${_fM}▄${RESET}"
+  _r4="${_fD}${_bL}▀${RESET} ${_fD}${_bL}▀${RESET} ${_fM}${_bL}▀${RESET} ${_fD}${_bL}▀${RESET} ${_fD}${_bL}▀${RESET}"
+
+  # Right-side text aligned to logo rows
+  _t2="${BOLD}${_fL}OnlyFence${RESET}"
+  _t3="${DIM}Installer${RESET}"
+
+  printf "\n"
+  printf "  %b\n"        "$_r1"
+  printf "  %b  %b\n"    "$_r2" "$_t2"
+  printf "  %b  %b\n"    "$_r3" "$_t3"
+  printf "  %b\n"        "$_r4"
+  printf "\n"
+}
 
 # ─── Platform detection ──────────────────────────────────────────────────────
 
@@ -99,8 +136,7 @@ download_to_stdout() {
 get_latest_version() {
   download_to_stdout "https://api.github.com/repos/${REPO}/releases/latest" \
     | grep '"tag_name"' \
-    | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/' \
-    | sed 's/^v//'
+    | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/'
 }
 
 # ─── Installation ───────────────────────────────────────────────────────────
@@ -110,14 +146,14 @@ install_from_github_release() {
   os="$2"
   arch="$3"
 
-  tarball="onlyfence-v${version}-${os}-${arch}.tar.gz"
+  tarball="onlyfence-${version}-${os}-${arch}.tar.gz"
   if [ -n "$BASE_URL" ]; then
     url="${BASE_URL}/${tarball}"
   else
-    url="https://github.com/${REPO}/releases/download/v${version}/${tarball}"
+    url="https://github.com/${REPO}/releases/download/${version}/${tarball}"
   fi
 
-  info "Downloading OnlyFence v${version} for ${os}-${arch}..."
+  info "Downloading OnlyFence ${version} for ${os}-${arch}..."
 
   tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"' EXIT
@@ -208,7 +244,7 @@ setup_path() {
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 main() {
-  printf "\n%sOnlyFence Installer%s\n\n" "$BOLD" "$RESET"
+  print_banner
 
   os=$(detect_os)
   arch=$(detect_arch)
@@ -230,7 +266,7 @@ main() {
   fi
 
   if install_from_github_release "$version" "$os" "$arch"; then
-    ok "Installed OnlyFence v${version}"
+    ok "Installed OnlyFence ${version}"
   else
     error "Installation failed. No release found for ${os}-${arch}."
     info "Check available releases at https://github.com/${REPO}/releases"
@@ -251,7 +287,7 @@ main() {
     case ":${PATH}:" in
       *":${BIN_DIR}:"*)
         fence_ver=$("${BIN_DIR}/fence" --version 2>/dev/null || echo "unknown")
-        ok "fence v${fence_ver} is ready"
+        ok "fence ${fence_ver} is ready"
         ;;
       *)
         warn "Restart your shell or run:"
@@ -278,7 +314,7 @@ main() {
         "${BIN_DIR}/fence" setup </dev/tty
       else
         info "No interactive terminal detected — skipping setup wizard."
-        printf "\n%sGet started:%s\n" "$BOLD" "$RESET"
+        printf "\n%bGet started:%b\n" "$BOLD" "$RESET"
         printf "  fence setup        # Initialize wallet and config\n"
         printf "  fence --help       # See all commands\n\n"
       fi
@@ -286,7 +322,7 @@ main() {
       if [ -f "${INSTALL_DIR}/keystore" ]; then
         ok "Existing wallet and config preserved."
       fi
-      printf "\n%sGet started:%s\n" "$BOLD" "$RESET"
+      printf "\n%bGet started:%b\n" "$BOLD" "$RESET"
       printf "  fence setup        # Re-run setup wizard\n"
       printf "  fence --help       # See all commands\n\n"
     fi

@@ -30,7 +30,7 @@ export interface UpdateInstaller {
    * Re-runs install.sh logic: downloads GitHub release tarball with bundled Node.js runtime.
    * Progress is written to stdout/stderr.
    *
-   * @param version - Version to install (e.g. "0.2.0")
+   * @param version - Semver version to install (e.g. "0.2.0")
    * @throws InstallError on failure
    */
   install(version: string): Promise<void>;
