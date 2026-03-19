@@ -3,14 +3,7 @@ import type { ReactElement } from 'react';
 import { theme } from '../theme.js';
 import { LogoSmall } from './Logo.js';
 import { CURRENT_VERSION } from '../../update/index.js';
-
-const CHANGELOG = [
-  {
-    version: 'v0.1.0',
-    date: '2026-03-16',
-    changes: 'Initial release — swap guardrails, policy engine',
-  },
-] as const;
+import { CHANGELOG } from '../../changelog.js';
 
 const TAB_NAMES = ['Dashboard', 'Trades', 'Policy', 'Wallet'] as const;
 

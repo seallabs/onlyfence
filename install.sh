@@ -241,6 +241,55 @@ setup_path() {
   fi
 }
 
+# ─── Claude Code plugin ──────────────────────────────────────────────────────
+
+setup_claude_plugin() {
+  if ! check_command claude; then
+    return 0
+  fi
+
+  printf "\n"
+  info "Claude Code detected on this machine."
+  printf "  Install the OnlyFence skill so Claude can use fence commands? [Y/n] "
+
+  answer=""
+  if [ -t 0 ]; then
+    read -r answer
+  elif (exec </dev/tty) 2>/dev/null; then
+    read -r answer </dev/tty
+  else
+    printf "\n"
+    info "No interactive terminal — skipping Claude Code skill install."
+    info "You can install it manually:"
+    printf "  claude plugin marketplace add seallabs/onlyfence\n"
+    printf "  claude plugin install onlyfence@onlyfence\n"
+    return 0
+  fi
+
+  case "$answer" in
+    [nN]*)
+      info "Skipped Claude Code skill install."
+      return 0
+      ;;
+  esac
+
+  info "Installing OnlyFence skill for Claude Code..."
+
+  if claude plugin marketplace add seallabs/onlyfence 2>/dev/null; then
+    if claude plugin install onlyfence@onlyfence 2>/dev/null; then
+      ok "OnlyFence skill installed in Claude Code"
+    else
+      warn "Failed to install OnlyFence skill — you can install it manually:"
+      printf "  claude plugin marketplace add seallabs/onlyfence\n"
+      printf "  claude plugin install onlyfence@onlyfence\n"
+    fi
+  else
+    warn "Failed to add marketplace entry — you can install it manually:"
+    printf "  claude plugin marketplace add seallabs/onlyfence\n"
+    printf "  claude plugin install onlyfence@onlyfence\n"
+  fi
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 main() {
@@ -277,6 +326,9 @@ main() {
   if [ -z "$SKIP_PATH_SETUP" ]; then
     setup_path
   fi
+
+  # Install Claude Code skill (if claude CLI is available)
+  setup_claude_plugin
 
   # Verify
   printf "\n"
