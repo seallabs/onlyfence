@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "onlyfence",
-      "source": ".",
+      "source": "./plugins/onlyfence",
       "description": "DeFi toolkit for AI agents — swap tokens, check balances, manage wallets, and configure safety guardrails on the Sui blockchain via the fence CLI.",
       "version": "0.1.0",
       "author": {
