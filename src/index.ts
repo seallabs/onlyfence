@@ -59,10 +59,18 @@ export type {
   CliStats,
 } from './db/index.js';
 
-// Oracle
-export type { OracleClient } from './oracle/index.js';
-export { CoinGeckoOracle, resolveTokenId } from './oracle/index.js';
-export type { CoinGeckoOracleConfig } from './oracle/index.js';
+// Data providers
+export type { DataProvider, TokenMetadata, DataProviderFactory } from './core/data-provider.js';
+export { DataProviderWithCache, DataProviderRegistry } from './core/data-provider.js';
+export { SuiDataProvider } from './chain/sui/data-provider.js';
+
+// LP Pro service
+export { LPProService } from './data/lp-pro-service.js';
+export type {
+  LPProServiceConfig,
+  LPProCoinRecord,
+  LPProTokenPrice,
+} from './data/lp-pro-service.js';
 
 // Chain adapter
 export type { ChainAdapter } from './chain/index.js';

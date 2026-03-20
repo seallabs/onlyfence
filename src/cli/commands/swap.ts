@@ -53,13 +53,12 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
         const {
           db,
           config,
-          oracle,
+          dataProviders,
           policyRegistry,
           tradeLog,
           chainAdapterFactory,
           actionBuilderRegistry,
           mevProtectors,
-          coinMetadataService,
           logger,
         } = components;
         const chain = options.chain;
@@ -85,8 +84,9 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             'Swap command invoked',
           );
 
-          // Get chain adapter (needed for token resolution and pipeline)
+          // Get chain adapter and data provider
           const chainAdapter = chainAdapterFactory.get(chain);
+          const dataProvider = dataProviders.get(chain);
 
           // === Resolve CLI inputs to stable internal representations ===
           // resolveTokenInput handles alias resolution (case-insensitive),
@@ -95,7 +95,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             fromToken,
             amountStr,
             chainAdapter,
-            coinMetadataService,
+            dataProvider,
           );
           const {
             coinType: coinTypeIn,
@@ -108,12 +108,12 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           const slippageBps = Math.round(parseFloat(options.slippage) * 100);
           let tradeValueUsd: number | undefined;
           try {
-            const price = await oracle.getPrice(fromSymbol);
+            const price = await dataProvider.getPrice(coinTypeIn);
             tradeValueUsd = parseFloat(amountStr) * price;
           } catch (err: unknown) {
             log.warn(
               { token: fromSymbol, error: toErrorMessage(err) },
-              'Oracle price unavailable; USD spending limits will not be enforced',
+              'Price unavailable; USD spending limits will not be enforced',
             );
             tradeValueUsd = undefined;
           }
@@ -135,7 +135,6 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           // Build policy context
           const policyCtx: PolicyContext = {
             config: chainConfig,
-            oracle,
             tradeLog,
             ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
           };

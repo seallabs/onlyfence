@@ -126,13 +126,12 @@ async function executeTokenLendingAction(
   const {
     db,
     config,
-    oracle,
+    dataProviders,
     policyRegistry,
     tradeLog,
     chainAdapterFactory,
     actionBuilderRegistry,
     mevProtectors,
-    coinMetadataService,
     alphalendClient,
     logger,
   } = components;
@@ -152,25 +151,26 @@ async function executeTokenLendingAction(
 
     log.info({ action, token, amount: amountStr, chain, watchOnly }, 'Lend command invoked');
 
-    // Get chain adapter (needed for token resolution and pipeline)
+    // Get chain adapter and data provider
     const chainAdapter = chainAdapterFactory.get(chain);
+    const dataProvider = dataProviders.get(chain);
 
     // === Resolve CLI inputs to stable internal representations ===
     // resolveTokenInput handles alias resolution (case-insensitive),
     // coin type normalization, decimal fetching, and amount scaling.
-    const resolved = await resolveTokenInput(token, amountStr, chainAdapter, coinMetadataService);
+    const resolved = await resolveTokenInput(token, amountStr, chainAdapter, dataProvider);
     const { coinType, symbol, scaledAmount } = resolved;
 
     // Resolve market ID and USD price in parallel (independent operations)
     const [marketId, tradeValueUsd] = await Promise.all([
       resolveMarketId(alphalendClient, coinType, options.market),
-      oracle
-        .getPrice(symbol)
+      dataProvider
+        .getPrice(coinType)
         .then((price) => parseFloat(amountStr) * price)
         .catch((err: unknown) => {
           log.warn(
             { token: symbol, error: toErrorMessage(err) },
-            'Oracle price unavailable; USD spending limits will not be enforced',
+            'Price unavailable; USD spending limits will not be enforced',
           );
           return undefined;
         }),
@@ -191,7 +191,6 @@ async function executeTokenLendingAction(
     // Build policy context
     const policyCtx: PolicyContext = {
       config: chainConfig,
-      oracle,
       tradeLog,
       ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
     };
@@ -316,7 +315,6 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
       const {
         db,
         config,
-        oracle,
         policyRegistry,
         tradeLog,
         chainAdapterFactory,
@@ -350,7 +348,6 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
 
         const policyCtx: PolicyContext = {
           config: chainConfig,
-          oracle,
           tradeLog,
         };
 

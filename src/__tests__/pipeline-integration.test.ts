@@ -16,7 +16,7 @@ import { TradeLog } from '../db/trade-log.js';
 import { openMemoryDatabase } from '../db/connection.js';
 import { NoOpMevProtector } from '../core/mev-protector.js';
 import { executePipeline } from '../core/transaction-pipeline.js';
-import { createMockOracle, createMockLogger, createIntent, insertTestWallet } from './helpers.js';
+import { createMockLogger, createIntent, insertTestWallet } from './helpers.js';
 
 // --- Shared fixtures ---
 
@@ -159,7 +159,6 @@ describe('Pipeline Integration Tests', () => {
     policyContext = {
       config: chainConfig,
       db,
-      oracle: createMockOracle(),
       tradeLog,
       tradeValueUsd: 100,
     };

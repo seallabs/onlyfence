@@ -39,7 +39,7 @@ function PolicyHeader({
 }
 
 export function PolicyConfig(): ReactElement {
-  const { config, activeChain, reloadConfig, mode, setMode, coinMetadataService } = useTui();
+  const { config, activeChain, reloadConfig, mode, setMode, dataProvider } = useTui();
 
   const chainConfig = config.chain[activeChain];
 
@@ -201,7 +201,7 @@ export function PolicyConfig(): ReactElement {
         <PolicyHeader activeChain={activeChain} dirty={dirty} />
         <TokenSelectPopup
           initialTokens={tokenList}
-          coinMetadataService={coinMetadataService}
+          dataProvider={dataProvider}
           onConfirm={handleTokensConfirm}
           onCancel={handleTokensCancel}
         />
