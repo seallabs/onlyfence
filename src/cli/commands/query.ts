@@ -10,7 +10,7 @@ import { withComponents } from '../with-components.js';
  * Register the `fence query` command group.
  *
  * Subcommands:
- * - `fence query price <tokens...>` - Query token prices via oracle
+ * - `fence query price <tokens...>` - Query token prices via data provider
  * - `fence query balance [--chain sui]` - Query wallet balance via chain adapter
  */
 export function registerQueryCommand(program: Command, getComponents: () => AppComponents): void {
@@ -19,19 +19,21 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
   // fence query price <tokens...>
   queryCmd
     .command('price <tokens...>')
-    .description('Query token prices via oracle')
+    .description('Query token prices')
+    .option('-c, --chain <chain>', 'Target chain', 'sui')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
-    .action(async (tokens: string[], options: { output: string }) => {
+    .action(async (tokens: string[], options: { chain: Chain; output: string }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { oracle } = components;
+      const { dataProviders } = components;
+      const dataProvider = dataProviders.get(options.chain);
 
       const settled = await Promise.allSettled(
         tokens.map(async (token) => {
           const coinType = resolveTokenAddress(token);
           const symbol = resolveSymbol(coinType);
-          const price = await oracle.getPrice(symbol);
+          const price = await dataProvider.getPrice(coinType);
           return { token: symbol, priceUsd: price };
         }),
       );

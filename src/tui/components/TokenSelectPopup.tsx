@@ -6,7 +6,7 @@ import {
   REGISTRY_ALIASES_UPPER,
   resolveSymbol,
 } from '../../chain/sui/tokens.js';
-import type { CoinMetadataService } from '../../data/coin-metadata.js';
+import type { DataProvider } from '../../core/data-provider.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { theme } from '../theme.js';
 
@@ -18,7 +18,7 @@ const PKG_DISPLAY_LEN = 8;
 
 interface TokenSelectPopupProps {
   readonly initialTokens: readonly string[];
-  readonly coinMetadataService: CoinMetadataService;
+  readonly dataProvider: DataProvider;
   readonly onConfirm: (tokens: readonly string[]) => void;
   readonly onCancel: () => void;
 }
@@ -61,7 +61,7 @@ function shortCoinType(coinType: string): string {
  */
 export function TokenSelectPopup({
   initialTokens,
-  coinMetadataService,
+  dataProvider,
   onConfirm,
   onCancel,
 }: TokenSelectPopupProps): ReactElement {
@@ -172,14 +172,14 @@ export function TokenSelectPopup({
     (coinType: string) => {
       setPhase('discovering');
       setDiscoverError(null);
-      coinMetadataService
-        .getMetadata(coinType, 'sui')
+      dataProvider
+        .getMetadata(coinType)
         .then((meta) => {
           if (!mountedRef.current) return;
           setDiscovered({
             symbol: meta.symbol !== '' ? meta.symbol : resolveSymbol(coinType),
             decimals: meta.decimals,
-            coinType: meta.coinType,
+            coinType: meta.address,
           });
           setPhase('custom-confirm');
         })
@@ -189,7 +189,7 @@ export function TokenSelectPopup({
           setPhase('custom-input');
         });
     },
-    [coinMetadataService],
+    [dataProvider],
   );
 
   const handleAddDiscoveredToken = useCallback(() => {

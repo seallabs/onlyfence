@@ -8,7 +8,7 @@
 
 import type { ChainAdapter } from '../chain/adapter.js';
 import { scaleToSmallestUnit } from '../chain/sui/tokens.js';
-import type { CoinMetadataService } from '../data/coin-metadata.js';
+import type { DataProvider } from '../core/data-provider.js';
 
 /**
  * Fully resolved token input — the canonical representation used
@@ -31,9 +31,8 @@ export interface ResolvedTokenInput {
  * This is the single entry point for all command handlers to normalize user input.
  * It performs:
  * 1. Token alias resolution (case-insensitive) or coin type normalization
- * 2. Decimal fetching (remote API with local fallback)
+ * 2. Metadata fetching (decimals, symbol) via DataProvider
  * 3. Amount scaling from human-readable to smallest unit (floor-rounded)
- * 4. Symbol resolution for downstream use (oracle, logging)
  *
  * Resolution is chain-agnostic — the ChainAdapter handles chain-specific
  * alias lookup and address normalization.
@@ -41,20 +40,20 @@ export interface ResolvedTokenInput {
  * @param rawToken - User-provided token alias ("SUI", "sui") or coin type ("0x2::sui::SUI")
  * @param rawAmount - Human-readable amount string (e.g., "1.5")
  * @param chainAdapter - Chain adapter providing token resolution
- * @param coinMetadataService - Service for resolving token decimals
+ * @param dataProvider - Data provider for resolving token metadata
  * @returns Fully resolved and validated token input
- * @throws On unknown token, invalid amount, or decimal resolution failure
+ * @throws On unknown token, invalid amount, or metadata resolution failure
  */
 export async function resolveTokenInput(
   rawToken: string,
   rawAmount: string,
   chainAdapter: ChainAdapter,
-  coinMetadataService: CoinMetadataService,
+  dataProvider: DataProvider,
 ): Promise<ResolvedTokenInput> {
   const coinType = chainAdapter.resolveTokenAddress(rawToken);
   const symbol = chainAdapter.resolveTokenSymbol(coinType);
-  const decimals = await coinMetadataService.getDecimals(coinType, chainAdapter.chain);
-  const scaledAmount = scaleToSmallestUnit(rawAmount, decimals);
+  const meta = await dataProvider.getMetadata(coinType);
+  const scaledAmount = scaleToSmallestUnit(rawAmount, meta.decimals);
 
-  return { coinType, symbol, decimals, scaledAmount };
+  return { coinType, symbol, decimals: meta.decimals, scaledAmount };
 }

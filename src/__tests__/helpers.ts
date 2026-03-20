@@ -4,10 +4,10 @@ import { vi } from 'vitest';
 import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import { resolveTokenAddress } from '../chain/sui/tokens.js';
 import type { BorrowIntent, SupplyIntent, SwapIntent } from '../core/action-types.js';
+import type { DataProvider, TokenMetadata } from '../core/data-provider.js';
 import type { LendingRecord } from '../db/lending-log.js';
 import type { TradeRecord } from '../db/trade-log.js';
 import { TradeLog } from '../db/trade-log.js';
-import type { OracleClient } from '../oracle/client.js';
 import type { PolicyContext } from '../policy/context.js';
 import type { ChainConfig } from '../types/config.js';
 
@@ -29,12 +29,30 @@ export function createMockLogger(): Logger {
 }
 
 /**
- * Create a mock OracleClient that returns a fixed price.
+ * Create a mock DataProvider that returns fixed values.
  */
-export function createMockOracle(price: number = 1.0): OracleClient {
+export function createMockDataProvider(price: number = 1.0): DataProvider {
   return {
-    async getPrice(_token: string): Promise<number> {
+    chain: 'sui',
+    async getPrice(_address: string): Promise<number> {
       return price;
+    },
+    async getPrices(addresses: string[]): Promise<Record<string, number>> {
+      const result: Record<string, number> = {};
+      for (const addr of addresses) {
+        result[addr] = price;
+      }
+      return result;
+    },
+    async getMetadata(address: string): Promise<TokenMetadata> {
+      return { address, symbol: 'MOCK', decimals: 9 };
+    },
+    async getMetadatas(addresses: string[]): Promise<Record<string, TokenMetadata>> {
+      const result: Record<string, TokenMetadata> = {};
+      for (const addr of addresses) {
+        result[addr] = { address: addr, symbol: 'MOCK', decimals: 9 };
+      }
+      return result;
     },
   };
 }
@@ -72,7 +90,6 @@ export function createContext(
 ): PolicyContext {
   return {
     config,
-    oracle: createMockOracle(),
     tradeLog: new TradeLog(db),
     ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
   };

@@ -37,8 +37,7 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
   const [configError, setConfigError] = useState<string | null>(null);
   const [mode, setMode] = useState<'navigate' | 'edit'>('navigate');
 
-  const { db, oracle, tradeLog, policyRegistry, chainAdapterFactory, coinMetadataService } =
-    components;
+  const { db, dataProviders, tradeLog, policyRegistry, chainAdapterFactory } = components;
 
   const activeChain: Chain = Object.keys(config.chain)[0] as Chain;
   const activeChainId = chainAdapterFactory.get(activeChain).chainId;
@@ -82,14 +81,15 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
     { isActive: mode === 'navigate' },
   );
 
+  const dataProvider = dataProviders.get(activeChain);
+
   const ctx: TuiContextValue = useMemo(
     () => ({
       db,
-      oracle,
+      dataProvider,
       tradeLog,
       policyRegistry,
       chainAdapterFactory,
-      coinMetadataService,
       config,
       activeChain,
       activeChainId,
@@ -101,11 +101,10 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
     }),
     [
       db,
-      oracle,
+      dataProvider,
       tradeLog,
       policyRegistry,
       chainAdapterFactory,
-      coinMetadataService,
       config,
       activeChain,
       activeChainId,
