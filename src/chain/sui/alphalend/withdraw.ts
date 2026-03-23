@@ -7,7 +7,8 @@ import type {
   FinishContext,
 } from '../../../core/action-builder.js';
 import type { WithdrawIntent } from '../../../core/action-types.js';
-import type { LendingLog } from '../../../db/lending-log.js';
+import type { ActivityLog } from '../../../db/activity-log.js';
+import type { SuiRawResponse } from '../types.js';
 import { AlphaLendBase, finishLendingActivity } from './base.js';
 
 /**
@@ -20,7 +21,7 @@ import { AlphaLendBase, finishLendingActivity } from './base.js';
  */
 export class AlphaLendWithdrawBuilder
   extends AlphaLendBase
-  implements ActionBuilder<WithdrawIntent>
+  implements ActionBuilder<WithdrawIntent, SuiRawResponse>
 {
   readonly builderId = 'alphalend-withdraw';
   readonly chain = 'sui';
@@ -28,7 +29,7 @@ export class AlphaLendWithdrawBuilder
   constructor(
     alphalendClient: AlphalendClient,
     suiClient: SuiClient,
-    private readonly lendingLog: LendingLog,
+    private readonly activityLog: ActivityLog,
   ) {
     super(alphalendClient, suiClient);
   }
@@ -80,7 +81,7 @@ export class AlphaLendWithdrawBuilder
     };
   }
 
-  finish(context: FinishContext): void {
-    finishLendingActivity(context, 'withdraw', this.lendingLog);
+  finish(context: FinishContext<SuiRawResponse>): void {
+    finishLendingActivity(context, 'lending:withdraw', this.activityLog);
   }
 }

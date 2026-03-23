@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SuiDataProvider } from '../chain/sui/data-provider.js';
-import type { LPProService, LPProCoinRecord, LPProTokenPrice } from '../data/lp-pro-service.js';
+import type { LPProCoinRecord, LPProService, LPProTokenPrice } from '../data/lp-pro-service.js';
 
 function createMockLPPro(overrides?: {
   fetchCoins?: (coinTypes: readonly string[]) => Promise<LPProCoinRecord[]>;
@@ -85,7 +85,7 @@ describe('SuiDataProvider', () => {
       const provider = new SuiDataProvider(lpPro, knownDecimals);
       const meta = await provider.getMetadata(SUI);
 
-      expect(meta).toEqual({ address: SUI, symbol: 'SUI', decimals: 9 });
+      expect(meta).toMatchObject({ address: SUI, symbol: 'SUI', decimals: 9 });
     });
 
     it('falls back to known decimals when API fails', async () => {
@@ -134,12 +134,12 @@ describe('SuiDataProvider', () => {
       const provider = new SuiDataProvider(lpPro, knownDecimals);
       const result = await provider.getMetadatas([SUI, otherToken]);
 
-      expect(result[SUI]).toEqual({
+      expect(result[SUI]).toMatchObject({
         address: SUI,
         symbol: 'SUI',
         decimals: 9,
       });
-      expect(result[otherToken]).toEqual({
+      expect(result[otherToken]).toMatchObject({
         address: otherToken,
         symbol: 'TOK',
         decimals: 8,
@@ -182,12 +182,16 @@ describe('SuiDataProvider', () => {
       const provider = new SuiDataProvider(lpPro, knownDecimals);
       const result = await provider.getMetadatas([SUI, USDC]);
 
-      expect(result[SUI]).toEqual({
+      expect(result[SUI]).toMatchObject({
         address: SUI,
         symbol: 'SUI',
         decimals: 9,
       });
-      expect(result[USDC]).toEqual({ address: USDC, symbol: 'USDC', decimals: 6 });
+      expect(result[USDC]).toMatchObject({
+        address: USDC,
+        symbol: 'USDC',
+        decimals: 6,
+      });
     });
   });
 });

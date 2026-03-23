@@ -7,8 +7,9 @@ import type {
   FinishContext,
 } from '../../../core/action-builder.js';
 import type { RepayIntent } from '../../../core/action-types.js';
-import type { LendingLog } from '../../../db/lending-log.js';
+import type { ActivityLog } from '../../../db/activity-log.js';
 import { isSuiCoinType } from '../tokens.js';
+import type { SuiRawResponse } from '../types.js';
 import { finishLendingActivity } from './base.js';
 
 /**
@@ -19,14 +20,14 @@ import { finishLendingActivity } from './base.js';
  * repay amount (to cover accrued interest), then calls the AlphaLend
  * SDK repay method.
  */
-export class AlphaLendRepayBuilder implements ActionBuilder<RepayIntent> {
+export class AlphaLendRepayBuilder implements ActionBuilder<RepayIntent, SuiRawResponse> {
   readonly builderId = 'alphalend-repay';
   readonly chain = 'sui';
 
   constructor(
     private readonly alphalendClient: AlphalendClient,
     private readonly suiClient: SuiClient,
-    private readonly lendingLog: LendingLog,
+    private readonly activityLog: ActivityLog,
   ) {}
 
   validate(intent: RepayIntent): void {
@@ -80,7 +81,7 @@ export class AlphaLendRepayBuilder implements ActionBuilder<RepayIntent> {
     };
   }
 
-  finish(context: FinishContext): void {
-    finishLendingActivity(context, 'repay', this.lendingLog);
+  finish(context: FinishContext<SuiRawResponse>): void {
+    finishLendingActivity(context, 'lending:repay', this.activityLog);
   }
 }

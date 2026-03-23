@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { BorrowIntent } from '../core/action-types.js';
-import type { FinishContext } from '../core/action-builder.js';
 import type { AlphalendClient } from '@alphafi/alphalend-sdk';
 import type { SuiClient } from '@mysten/sui/client';
-import type { LendingLog } from '../db/lending-log.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FinishContext } from '../core/action-builder.js';
+import type { BorrowIntent } from '../core/action-types.js';
+import type { ActivityLog } from '../db/activity-log.js';
 
 // Mock AlphaLend SDK
 const mockBorrow = vi.fn();
@@ -31,7 +31,7 @@ beforeEach(async () => {
 
 function makeBorrowIntent(overrides?: Partial<BorrowIntent['params']>): BorrowIntent {
   return {
-    action: 'borrow',
+    action: 'lending:borrow',
     chainId: 'sui:mainnet',
     walletAddress: '0x' + 'a'.repeat(64),
     params: {
@@ -47,7 +47,7 @@ function makeBorrowIntent(overrides?: Partial<BorrowIntent['params']>): BorrowIn
 describe('AlphaLendBorrowBuilder', () => {
   let mockAlphalendClient: AlphalendClient;
   let mockSuiClient: SuiClient;
-  let mockLendingLog: LendingLog;
+  let mockActivityLog: ActivityLog;
 
   beforeEach(() => {
     mockAlphalendClient = {
@@ -56,16 +56,16 @@ describe('AlphaLendBorrowBuilder', () => {
       getUserPortfolioFromPositionCapId: mockGetUserPortfolioFromPositionCapId,
     } as unknown as AlphalendClient;
     mockSuiClient = {} as unknown as SuiClient;
-    mockLendingLog = {
+    mockActivityLog = {
       logActivity: vi.fn().mockReturnValue(1),
-    } as unknown as LendingLog;
+    } as unknown as ActivityLog;
   });
 
   describe('validate', () => {
     let builder: InstanceType<typeof AlphaLendBorrowBuilder>;
 
     beforeEach(() => {
-      builder = new AlphaLendBorrowBuilder(mockAlphalendClient, mockSuiClient, mockLendingLog);
+      builder = new AlphaLendBorrowBuilder(mockAlphalendClient, mockSuiClient, mockActivityLog);
     });
 
     it('does not throw for valid intent', () => {
@@ -98,7 +98,7 @@ describe('AlphaLendBorrowBuilder', () => {
       const builder = new AlphaLendBorrowBuilder(
         mockAlphalendClient,
         mockSuiClient,
-        mockLendingLog,
+        mockActivityLog,
       );
       const intent = makeBorrowIntent();
       const result = await builder.build(intent);
@@ -134,7 +134,7 @@ describe('AlphaLendBorrowBuilder', () => {
       const builder = new AlphaLendBorrowBuilder(
         mockAlphalendClient,
         mockSuiClient,
-        mockLendingLog,
+        mockActivityLog,
       );
       await expect(builder.build(makeBorrowIntent())).rejects.toThrow(/position/i);
     });
@@ -145,7 +145,7 @@ describe('AlphaLendBorrowBuilder', () => {
       const builder = new AlphaLendBorrowBuilder(
         mockAlphalendClient,
         mockSuiClient,
-        mockLendingLog,
+        mockActivityLog,
       );
       const intent = makeBorrowIntent();
       const context: FinishContext = {
@@ -157,14 +157,14 @@ describe('AlphaLendBorrowBuilder', () => {
 
       builder.finish!(context);
 
-      expect(mockLendingLog.logActivity).toHaveBeenCalledWith(
+      expect(mockActivityLog.logActivity).toHaveBeenCalledWith(
         expect.objectContaining({
-          action: 'borrow',
+          action: 'lending:borrow',
           protocol: 'alphalend',
-          market_id: '1',
-          coin_type: '0x2::sui::SUI',
-          amount: '500000000',
+          token_a_type: undefined,
+          token_a_amount: undefined,
           policy_decision: 'approved',
+          metadata: { market_id: '1' },
         }),
       );
     });

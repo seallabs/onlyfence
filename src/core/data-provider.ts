@@ -1,14 +1,17 @@
 import type { CoinMetadataRepository, CoinMetadataRow } from '../db/coin-metadata-repo.js';
-import type { Chain } from './action-types.js';
+import type { Chain, ChainId } from './action-types.js';
 
 export interface TokenMetadata {
   readonly symbol: string;
   readonly decimals: number;
   readonly address: string;
+  readonly name?: string | undefined;
+  readonly alias?: string | undefined;
+  readonly verified?: boolean | undefined;
 }
 
 export interface DataProvider {
-  readonly chain: Chain;
+  readonly chainId: ChainId;
   getPrice(address: string): Promise<number>;
   getPrices(addresses: string[]): Promise<Record<string, number>>;
   getMetadata(address: string): Promise<TokenMetadata>;
@@ -61,16 +64,21 @@ export class DataProviderRegistry {
 
 /** Convert a DB row to the public TokenMetadata shape. */
 function rowToMetadata(row: CoinMetadataRow): TokenMetadata {
-  return { address: row.coin_type, symbol: row.symbol, decimals: row.decimals };
+  return {
+    address: row.coin_type,
+    symbol: row.symbol,
+    decimals: row.decimals,
+    name: row.name ?? '',
+  };
 }
 
 /** Convert a TokenMetadata to a DB row. */
-function metadataToRow(meta: TokenMetadata, chain: string): CoinMetadataRow {
+function metadataToRow(meta: TokenMetadata, chainId: ChainId): CoinMetadataRow {
   return {
     coin_type: meta.address,
-    chain_id: chain,
+    chain_id: chainId,
     symbol: meta.symbol,
-    name: null,
+    name: meta.name ?? null,
     decimals: meta.decimals,
   };
 }
@@ -92,8 +100,8 @@ export class DataProviderWithCache implements DataProvider {
     private readonly repo: CoinMetadataRepository,
   ) {}
 
-  get chain(): Chain {
-    return this.provider.chain;
+  get chainId(): ChainId {
+    return this.provider.chainId;
   }
 
   async getPrice(address: string): Promise<number> {
@@ -106,7 +114,7 @@ export class DataProviderWithCache implements DataProvider {
 
   async getMetadata(address: string): Promise<TokenMetadata> {
     // 1. Check local DB
-    const cached = this.repo.get(address, this.chain);
+    const cached = this.repo.get(address, this.chainId);
     if (cached !== null) {
       return rowToMetadata(cached);
     }
@@ -115,7 +123,7 @@ export class DataProviderWithCache implements DataProvider {
     const meta = await this.provider.getMetadata(address);
 
     // 3. Backfill DB
-    this.repo.upsert(metadataToRow(meta, this.chain));
+    this.repo.upsert(metadataToRow(meta, this.chainId));
 
     return meta;
   }
@@ -124,7 +132,7 @@ export class DataProviderWithCache implements DataProvider {
     if (addresses.length === 0) return {};
 
     // 1. Check local DB for all addresses
-    const cachedRows = this.repo.getBulk(addresses, this.chain);
+    const cachedRows = this.repo.getBulk(addresses, this.chainId);
     const result: Record<string, TokenMetadata> = {};
     const cachedSet = new Set<string>();
 
@@ -144,7 +152,7 @@ export class DataProviderWithCache implements DataProvider {
     const rows: CoinMetadataRow[] = [];
     for (const [addr, meta] of Object.entries(fetched)) {
       result[addr] = meta;
-      rows.push(metadataToRow(meta, this.chain));
+      rows.push(metadataToRow(meta, this.chainId));
     }
     this.repo.upsertBulk(rows);
 

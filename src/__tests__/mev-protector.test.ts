@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { NoOpMevProtector } from '../core/mev-protector.js';
+import { describe, expect, it } from 'vitest';
 import type { MevProtector } from '../core/mev-protector.js';
+import { NoOpMevProtector } from '../core/mev-protector.js';
 
 describe('NoOpMevProtector', () => {
   it('has name "noop"', () => {

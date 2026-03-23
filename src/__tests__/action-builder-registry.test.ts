@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { SwapIntent } from '../core/action-types.js';
 import type { ActionBuilder, BuiltTransaction } from '../core/action-builder.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
+import type { SwapIntent } from '../core/action-types.js';
 
 function makeBuilder(chain: string): ActionBuilder<SwapIntent> {
   return {
@@ -17,7 +17,7 @@ function makeBuilder(chain: string): ActionBuilder<SwapIntent> {
 
 const SWAP_INTENT: SwapIntent = {
   chainId: 'sui:mainnet',
-  action: 'swap',
+  action: 'trade:swap',
   walletAddress: '0xabc',
   params: {
     coinTypeIn: '0x2::sui::SUI',

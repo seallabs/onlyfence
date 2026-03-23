@@ -17,9 +17,9 @@ export class SpendingLimitCheck implements PolicyCheck {
 
   evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult> {
     if (
-      intent.action === 'claim_rewards' ||
-      intent.action === 'withdraw' ||
-      intent.action === 'borrow'
+      intent.action === 'lending:claim_rewards' ||
+      intent.action === 'lending:withdraw' ||
+      intent.action === 'lending:borrow'
     ) {
       return Promise.resolve({ status: 'pass' });
     }
@@ -58,8 +58,8 @@ export class SpendingLimitCheck implements PolicyCheck {
     }
 
     // max_24h_volume applies to swaps only
-    if (intent.action === 'swap') {
-      const rolling24h = ctx.tradeLog.getRolling24hVolume(intent.chainId);
+    if (intent.action === 'trade:swap') {
+      const rolling24h = ctx.activityLog.getRolling24hVolume(intent.chainId);
 
       const projectedVolume = rolling24h + tradeValueUsd;
       if (projectedVolume > limits.max_24h_volume) {

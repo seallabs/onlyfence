@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AlphalendClient } from '@alphafi/alphalend-sdk';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the alphalend-sdk
 const mockGetAllMarkets = vi.fn();
@@ -23,7 +23,9 @@ describe('resolveMarketId', () => {
   let mockClient: AlphalendClient;
 
   beforeEach(() => {
-    mockClient = { getAllMarkets: mockGetAllMarkets } as unknown as AlphalendClient;
+    mockClient = {
+      getAllMarkets: mockGetAllMarkets,
+    } as unknown as AlphalendClient;
   });
 
   it('should return explicit marketId when provided (no API call)', async () => {

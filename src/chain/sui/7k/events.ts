@@ -6,6 +6,8 @@
  * transactions emit the same event types.
  */
 
+import type { ISuiEvent } from '../types.js';
+
 /** 7K Aggregator settle::Swap event type. */
 const SETTLE_SWAP_EVENT_TYPE =
   '0x17c0b1f7a6ad73f51268f16b8c06c049eecc2f28a270cdd29c06e3d2dea23302::settle::Swap';
@@ -16,12 +18,6 @@ export interface SwapEventAmounts {
   readonly amountOut: string;
 }
 
-/** Shape of a Sui event with parsedJson. */
-interface SuiEventLike {
-  readonly type: string;
-  readonly parsedJson: unknown;
-}
-
 /**
  * Extract amountIn and amountOut from the 7K settle::Swap event
  * in a list of Sui events.
@@ -29,7 +25,7 @@ interface SuiEventLike {
  * Returns undefined if no matching event is found or if the parsed
  * fields are missing — the caller should fall back to preview values.
  */
-export function parseSwapEvent(events: readonly SuiEventLike[]): SwapEventAmounts | undefined {
+export function parseSwapEvent(events: readonly ISuiEvent[]): SwapEventAmounts | undefined {
   const event = events.find((e) => e.type === SETTLE_SWAP_EVENT_TYPE);
   if (event === undefined) return undefined;
 

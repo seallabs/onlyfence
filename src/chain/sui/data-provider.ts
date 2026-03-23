@@ -17,7 +17,7 @@ import { resolveSymbol } from './tokens.js';
  * and USDC work even on cold starts without network.
  */
 export class SuiDataProvider implements DataProvider {
-  readonly chain = 'sui' as const;
+  readonly chainId = 'sui:mainnet' as const;
   private readonly knownDecimals: Readonly<Record<string, number>>;
 
   constructor(
@@ -67,6 +67,9 @@ export class SuiDataProvider implements DataProvider {
           address: coin.coin_type,
           symbol: coin.symbol,
           decimals: coin.decimals,
+          name: coin.name,
+          alias: coin.alias ?? undefined,
+          verified: coin.verified,
         };
       }
 

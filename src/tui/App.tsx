@@ -37,7 +37,7 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
   const [configError, setConfigError] = useState<string | null>(null);
   const [mode, setMode] = useState<'navigate' | 'edit'>('navigate');
 
-  const { db, dataProviders, tradeLog, policyRegistry, chainAdapterFactory } = components;
+  const { db, dataProviders, activityLog, policyRegistry, chainAdapterFactory } = components;
 
   const activeChain: Chain = Object.keys(config.chain)[0] as Chain;
   const activeChainId = chainAdapterFactory.get(activeChain).chainId;
@@ -87,7 +87,7 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
     () => ({
       db,
       dataProvider,
-      tradeLog,
+      activityLog,
       policyRegistry,
       chainAdapterFactory,
       config,
@@ -102,7 +102,7 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
     [
       db,
       dataProvider,
-      tradeLog,
+      activityLog,
       policyRegistry,
       chainAdapterFactory,
       config,

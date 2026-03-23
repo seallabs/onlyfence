@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type {
   ActionIntent,
   BorrowIntent,
@@ -11,7 +11,7 @@ import type {
 describe('ActionIntent', () => {
   it('discriminates SwapIntent by action field', () => {
     const intent: ActionIntent = {
-      action: 'swap',
+      action: 'trade:swap',
       chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
@@ -22,8 +22,8 @@ describe('ActionIntent', () => {
       },
     };
 
-    expect(intent.action).toBe('swap');
-    if (intent.action === 'swap') {
+    expect(intent.action).toBe('trade:swap');
+    if (intent.action === 'trade:swap') {
       expect(intent.params.coinTypeIn).toBe('0x2::sui::SUI');
       expect(intent.params.slippageBps).toBe(100);
     }
@@ -31,7 +31,7 @@ describe('ActionIntent', () => {
 
   it('discriminates SupplyIntent by action field', () => {
     const intent: ActionIntent = {
-      action: 'supply',
+      action: 'lending:supply',
       chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
@@ -42,8 +42,8 @@ describe('ActionIntent', () => {
       },
     };
 
-    expect(intent.action).toBe('supply');
-    if (intent.action === 'supply') {
+    expect(intent.action).toBe('lending:supply');
+    if (intent.action === 'lending:supply') {
       expect(intent.params.protocol).toBe('navi');
       expect(intent.params.marketId).toBe('market-1');
     }
@@ -51,7 +51,7 @@ describe('ActionIntent', () => {
 
   it('discriminates BorrowIntent by action field', () => {
     const intent: ActionIntent = {
-      action: 'borrow',
+      action: 'lending:borrow',
       chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
@@ -63,8 +63,8 @@ describe('ActionIntent', () => {
       tradeValueUsd: 10.5,
     };
 
-    expect(intent.action).toBe('borrow');
-    if (intent.action === 'borrow') {
+    expect(intent.action).toBe('lending:borrow');
+    if (intent.action === 'lending:borrow') {
       expect(intent.params.coinType).toBe('0x2::sui::SUI');
       expect(intent.params.marketId).toBe('market-2');
       expect(intent.tradeValueUsd).toBe(10.5);
@@ -73,7 +73,7 @@ describe('ActionIntent', () => {
 
   it('discriminates WithdrawIntent by action field', () => {
     const intent: ActionIntent = {
-      action: 'withdraw',
+      action: 'lending:withdraw',
       chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
@@ -85,15 +85,15 @@ describe('ActionIntent', () => {
       },
     };
 
-    expect(intent.action).toBe('withdraw');
-    if (intent.action === 'withdraw') {
+    expect(intent.action).toBe('lending:withdraw');
+    if (intent.action === 'lending:withdraw') {
       expect(intent.params.withdrawAll).toBe(true);
     }
   });
 
   it('discriminates RepayIntent by action field', () => {
     const intent: ActionIntent = {
-      action: 'repay',
+      action: 'lending:repay',
       chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
@@ -105,15 +105,15 @@ describe('ActionIntent', () => {
       tradeValueUsd: 5.0,
     };
 
-    expect(intent.action).toBe('repay');
-    if (intent.action === 'repay') {
+    expect(intent.action).toBe('lending:repay');
+    if (intent.action === 'lending:repay') {
       expect(intent.params.marketId).toBe('market-4');
     }
   });
 
   it('discriminates ClaimRewardsIntent by action field', () => {
     const intent: ActionIntent = {
-      action: 'claim_rewards',
+      action: 'lending:claim_rewards',
       chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
@@ -121,8 +121,8 @@ describe('ActionIntent', () => {
       },
     };
 
-    expect(intent.action).toBe('claim_rewards');
-    if (intent.action === 'claim_rewards') {
+    expect(intent.action).toBe('lending:claim_rewards');
+    if (intent.action === 'lending:claim_rewards') {
       expect(intent.params.protocol).toBe('alphalend');
     }
   });

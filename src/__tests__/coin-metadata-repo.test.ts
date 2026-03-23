@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { openMemoryDatabase } from '../db/connection.js';
-import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
-import type { CoinMetadataRow } from '../db/coin-metadata-repo.js';
 import type Database from 'better-sqlite3';
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { CoinMetadataRow } from '../db/coin-metadata-repo.js';
+import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
+import { openMemoryDatabase } from '../db/connection.js';
 
 describe('CoinMetadataRepository', () => {
   let db: Database.Database;

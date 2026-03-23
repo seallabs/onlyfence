@@ -7,7 +7,8 @@ import type {
   FinishContext,
 } from '../../../core/action-builder.js';
 import type { ClaimRewardsIntent } from '../../../core/action-types.js';
-import type { LendingLog } from '../../../db/lending-log.js';
+import type { ActivityLog } from '../../../db/activity-log.js';
+import type { SuiRawResponse } from '../types.js';
 import { finishLendingActivity } from './base.js';
 
 /**
@@ -18,14 +19,17 @@ import { finishLendingActivity } from './base.js';
  * claimRewards method with both deposit flags set to false (withdraw
  * rewards to wallet rather than re-depositing).
  */
-export class AlphaLendClaimRewardsBuilder implements ActionBuilder<ClaimRewardsIntent> {
+export class AlphaLendClaimRewardsBuilder implements ActionBuilder<
+  ClaimRewardsIntent,
+  SuiRawResponse
+> {
   readonly builderId = 'alphalend-claim-rewards';
   readonly chain = 'sui';
 
   constructor(
     private readonly alphalendClient: AlphalendClient,
     private readonly suiClient: SuiClient,
-    private readonly lendingLog: LendingLog,
+    private readonly activityLog: ActivityLog,
   ) {}
 
   validate(_intent: ClaimRewardsIntent): void {
@@ -57,7 +61,7 @@ export class AlphaLendClaimRewardsBuilder implements ActionBuilder<ClaimRewardsI
     };
   }
 
-  finish(context: FinishContext): void {
-    finishLendingActivity(context, 'claim_rewards', this.lendingLog);
+  finish(context: FinishContext<SuiRawResponse>): void {
+    finishLendingActivity(context, 'lending:claim_rewards', this.activityLog);
   }
 }

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import nacl from 'tweetnacl';
+import { describe, expect, it } from 'vitest';
 import { buildSuiSigner } from '../chain/sui/signer.js';
 
 describe('buildSuiSigner', () => {

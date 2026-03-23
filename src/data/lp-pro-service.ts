@@ -60,7 +60,7 @@ export class LPProService {
    * @throws Error on network failure or non-OK response
    */
   async fetchCoins(coinTypes: readonly string[]): Promise<LPProCoinRecord[]> {
-    return this.postJson<LPProCoinRecord[]>('/pool/coins', { coin_types: coinTypes });
+    return this.getJson<LPProCoinRecord[]>('/pool/coins', { coin_types: coinTypes });
   }
 
   /**
@@ -86,6 +86,24 @@ export class LPProService {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `LP Pro API error (${path}): ${response.status} ${response.statusText} – ${text}`,
+      );
+    }
+
+    return (await response.json()) as T;
+  }
+
+  private async getJson<T>(path: string, params: unknown): Promise<T> {
+    const url = `${this.baseUrl}${path}?${new URLSearchParams(params as Record<string, string>)}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
     });
 
     if (!response.ok) {

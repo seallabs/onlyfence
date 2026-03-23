@@ -1,24 +1,20 @@
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
-import { policyDecisionColor, theme } from '../theme.js';
-import { useTui } from '../context.js';
-import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
-import { useAsyncAutoRefresh } from '../hooks/useAsyncAutoRefresh.js';
-import { Table } from '../components/Table.js';
-import type { Column } from '../components/Table.js';
-import { Panel } from '../components/Panel.js';
+import { formatAmountWithDecimals, resolveSymbol } from '../../chain/sui/tokens.js';
+import type { ActivityRow } from '../../db/activity-log.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
-import {
-  formatAmountWithDecimals,
-  formatSmallestUnit,
-  resolveSymbol,
-} from '../../chain/sui/tokens.js';
-import type { TradeRow } from '../../db/trade-log.js';
+import { Panel } from '../components/Panel.js';
+import type { Column } from '../components/Table.js';
+import { Table } from '../components/Table.js';
+import { useTui } from '../context.js';
+import { useAsyncAutoRefresh } from '../hooks/useAsyncAutoRefresh.js';
+import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
+import { theme } from '../theme.js';
 
 interface DashboardData {
   readonly walletAddress: string | null;
   readonly volume24h: number;
-  readonly trades: readonly TradeRow[];
+  readonly activities: readonly ActivityRow[];
 }
 
 interface BalanceDisplayRow {
@@ -35,58 +31,51 @@ function shortTime(iso: string): string {
 const VOLUME_WARNING_THRESHOLD = 80;
 const VOLUME_CRITICAL_THRESHOLD = 95;
 
-const TRADE_COLUMNS: readonly Column<TradeRow>[] = [
+const ACTIVITY_COLUMNS: readonly Column<ActivityRow>[] = [
   { header: 'Time', width: 16, accessor: (r) => shortTime(r.created_at) },
-  { header: 'Chain', width: 6, accessor: (r) => r.chain_id },
-  { header: 'From', width: 8, accessor: (r) => resolveSymbol(r.from_token) },
-  { header: 'To', width: 8, accessor: (r) => resolveSymbol(r.to_token) },
-  {
-    header: 'Amount In',
-    width: 16,
-    accessor: (r) => formatSmallestUnit(r.amount_in, r.from_token),
-    align: 'right' as const,
-  },
-  {
-    header: 'Amount Out',
-    width: 16,
-    accessor: (r) => (r.amount_out !== null ? formatSmallestUnit(r.amount_out, r.to_token) : '-'),
-    align: 'right' as const,
-  },
+  { header: 'Action', width: 20, accessor: (r) => r.action },
+  { header: 'Protocol', width: 12, accessor: (r) => r.protocol ?? '-' },
   {
     header: 'USD',
-    width: 12,
+    width: 14,
     accessor: (r) => (r.value_usd !== null ? `$${r.value_usd.toFixed(2)}` : '-'),
     align: 'right' as const,
-  },
-  {
-    header: 'Status',
-    width: 12,
-    accessor: (r) => r.policy_decision,
-    color: (r) => policyDecisionColor(r.policy_decision),
   },
 ];
 
 const BALANCE_COLUMNS: readonly Column<BalanceDisplayRow>[] = [
   { header: 'Token', width: 10, accessor: (r) => r.symbol },
-  { header: 'Balance', width: 24, accessor: (r) => r.balance, align: 'right' as const },
+  {
+    header: 'Balance',
+    width: 24,
+    accessor: (r) => r.balance,
+    align: 'right' as const,
+  },
 ];
 
 const BAR_WIDTH = 40;
 
 export function Dashboard(): ReactElement {
-  const { db, config, activeChain, activeChainId, policyRegistry, tradeLog, chainAdapterFactory } =
-    useTui();
+  const {
+    db,
+    config,
+    activeChain,
+    activeChainId,
+    policyRegistry,
+    activityLog,
+    chainAdapterFactory,
+  } = useTui();
 
   const chainConfig = config.chain[activeChain];
 
   const { data } = useAutoRefresh<DashboardData>(() => {
     const wallet = getPrimaryWallet(db, activeChainId);
-    const volume = tradeLog.getRolling24hVolume(activeChainId);
-    const trades = tradeLog.getRecentTrades(activeChainId, 5);
+    const volume = activityLog.getRolling24hVolume(activeChainId);
+    const activities = activityLog.getRecentActivities(activeChainId, 5);
     return {
       walletAddress: wallet?.address ?? null,
       volume24h: volume,
-      trades,
+      activities,
     };
   }, 5000);
 
@@ -214,9 +203,9 @@ export function Dashboard(): ReactElement {
         </Panel>
       </Box>
 
-      {/* Row 5: Recent Trades */}
-      <Panel title="Recent Trades" marginTop={1}>
-        <Table columns={TRADE_COLUMNS} data={data.trades} />
+      {/* Row 5: Recent Activity */}
+      <Panel title="Recent Activity" marginTop={1}>
+        <Table columns={ACTIVITY_COLUMNS} data={data.activities} />
       </Panel>
     </Box>
   );

@@ -55,7 +55,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           config,
           dataProviders,
           policyRegistry,
-          tradeLog,
+          activityLog,
           chainAdapterFactory,
           actionBuilderRegistry,
           mevProtectors,
@@ -121,7 +121,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           // Build SwapIntent
           const intent: SwapIntent = {
             chainId,
-            action: 'swap',
+            action: 'trade:swap',
             walletAddress: wallet.address,
             params: {
               coinTypeIn,
@@ -135,7 +135,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           // Build policy context
           const policyCtx: PolicyContext = {
             config: chainConfig,
-            tradeLog,
+            activityLog,
             ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
           };
 
@@ -145,7 +145,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           // Get builder from registry
           const builder = actionBuilderRegistry.getDefault(
             chain,
-            'swap',
+            'trade:swap',
             intent,
           ) as ActionBuilder<SwapIntent>;
 
@@ -163,6 +163,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             logger: log,
             ...(signer !== undefined ? { signer } : {}),
             watchOnly,
+            dataProvider,
           });
 
           // Map PipelineResult to CliOutput + exit code
@@ -173,7 +174,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           log.error({ err: toErrorMessage(err) }, 'Swap failed');
           const errorOutput: CliOutput = {
             status: 'error',
-            action: 'swap',
+            action: 'trade:swap',
             chainId,
             address: '',
             error: toErrorMessage(err),

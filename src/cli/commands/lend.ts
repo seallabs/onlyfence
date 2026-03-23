@@ -33,7 +33,7 @@ import { withComponents } from '../with-components.js';
 const FALLBACK_MEV_PROTECTOR = new NoOpMevProtector();
 
 /** Lending actions that take token + amount args. */
-type LendingAction = 'supply' | 'borrow' | 'withdraw' | 'repay';
+type LendingAction = 'lending:supply' | 'lending:borrow' | 'lending:withdraw' | 'lending:repay';
 
 /** Intent type for a token-based lending action. */
 type TokenLendingIntent = SupplyIntent | BorrowIntent | WithdrawIntent | RepayIntent;
@@ -55,10 +55,22 @@ export function registerLendCommand(program: Command, getComponents: () => AppCo
   const lend = program.command('lend').description('AlphaLend lending operations');
 
   // --- Transactional subcommands ---
-  registerTokenAction(lend, 'supply', 'Supply tokens as collateral', getComponents);
-  registerTokenAction(lend, 'borrow', 'Borrow tokens against collateral', getComponents);
+  registerTokenAction(
+    lend,
+    'supply',
+    'lending:supply',
+    'Supply tokens as collateral',
+    getComponents,
+  );
+  registerTokenAction(
+    lend,
+    'borrow',
+    'lending:borrow',
+    'Borrow tokens against collateral',
+    getComponents,
+  );
   registerWithdrawAction(lend, getComponents);
-  registerTokenAction(lend, 'repay', 'Repay borrowed tokens', getComponents);
+  registerTokenAction(lend, 'repay', 'lending:repay', 'Repay borrowed tokens', getComponents);
   registerClaimAction(lend, getComponents);
 
   // --- Query subcommands ---
@@ -73,12 +85,13 @@ export function registerLendCommand(program: Command, getComponents: () => AppCo
  */
 function registerTokenAction(
   parent: Command,
+  commandName: string,
   action: LendingAction,
   description: string,
   getComponents: () => AppComponents,
 ): void {
   parent
-    .command(`${action} <token> <amount>`)
+    .command(`${commandName} <token> <amount>`)
     .description(description)
     .option('-m, --market <marketId>', 'Explicit market ID (auto-resolved if omitted)')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
@@ -105,7 +118,13 @@ function registerWithdrawAction(parent: Command, getComponents: () => AppCompone
         amountStr: string,
         options: { market?: string; chain: Chain; all?: boolean },
       ) => {
-        await executeTokenLendingAction('withdraw', token, amountStr, options, getComponents);
+        await executeTokenLendingAction(
+          'lending:withdraw',
+          token,
+          amountStr,
+          options,
+          getComponents,
+        );
       },
     );
 }
@@ -128,7 +147,7 @@ async function executeTokenLendingAction(
     config,
     dataProviders,
     policyRegistry,
-    tradeLog,
+    activityLog,
     chainAdapterFactory,
     actionBuilderRegistry,
     mevProtectors,
@@ -191,7 +210,7 @@ async function executeTokenLendingAction(
     // Build policy context
     const policyCtx: PolicyContext = {
       config: chainConfig,
-      tradeLog,
+      activityLog,
       ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
     };
 
@@ -219,6 +238,7 @@ async function executeTokenLendingAction(
       logger: log,
       ...(signer !== undefined ? { signer } : {}),
       watchOnly,
+      dataProvider,
     });
 
     // Map PipelineResult to CliOutput + exit code
@@ -259,26 +279,26 @@ function buildTokenIntent(
   } as const;
 
   switch (action) {
-    case 'supply': {
+    case 'lending:supply': {
       const intent: SupplyIntent = {
         ...base,
-        action: 'supply',
+        action: 'lending:supply',
         params: { coinType, amount, protocol: 'alphalend', marketId },
       };
       return intent;
     }
-    case 'borrow': {
+    case 'lending:borrow': {
       const intent: BorrowIntent = {
         ...base,
-        action: 'borrow',
+        action: 'lending:borrow',
         params: { coinType, amount, protocol: 'alphalend', marketId },
       };
       return intent;
     }
-    case 'withdraw': {
+    case 'lending:withdraw': {
       const intent: WithdrawIntent = {
         ...base,
-        action: 'withdraw',
+        action: 'lending:withdraw',
         params: {
           coinType,
           amount,
@@ -289,10 +309,10 @@ function buildTokenIntent(
       };
       return intent;
     }
-    case 'repay': {
+    case 'lending:repay': {
       const intent: RepayIntent = {
         ...base,
-        action: 'repay',
+        action: 'lending:repay',
         params: { coinType, amount, protocol: 'alphalend', marketId },
       };
       return intent;
@@ -315,8 +335,9 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
       const {
         db,
         config,
+        dataProviders,
         policyRegistry,
-        tradeLog,
+        activityLog,
         chainAdapterFactory,
         actionBuilderRegistry,
         mevProtectors,
@@ -341,21 +362,21 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
 
         const intent: ClaimRewardsIntent = {
           chainId,
-          action: 'claim_rewards',
+          action: 'lending:claim_rewards',
           walletAddress: wallet.address,
           params: { protocol: 'alphalend' },
         };
 
         const policyCtx: PolicyContext = {
           config: chainConfig,
-          tradeLog,
+          activityLog,
         };
 
         const signer = watchOnly ? undefined : buildSuiSigner(loadSessionKeyBytes(chainId));
 
         const builder = actionBuilderRegistry.getDefault(
           chain,
-          'claim_rewards',
+          'lending:claim_rewards',
           intent,
         ) as ActionBuilder<ClaimRewardsIntent>;
 
@@ -372,16 +393,17 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
           logger: log,
           ...(signer !== undefined ? { signer } : {}),
           watchOnly,
+          dataProvider: dataProviders.get(chain),
         });
 
-        const output = mapLendingResultToOutput(result, intent, 'claim_rewards', undefined);
+        const output = mapLendingResultToOutput(result, intent, 'lending:claim_rewards', undefined);
         printJsonOutput(output.cliOutput);
         process.exitCode = output.exitCode;
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Claim rewards failed');
         const errorOutput: CliOutput = {
           status: 'error',
-          action: 'claim_rewards',
+          action: 'lending:claim_rewards',
           chainId,
           address: '',
           error: toErrorMessage(err),
@@ -496,7 +518,7 @@ type LendingPayload = LendingOutput | LendingRewardsOutput;
 function mapLendingResultToOutput(
   result: PipelineResult,
   intent: TokenLendingIntent | ClaimRewardsIntent,
-  action: LendingAction | 'claim_rewards',
+  action: LendingAction | 'lending:claim_rewards',
   tradeValueUsd: number | undefined,
 ): MappedOutput<LendingPayload> {
   const base: CliOutput<LendingPayload> = {
@@ -515,7 +537,7 @@ function mapLendingResultToOutput(
   const hasPayload = result.status === 'success' || result.status === 'simulated';
   let payload: LendingPayload | undefined;
 
-  if (hasPayload && intent.action !== 'claim_rewards') {
+  if (hasPayload && intent.action !== 'lending:claim_rewards') {
     payload = {
       token: intent.params.coinType,
       amount: parseFloat(intent.params.amount),

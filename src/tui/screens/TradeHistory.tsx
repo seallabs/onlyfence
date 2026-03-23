@@ -1,34 +1,58 @@
 import { Box, Text, useInput } from 'ink';
-import { useState, useEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
-import { policyDecisionColor, theme } from '../theme.js';
+import { useEffect, useRef, useState } from 'react';
+import {
+  formatAmountWithDecimals,
+  formatSmallestUnit,
+  resolveSymbol,
+} from '../../chain/sui/tokens.js';
+import type { ActivityRow } from '../../db/activity-log.js';
+import { Panel } from '../components/Panel.js';
+import type { Column } from '../components/Table.js';
+import { Table } from '../components/Table.js';
 import { useTui } from '../context.js';
 import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
-import { Table } from '../components/Table.js';
-import type { Column } from '../components/Table.js';
-import { Panel } from '../components/Panel.js';
-import { formatSmallestUnit, resolveSymbol } from '../../chain/sui/tokens.js';
-import type { TradeRow } from '../../db/trade-log.js';
+import { policyDecisionColor, theme } from '../theme.js';
 
 const PAGE_SIZE = 15;
 
-const COLUMNS: readonly Column<TradeRow>[] = [
+/** Format raw amount using joined decimals, falling back to coinType-based lookup */
+function formatAmount(raw: string, coinType: string, decimals: number | null): string {
+  if (decimals !== null) return formatAmountWithDecimals(raw, decimals);
+  return formatSmallestUnit(raw, coinType);
+}
+
+const COLUMNS: readonly Column<ActivityRow>[] = [
   { header: 'ID', width: 6, accessor: (r) => String(r.id) },
   { header: 'Time', width: 20, accessor: (r) => r.created_at },
   { header: 'Chain', width: 6, accessor: (r) => r.chain_id },
   { header: 'Action', width: 8, accessor: (r) => r.action },
-  { header: 'From', width: 8, accessor: (r) => resolveSymbol(r.from_token) },
-  { header: 'To', width: 8, accessor: (r) => resolveSymbol(r.to_token) },
+  {
+    header: 'From',
+    width: 8,
+    accessor: (r) => r.token_a_symbol ?? r.token_a_type ?? '-',
+  },
+  {
+    header: 'To',
+    width: 8,
+    accessor: (r) => r.token_b_symbol ?? r.token_b_type ?? '-',
+  },
   {
     header: 'Amount In',
     width: 16,
-    accessor: (r) => formatSmallestUnit(r.amount_in, r.from_token),
+    accessor: (r) =>
+      r.token_a_amount !== null && r.token_a_type !== null
+        ? formatAmount(r.token_a_amount, r.token_a_type, r.token_a_decimals)
+        : '-',
     align: 'right' as const,
   },
   {
     header: 'Amount Out',
     width: 16,
-    accessor: (r) => (r.amount_out !== null ? formatSmallestUnit(r.amount_out, r.to_token) : '-'),
+    accessor: (r) =>
+      r.token_b_amount !== null && r.token_b_type !== null
+        ? formatAmount(r.token_b_amount, r.token_b_type, r.token_b_decimals)
+        : '-',
     align: 'right' as const,
   },
   {
@@ -51,15 +75,19 @@ const COLUMNS: readonly Column<TradeRow>[] = [
 ];
 
 export function TradeHistory(): ReactElement {
-  const { activeChain, activeChainId, mode, tradeLog } = useTui();
+  const { activeChain, activeChainId, mode, activityLog } = useTui();
 
   const [page, setPage] = useState(0);
   const [selectedRow, setSelectedRow] = useState(0);
   const pageRef = useRef(0);
 
   const { data, refresh } = useAutoRefresh(() => {
-    const trades = tradeLog.getRecentTrades(activeChainId, PAGE_SIZE, pageRef.current * PAGE_SIZE);
-    const totalCount = tradeLog.getTradeCount(activeChainId);
+    const trades = activityLog.getRecentActivities(
+      activeChainId,
+      PAGE_SIZE,
+      pageRef.current * PAGE_SIZE,
+    );
+    const totalCount = activityLog.getActivityCount(activeChainId);
     return { trades, totalCount };
   }, 5000);
 
@@ -121,16 +149,16 @@ export function TradeHistory(): ReactElement {
               <Text color={theme.eyes}>{`Action:    ${selected.action}`}</Text>
               <Text
                 color={theme.eyes}
-              >{`Pair:      ${selected.from_token} -> ${selected.to_token}`}</Text>
+              >{`Pair:      ${selected.token_a_symbol ?? selected.token_a_type ?? '-'} -> ${selected.token_b_symbol ?? selected.token_b_type ?? '-'}`}</Text>
               <Text color={theme.eyes}>{`Protocol:  ${selected.protocol ?? '-'}`}</Text>
             </Box>
             <Box flexDirection="column" width="50%">
               <Text
                 color={theme.eyes}
-              >{`Amount In:  ${formatSmallestUnit(selected.amount_in, selected.from_token)} ${resolveSymbol(selected.from_token)}`}</Text>
+              >{`Amount In:  ${selected.token_a_amount !== null && selected.token_a_type !== null ? `${formatAmount(selected.token_a_amount, selected.token_a_type, selected.token_a_decimals)} ${selected.token_a_symbol ?? resolveSymbol(selected.token_a_type)}` : '-'}`}</Text>
               <Text
                 color={theme.eyes}
-              >{`Amount Out: ${selected.amount_out !== null ? `${formatSmallestUnit(selected.amount_out, selected.to_token)} ${resolveSymbol(selected.to_token)}` : '-'}`}</Text>
+              >{`Amount Out: ${selected.token_b_amount !== null && selected.token_b_type !== null ? `${formatAmount(selected.token_b_amount, selected.token_b_type, selected.token_b_decimals)} ${selected.token_b_symbol ?? resolveSymbol(selected.token_b_type)}` : '-'}`}</Text>
               <Text
                 color={theme.eyes}
               >{`USD Value:  ${selected.value_usd !== null ? `$${selected.value_usd.toFixed(2)}` : '-'}`}</Text>

@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { compareVersions, DefaultUpdateChecker } from '../update/checker.js';
-import { FileUpdateCacheService } from '../update/cache.js';
-import type { UpdateSource } from '../update/source.js';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { UpdateCache } from '../types/update.js';
+import { FileUpdateCacheService } from '../update/cache.js';
+import { compareVersions, DefaultUpdateChecker } from '../update/checker.js';
+import type { UpdateSource } from '../update/source.js';
 
 // --- compareVersions ---
 
@@ -79,7 +79,11 @@ describe('FileUpdateCacheService', () => {
   it('should return null for empty strings in cache', () => {
     writeFileSync(
       cachePath,
-      JSON.stringify({ checkedAt: '', latestVersion: '0.1.0', currentVersion: '0.1.0' }),
+      JSON.stringify({
+        checkedAt: '',
+        latestVersion: '0.1.0',
+        currentVersion: '0.1.0',
+      }),
       'utf-8',
     );
     expect(service.read()).toBeNull();

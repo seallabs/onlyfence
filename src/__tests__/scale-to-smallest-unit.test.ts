@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { scaleToSmallestUnit, formatSmallestUnit } from '../chain/sui/tokens.js';
+import { describe, expect, it } from 'vitest';
+import { formatSmallestUnit, scaleToSmallestUnit } from '../chain/sui/tokens.js';
 
 describe('scaleToSmallestUnit', () => {
   it('scales with 9 decimals (e.g. SUI)', () => {

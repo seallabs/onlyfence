@@ -1,13 +1,13 @@
+import { normalizeStructTag } from '@mysten/sui/utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChainAdapter } from '../chain/adapter.js';
 import { ChainAdapterFactory } from '../chain/factory.js';
 import {
-  SUI_TOKEN_MAP,
   coinTypeToSymbol,
   isKnownToken,
   resolveTokenAddress,
+  SUI_TOKEN_MAP,
 } from '../chain/sui/tokens.js';
-import { normalizeStructTag } from '@mysten/sui/utils';
 import type { BalanceResult, Signer, SimulationResult, TxResult } from '../types/result.js';
 
 // Mock SuiJsonRpcClient so SuiAdapter can be constructed
@@ -111,7 +111,10 @@ describe('SuiAdapter', () => {
   beforeEach(async () => {
     const { SuiAdapter } = await import('../chain/sui/adapter.js');
     const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
-    const mockClient = new SuiJsonRpcClient({ url: 'https://rpc.example.com', network: 'mainnet' });
+    const mockClient = new SuiJsonRpcClient({
+      url: 'https://rpc.example.com',
+      network: 'mainnet',
+    });
     adapter = new SuiAdapter(mockClient);
   });
 

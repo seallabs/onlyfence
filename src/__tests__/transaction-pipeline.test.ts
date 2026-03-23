@@ -1,18 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import type { Logger } from 'pino';
-import type { ActionBuilder, FinishContext } from '../core/action-builder.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChainAdapter } from '../chain/adapter.js';
-import type { PolicyContext } from '../policy/context.js';
+import type { ActionBuilder, FinishContext } from '../core/action-builder.js';
 import type { SwapIntent } from '../core/action-types.js';
-import type { SimulationResult, TxResult, Signer } from '../types/result.js';
 import { NoOpMevProtector } from '../core/mev-protector.js';
-import { PolicyCheckRegistry } from '../policy/registry.js';
-import { TradeLog } from '../db/trade-log.js';
-import { runMigrations } from '../db/migrations.js';
-import { executePipeline } from '../core/transaction-pipeline.js';
 import type { PipelineInput } from '../core/transaction-pipeline.js';
-import { createMockLogger, createIntent } from './helpers.js';
+import { executePipeline } from '../core/transaction-pipeline.js';
+import { ActivityLog } from '../db/activity-log.js';
+import { runMigrations } from '../db/migrations.js';
+import type { PolicyContext } from '../policy/context.js';
+import { PolicyCheckRegistry } from '../policy/registry.js';
+import type { Signer, SimulationResult, TxResult } from '../types/result.js';
+import { createIntent, createMockLogger } from './helpers.js';
 
 const MOCK_METADATA = {
   action: 'swap',
@@ -72,16 +72,14 @@ describe('executePipeline', () => {
   beforeEach(() => {
     const db = new Database(':memory:');
     runMigrations(db);
-    const tradeLog = new TradeLog(db);
+    const activityLog = new ActivityLog(db);
 
     logger = createMockLogger();
     policyRegistry = new PolicyCheckRegistry();
     policyContext = {
       config: { chain: 'sui', tokenAllowlist: [], dailyLimitUsd: 10000 },
-      db,
-      oracle: { getPrice: vi.fn() } as unknown as PolicyContext['oracle'],
-      tradeLog,
-    };
+      activityLog,
+    } as unknown as PolicyContext;
   });
 
   it('returns success and calls builder.finish with correct context', async () => {
@@ -303,7 +301,11 @@ describe('executePipeline', () => {
       chain: 'sui',
       getBalance: vi.fn(),
       buildTransactionBytes: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
-      simulate: vi.fn().mockResolvedValue({ success: true, gasEstimate: 5000, rawResponse: {} }),
+      simulate: vi.fn().mockResolvedValue({
+        success: true,
+        gasEstimate: 5000,
+        rawResponse: {},
+      }),
       signAndSubmit: vi.fn().mockRejectedValue(new Error('RPC timeout')),
     });
     const signer = createMockSigner();
@@ -336,7 +338,11 @@ describe('executePipeline', () => {
       chain: 'sui',
       getBalance: vi.fn(),
       buildTransactionBytes: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
-      simulate: vi.fn().mockResolvedValue({ success: true, gasEstimate: 5000, rawResponse: {} }),
+      simulate: vi.fn().mockResolvedValue({
+        success: true,
+        gasEstimate: 5000,
+        rawResponse: {},
+      }),
       signAndSubmit: vi.fn().mockResolvedValue({
         txDigest: 'TX_FAIL_123',
         status: 'failure',
