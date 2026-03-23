@@ -18,11 +18,10 @@ import { ActionBuilderRegistry } from '../core/action-builder.js';
 import { DataProviderRegistry, DataProviderWithCache } from '../core/data-provider.js';
 import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
 import { LPProService } from '../data/lp-pro-service.js';
+import { ActivityLog } from '../db/activity-log.js';
 import { CliEventLog } from '../db/cli-events.js';
 import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
 import { DB_PATH, openDatabase } from '../db/connection.js';
-import { LendingLog } from '../db/lending-log.js';
-import { TradeLog } from '../db/trade-log.js';
 import { getLogger } from '../logger/index.js';
 import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
@@ -37,8 +36,7 @@ export interface AppComponents {
   readonly db: Database.Database;
   readonly config: AppConfig;
   readonly dataProviders: DataProviderRegistry;
-  readonly tradeLog: TradeLog;
-  readonly lendingLog: LendingLog;
+  readonly activityLog: ActivityLog;
   readonly alphalendClient: AlphalendClient;
   readonly cliEventLog: CliEventLog;
   readonly policyRegistry: PolicyCheckRegistry;
@@ -77,8 +75,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
 
   const lpPro = new LPProService();
   const dataProviders = buildDataProviderRegistry(db, lpPro);
-  const tradeLog = new TradeLog(db);
-  const lendingLog = new LendingLog(db);
+  const activityLog = new ActivityLog(db);
   const cliEventLog = new CliEventLog(db);
   const policyRegistry = buildPolicyRegistry(config);
   const suiClient = new SuiJsonRpcClient({
@@ -87,12 +84,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   });
   const alphalendClient = createAlphaLendClient(suiClient, 'mainnet');
   const chainAdapterFactory = buildChainAdapterFactory(suiClient);
-  const actionBuilderRegistry = buildActionBuilderRegistry(
-    tradeLog,
-    alphalendClient,
-    suiClient,
-    lendingLog,
-  );
+  const actionBuilderRegistry = buildActionBuilderRegistry(activityLog, alphalendClient, suiClient);
   const mevProtectors = buildMevProtectors();
 
   let closed = false;
@@ -113,8 +105,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     db,
     config,
     dataProviders,
-    tradeLog,
-    lendingLog,
+    activityLog,
     alphalendClient,
     cliEventLog,
     policyRegistry,
@@ -191,51 +182,50 @@ export function buildChainAdapterFactory(suiClient: SuiJsonRpcClient): ChainAdap
  * Uses factory registration so builders are created lazily per-intent,
  * allowing intent-specific configuration (e.g., slippage).
  *
- * @param tradeLog - Trade log instance for builders that log trades
- * @returns ActionBuilderRegistry with SuiSwapBuilder factory registered
+ * @param activityLog - Activity log instance for builders that log activities
+ * @returns ActionBuilderRegistry with all builder factories registered
  */
 export function buildActionBuilderRegistry(
-  tradeLog: TradeLog,
+  activityLog: ActivityLog,
   alphalendClient: AlphalendClient,
   suiClient: SuiJsonRpcClient,
-  lendingLog: LendingLog,
 ): ActionBuilderRegistry {
   const registry = new ActionBuilderRegistry();
 
-  registry.registerFactory('sui', 'swap', '7k', (intent) => {
-    const slippageBps = intent.action === 'swap' ? intent.params.slippageBps : 100;
-    return new SuiSwapBuilder(tradeLog, slippageBps);
+  registry.registerFactory('sui', 'trade:swap', '7k', (intent) => {
+    const slippageBps = intent.action === 'trade:swap' ? intent.params.slippageBps : 100;
+    return new SuiSwapBuilder(activityLog, slippageBps);
   });
 
   registry.registerFactory(
     'sui',
-    'supply',
+    'lending:supply',
     'alphalend',
-    (_intent) => new AlphaLendSupplyBuilder(alphalendClient, lendingLog),
+    (_intent) => new AlphaLendSupplyBuilder(alphalendClient, suiClient, activityLog),
   );
   registry.registerFactory(
     'sui',
-    'borrow',
+    'lending:borrow',
     'alphalend',
-    (_intent) => new AlphaLendBorrowBuilder(alphalendClient, suiClient, lendingLog),
+    (_intent) => new AlphaLendBorrowBuilder(alphalendClient, suiClient, activityLog),
   );
   registry.registerFactory(
     'sui',
-    'withdraw',
+    'lending:withdraw',
     'alphalend',
-    (_intent) => new AlphaLendWithdrawBuilder(alphalendClient, suiClient, lendingLog),
+    (_intent) => new AlphaLendWithdrawBuilder(alphalendClient, suiClient, activityLog),
   );
   registry.registerFactory(
     'sui',
-    'repay',
+    'lending:repay',
     'alphalend',
-    (_intent) => new AlphaLendRepayBuilder(alphalendClient, suiClient, lendingLog),
+    (_intent) => new AlphaLendRepayBuilder(alphalendClient, suiClient, activityLog),
   );
   registry.registerFactory(
     'sui',
-    'claim_rewards',
+    'lending:claim_rewards',
     'alphalend',
-    (_intent) => new AlphaLendClaimRewardsBuilder(alphalendClient, suiClient, lendingLog),
+    (_intent) => new AlphaLendClaimRewardsBuilder(alphalendClient, suiClient, activityLog),
   );
 
   return registry;

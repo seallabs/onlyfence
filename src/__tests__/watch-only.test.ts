@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { openMemoryDatabase } from '../db/connection.js';
-import { registerWalletAddress, getPrimaryWallet, listWallets } from '../wallet/manager.js';
+import { getPrimaryWallet, listWallets, registerWalletAddress } from '../wallet/manager.js';
 
 describe('watch-only wallet', () => {
   it('registers a watch-only wallet with isWatchOnly=true', () => {

@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import type { CliEventLog } from '../db/cli-events.js';
-import { hasLogger, getLogger } from '../logger/index.js';
+import { getLogger, hasLogger } from '../logger/index.js';
 
 /**
  * Build the full command name for a Commander.js command,

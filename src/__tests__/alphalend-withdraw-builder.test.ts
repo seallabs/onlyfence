@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { WithdrawIntent } from '../core/action-types.js';
-import type { FinishContext } from '../core/action-builder.js';
 import type { AlphalendClient } from '@alphafi/alphalend-sdk';
 import type { SuiClient } from '@mysten/sui/client';
-import type { LendingLog } from '../db/lending-log.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FinishContext } from '../core/action-builder.js';
+import type { WithdrawIntent } from '../core/action-types.js';
+import type { ActivityLog } from '../db/activity-log.js';
 
 // Mock AlphaLend SDK
 const mockWithdraw = vi.fn();
@@ -32,7 +32,7 @@ beforeEach(async () => {
 
 function makeWithdrawIntent(overrides?: Partial<WithdrawIntent['params']>): WithdrawIntent {
   return {
-    action: 'withdraw',
+    action: 'lending:withdraw',
     chainId: 'sui:mainnet',
     walletAddress: '0x' + 'a'.repeat(64),
     params: {
@@ -48,7 +48,7 @@ function makeWithdrawIntent(overrides?: Partial<WithdrawIntent['params']>): With
 describe('AlphaLendWithdrawBuilder', () => {
   let mockAlphalendClient: AlphalendClient;
   let mockSuiClient: SuiClient;
-  let mockLendingLog: LendingLog;
+  let mockActivityLog: ActivityLog;
 
   beforeEach(() => {
     mockAlphalendClient = {
@@ -57,16 +57,16 @@ describe('AlphaLendWithdrawBuilder', () => {
       getUserPortfolioFromPositionCapId: mockGetUserPortfolioFromPositionCapId,
     } as unknown as AlphalendClient;
     mockSuiClient = {} as unknown as SuiClient;
-    mockLendingLog = {
+    mockActivityLog = {
       logActivity: vi.fn().mockReturnValue(1),
-    } as unknown as LendingLog;
+    } as unknown as ActivityLog;
   });
 
   describe('validate', () => {
     let builder: InstanceType<typeof AlphaLendWithdrawBuilder>;
 
     beforeEach(() => {
-      builder = new AlphaLendWithdrawBuilder(mockAlphalendClient, mockSuiClient, mockLendingLog);
+      builder = new AlphaLendWithdrawBuilder(mockAlphalendClient, mockSuiClient, mockActivityLog);
     });
 
     it('allows zero amount when withdrawAll is true', () => {
@@ -99,7 +99,7 @@ describe('AlphaLendWithdrawBuilder', () => {
       const builder = new AlphaLendWithdrawBuilder(
         mockAlphalendClient,
         mockSuiClient,
-        mockLendingLog,
+        mockActivityLog,
       );
       const intent = makeWithdrawIntent({ amount: '0', withdrawAll: true });
       const result = await builder.build(intent);
@@ -128,7 +128,7 @@ describe('AlphaLendWithdrawBuilder', () => {
       const builder = new AlphaLendWithdrawBuilder(
         mockAlphalendClient,
         mockSuiClient,
-        mockLendingLog,
+        mockActivityLog,
       );
       const intent = makeWithdrawIntent();
       await builder.build(intent);
@@ -146,7 +146,7 @@ describe('AlphaLendWithdrawBuilder', () => {
       const builder = new AlphaLendWithdrawBuilder(
         mockAlphalendClient,
         mockSuiClient,
-        mockLendingLog,
+        mockActivityLog,
       );
       const intent = makeWithdrawIntent();
       const context: FinishContext = {
@@ -158,12 +158,12 @@ describe('AlphaLendWithdrawBuilder', () => {
 
       builder.finish!(context);
 
-      expect(mockLendingLog.logActivity).toHaveBeenCalledWith(
+      expect(mockActivityLog.logActivity).toHaveBeenCalledWith(
         expect.objectContaining({
-          action: 'withdraw',
+          action: 'lending:withdraw',
           protocol: 'alphalend',
-          market_id: '1',
           policy_decision: 'approved',
+          metadata: { market_id: '1' },
         }),
       );
     });

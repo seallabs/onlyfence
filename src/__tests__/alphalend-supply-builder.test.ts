@@ -1,17 +1,19 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { SupplyIntent } from '../core/action-types.js';
-import type { FinishContext } from '../core/action-builder.js';
 import type { AlphalendClient } from '@alphafi/alphalend-sdk';
 import type { SuiClient } from '@mysten/sui/client';
-import type { LendingLog } from '../db/lending-log.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FinishContext } from '../core/action-builder.js';
+import type { SupplyIntent } from '../core/action-types.js';
+import type { ActivityLog } from '../db/activity-log.js';
 
 // Mock AlphaLend SDK
 const mockSupply = vi.fn();
+const mockGetUserPositionCapId = vi.fn();
 
 vi.mock('@alphafi/alphalend-sdk', () => ({
   AlphalendClient: class MockAlphalendClient {
     supply = mockSupply;
   },
+  getUserPositionCapId: (...args: unknown[]) => mockGetUserPositionCapId(...args),
 }));
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
@@ -25,7 +27,7 @@ beforeEach(async () => {
 
 function makeSupplyIntent(overrides?: Partial<SupplyIntent['params']>): SupplyIntent {
   return {
-    action: 'supply',
+    action: 'lending:supply',
     chainId: 'sui:mainnet',
     walletAddress: '0x' + 'a'.repeat(64),
     params: {
@@ -40,17 +42,19 @@ function makeSupplyIntent(overrides?: Partial<SupplyIntent['params']>): SupplyIn
 
 describe('AlphaLendSupplyBuilder', () => {
   let mockAlphalendClient: AlphalendClient;
-  let mockLendingLog: LendingLog;
+  let mockSuiClient: SuiClient;
+  let mockActivityLog: ActivityLog;
 
   beforeEach(() => {
     mockAlphalendClient = { supply: mockSupply } as unknown as AlphalendClient;
-    mockLendingLog = {
+    mockSuiClient = {} as unknown as SuiClient;
+    mockActivityLog = {
       logActivity: vi.fn().mockReturnValue(1),
-    } as unknown as LendingLog;
+    } as unknown as ActivityLog;
   });
 
   it('has correct builderId and chain', () => {
-    const builder = new AlphaLendSupplyBuilder(mockAlphalendClient, mockLendingLog);
+    const builder = new AlphaLendSupplyBuilder(mockAlphalendClient, mockSuiClient, mockActivityLog);
     expect(builder.builderId).toBe('alphalend-supply');
     expect(builder.chain).toBe('sui');
   });
@@ -59,7 +63,7 @@ describe('AlphaLendSupplyBuilder', () => {
     let builder: InstanceType<typeof AlphaLendSupplyBuilder>;
 
     beforeEach(() => {
-      builder = new AlphaLendSupplyBuilder(mockAlphalendClient, mockLendingLog);
+      builder = new AlphaLendSupplyBuilder(mockAlphalendClient, mockSuiClient, mockActivityLog);
     });
 
     it('does not throw for valid intent', () => {
@@ -80,9 +84,14 @@ describe('AlphaLendSupplyBuilder', () => {
   describe('build', () => {
     it('calls alphalendClient.supply with correct params and returns BuiltTransaction', async () => {
       const fakeTx = { kind: 'transaction', setSenderIfNotSet: vi.fn() };
+      mockGetUserPositionCapId.mockResolvedValue('0xcap123');
       mockSupply.mockResolvedValue(fakeTx);
 
-      const builder = new AlphaLendSupplyBuilder(mockAlphalendClient, mockLendingLog);
+      const builder = new AlphaLendSupplyBuilder(
+        mockAlphalendClient,
+        mockSuiClient,
+        mockActivityLog,
+      );
       const intent = makeSupplyIntent();
       const result = await builder.build(intent);
 
@@ -106,8 +115,12 @@ describe('AlphaLendSupplyBuilder', () => {
   });
 
   describe('finish', () => {
-    it('logs activity to LendingLog on approval', () => {
-      const builder = new AlphaLendSupplyBuilder(mockAlphalendClient, mockLendingLog);
+    it('logs activity to ActivityLog on approval', () => {
+      const builder = new AlphaLendSupplyBuilder(
+        mockAlphalendClient,
+        mockSuiClient,
+        mockActivityLog,
+      );
       const intent = makeSupplyIntent();
       const context: FinishContext = {
         intent,
@@ -118,24 +131,28 @@ describe('AlphaLendSupplyBuilder', () => {
 
       builder.finish!(context);
 
-      expect(mockLendingLog.logActivity).toHaveBeenCalledWith(
+      expect(mockActivityLog.logActivity).toHaveBeenCalledWith(
         expect.objectContaining({
           chain_id: 'sui:mainnet',
           wallet_address: intent.walletAddress,
-          action: 'supply',
+          action: 'lending:supply',
           protocol: 'alphalend',
-          market_id: '1',
-          coin_type: '0x2::sui::SUI',
-          amount: '1000000000',
+          token_a_type: undefined,
+          token_a_amount: undefined,
           policy_decision: 'approved',
           tx_digest: '0xdigest',
           gas_cost: 0.002,
+          metadata: { market_id: '1' },
         }),
       );
     });
 
     it('logs on rejection with rejection details', () => {
-      const builder = new AlphaLendSupplyBuilder(mockAlphalendClient, mockLendingLog);
+      const builder = new AlphaLendSupplyBuilder(
+        mockAlphalendClient,
+        mockSuiClient,
+        mockActivityLog,
+      );
       const intent = makeSupplyIntent();
       const context: FinishContext = {
         intent,
@@ -148,9 +165,9 @@ describe('AlphaLendSupplyBuilder', () => {
 
       builder.finish!(context);
 
-      expect(mockLendingLog.logActivity).toHaveBeenCalledWith(
+      expect(mockActivityLog.logActivity).toHaveBeenCalledWith(
         expect.objectContaining({
-          action: 'supply',
+          action: 'lending:supply',
           policy_decision: 'rejected',
           rejection_check: 'spending_limit',
           rejection_reason: 'exceeds_single_trade_limit',

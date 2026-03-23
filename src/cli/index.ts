@@ -1,32 +1,32 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { bootstrap } from './bootstrap.js';
-import type { AppComponents } from './bootstrap.js';
-import {
-  registerSetupCommand,
-  registerSwapCommand,
-  registerLendCommand,
-  registerQueryCommand,
-  registerConfigCommand,
-  registerWalletCommand,
-  registerStatsCommand,
-  registerUpdateCommand,
-  registerUnlockCommand,
-  registerLockCommand,
-} from './commands/index.js';
-import { withTiming } from './middleware.js';
-import { toErrorMessage } from '../utils/index.js';
 import { createLogger, getLogger, hasLogger } from '../logger/index.js';
 import { captureException, closeSentry } from '../telemetry/index.js';
 import {
   CURRENT_VERSION,
   createUpdateChecker,
   createUpdateInstaller,
-  registerUpdateCheckHook,
   isBackgroundCheckProcess,
+  registerUpdateCheckHook,
   runBackgroundCheck,
 } from '../update/index.js';
+import { toErrorMessage } from '../utils/index.js';
+import type { AppComponents } from './bootstrap.js';
+import { bootstrap } from './bootstrap.js';
+import {
+  registerConfigCommand,
+  registerLendCommand,
+  registerLockCommand,
+  registerQueryCommand,
+  registerSetupCommand,
+  registerStatsCommand,
+  registerSwapCommand,
+  registerUnlockCommand,
+  registerUpdateCommand,
+  registerWalletCommand,
+} from './commands/index.js';
+import { withTiming } from './middleware.js';
 
 /**
  * Log, report, and print a fatal error. Used by all global error handlers.

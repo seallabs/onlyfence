@@ -3,7 +3,7 @@ import { createContext, useContext } from 'react';
 import type { ChainAdapterFactory } from '../chain/factory.js';
 import type { Chain, ChainId } from '../core/action-types.js';
 import type { DataProvider } from '../core/data-provider.js';
-import type { TradeLog } from '../db/trade-log.js';
+import type { ActivityLog } from '../db/activity-log.js';
 import type { PolicyCheckRegistry } from '../policy/registry.js';
 import type { AppConfig } from '../types/config.js';
 import type { UpdateStatus } from '../types/update.js';
@@ -18,7 +18,7 @@ import type { UpdateStatus } from '../types/update.js';
 export interface TuiContextValue {
   readonly db: Database.Database;
   readonly dataProvider: DataProvider;
-  readonly tradeLog: TradeLog;
+  readonly activityLog: ActivityLog;
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
   readonly config: AppConfig;

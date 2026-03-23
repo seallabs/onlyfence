@@ -1,19 +1,27 @@
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
-import { theme } from '../theme.js';
-import { useTui } from '../context.js';
-import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
-import { Table } from '../components/Table.js';
-import type { Column } from '../components/Table.js';
-import { Panel } from '../components/Panel.js';
 import { listWallets } from '../../wallet/manager.js';
 import type { WalletInfo as WalletInfoType } from '../../wallet/types.js';
+import { Panel } from '../components/Panel.js';
+import type { Column } from '../components/Table.js';
+import { Table } from '../components/Table.js';
+import { useTui } from '../context.js';
+import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
+import { theme } from '../theme.js';
 
 const WALLET_COLUMNS: readonly Column<WalletInfoType>[] = [
   { header: 'Chain', width: 10, accessor: (r) => r.chainId },
   { header: 'Address', width: 50, accessor: (r) => r.address },
-  { header: 'Derivation Path', width: 25, accessor: (r) => r.derivationPath ?? '-' },
-  { header: 'Primary', width: 10, accessor: (r) => (r.isPrimary ? 'Yes' : 'No') },
+  {
+    header: 'Derivation Path',
+    width: 25,
+    accessor: (r) => r.derivationPath ?? '-',
+  },
+  {
+    header: 'Primary',
+    width: 10,
+    accessor: (r) => (r.isPrimary ? 'Yes' : 'No'),
+  },
 ];
 
 export function WalletInfo(): ReactElement {

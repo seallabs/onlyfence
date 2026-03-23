@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { randomBytes, createCipheriv } from 'node:crypto';
+import { createCipheriv, randomBytes } from 'node:crypto';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionData } from '../wallet/types.js';
 
 // Mock the config loader to control ONLYFENCE_DIR

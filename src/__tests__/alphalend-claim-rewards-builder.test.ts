@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ClaimRewardsIntent } from '../core/action-types.js';
-import type { FinishContext } from '../core/action-builder.js';
 import type { AlphalendClient } from '@alphafi/alphalend-sdk';
 import type { SuiClient } from '@mysten/sui/client';
-import type { LendingLog } from '../db/lending-log.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FinishContext } from '../core/action-builder.js';
+import type { ClaimRewardsIntent } from '../core/action-types.js';
+import type { ActivityLog } from '../db/activity-log.js';
 
 // Mock AlphaLend SDK
 const mockClaimRewards = vi.fn();
@@ -27,7 +27,7 @@ beforeEach(async () => {
 
 function makeClaimRewardsIntent(): ClaimRewardsIntent {
   return {
-    action: 'claim_rewards',
+    action: 'lending:claim_rewards',
     chainId: 'sui:mainnet',
     walletAddress: '0x' + 'a'.repeat(64),
     params: {
@@ -39,14 +39,16 @@ function makeClaimRewardsIntent(): ClaimRewardsIntent {
 describe('AlphaLendClaimRewardsBuilder', () => {
   let mockAlphalendClient: AlphalendClient;
   let mockSuiClient: SuiClient;
-  let mockLendingLog: LendingLog;
+  let mockActivityLog: ActivityLog;
 
   beforeEach(() => {
-    mockAlphalendClient = { claimRewards: mockClaimRewards } as unknown as AlphalendClient;
+    mockAlphalendClient = {
+      claimRewards: mockClaimRewards,
+    } as unknown as AlphalendClient;
     mockSuiClient = {} as unknown as SuiClient;
-    mockLendingLog = {
+    mockActivityLog = {
       logActivity: vi.fn().mockReturnValue(1),
-    } as unknown as LendingLog;
+    } as unknown as ActivityLog;
   });
 
   describe('validate', () => {
@@ -54,7 +56,7 @@ describe('AlphaLendClaimRewardsBuilder', () => {
       const builder = new AlphaLendClaimRewardsBuilder(
         mockAlphalendClient,
         mockSuiClient,
-        mockLendingLog,
+        mockActivityLog,
       );
       expect(() => builder.validate(makeClaimRewardsIntent())).not.toThrow();
     });
@@ -70,7 +72,7 @@ describe('AlphaLendClaimRewardsBuilder', () => {
       const builder = new AlphaLendClaimRewardsBuilder(
         mockAlphalendClient,
         mockSuiClient,
-        mockLendingLog,
+        mockActivityLog,
       );
       const intent = makeClaimRewardsIntent();
       const result = await builder.build(intent);
@@ -103,7 +105,7 @@ describe('AlphaLendClaimRewardsBuilder', () => {
       const builder = new AlphaLendClaimRewardsBuilder(
         mockAlphalendClient,
         mockSuiClient,
-        mockLendingLog,
+        mockActivityLog,
       );
       await expect(builder.build(makeClaimRewardsIntent())).rejects.toThrow(/position/i);
     });
@@ -114,7 +116,7 @@ describe('AlphaLendClaimRewardsBuilder', () => {
       const builder = new AlphaLendClaimRewardsBuilder(
         mockAlphalendClient,
         mockSuiClient,
-        mockLendingLog,
+        mockActivityLog,
       );
       const intent = makeClaimRewardsIntent();
       const context: FinishContext = {
@@ -126,9 +128,9 @@ describe('AlphaLendClaimRewardsBuilder', () => {
 
       builder.finish!(context);
 
-      expect(mockLendingLog.logActivity).toHaveBeenCalledWith(
+      expect(mockActivityLog.logActivity).toHaveBeenCalledWith(
         expect.objectContaining({
-          action: 'claim_rewards',
+          action: 'lending:claim_rewards',
           protocol: 'alphalend',
           policy_decision: 'approved',
           tx_digest: '0xdigest',
@@ -136,12 +138,11 @@ describe('AlphaLendClaimRewardsBuilder', () => {
         }),
       );
 
-      // Verify nullable fields are not set or are undefined
-      const logCall = (mockLendingLog.logActivity as ReturnType<typeof vi.fn>).mock
+      // claim_rewards has no token params — early return before token-amount path
+      const logCall = (mockActivityLog.logActivity as ReturnType<typeof vi.fn>).mock
         .calls[0]![0] as Record<string, unknown>;
-      expect(logCall['coin_type']).toBeUndefined();
-      expect(logCall['token_symbol']).toBeUndefined();
-      expect(logCall['amount']).toBeUndefined();
+      expect(logCall['token_a_type']).toBeUndefined();
+      expect(logCall['token_a_amount']).toBeUndefined();
     });
   });
 });

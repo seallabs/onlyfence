@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Signer } from '../types/result.js';
 
 // Mock @mysten/sui/jsonRpc before importing the adapter
@@ -36,7 +36,10 @@ beforeEach(async () => {
 
 /** Create a mock SuiJsonRpcClient instance for testing. */
 function createMockClient() {
-  return new SuiJsonRpcClient({ url: 'https://rpc.example.com', network: 'mainnet' });
+  return new SuiJsonRpcClient({
+    url: 'https://rpc.example.com',
+    network: 'mainnet',
+  });
 }
 
 describe('SuiAdapter', () => {
@@ -89,7 +92,12 @@ describe('SuiAdapter', () => {
     it('uses normalized coin type as token name for unknown tokens', async () => {
       const unknownCoinType = '0xabc123::foo::BAR';
       mockGetAllBalances.mockResolvedValue([
-        { coinType: unknownCoinType, totalBalance: '100', coinObjectCount: 1, lockedBalance: {} },
+        {
+          coinType: unknownCoinType,
+          totalBalance: '100',
+          coinObjectCount: 1,
+          lockedBalance: {},
+        },
       ]);
 
       const adapter = new SuiAdapter(createMockClient());

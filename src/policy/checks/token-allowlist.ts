@@ -51,7 +51,7 @@ export class TokenAllowlistCheck implements PolicyCheck {
   }
 
   evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult> {
-    if (intent.action === 'claim_rewards') {
+    if (intent.action === 'lending:claim_rewards') {
       return Promise.resolve({ status: 'pass' });
     }
 
@@ -64,7 +64,7 @@ export class TokenAllowlistCheck implements PolicyCheck {
     const allowedAddresses = this.getAllowedAddresses(allowlist.tokens);
 
     // Swap intents: check both source and destination tokens
-    if (intent.action === 'swap') {
+    if (intent.action === 'trade:swap') {
       if (!allowedAddresses.has(intent.params.coinTypeIn)) {
         return Promise.resolve({
           status: 'reject' as const,

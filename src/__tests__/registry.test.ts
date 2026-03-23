@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { PolicyCheckRegistry } from '../policy/registry.js';
-import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
-import { resolveTokenAddress, tryResolveTokenAddress } from '../chain/sui/tokens.js';
-import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
-import { openMemoryDatabase } from '../db/connection.js';
-import { createIntent, createContext } from './helpers.js';
-import type { ChainConfig } from '../types/config.js';
 import type Database from 'better-sqlite3';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { resolveTokenAddress, tryResolveTokenAddress } from '../chain/sui/tokens.js';
+import { openMemoryDatabase } from '../db/connection.js';
+import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
+import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
+import { PolicyCheckRegistry } from '../policy/registry.js';
+import type { ChainConfig } from '../types/config.js';
+import { createContext, createIntent } from './helpers.js';
 
 describe('PolicyCheckRegistry', () => {
   let registry: PolicyCheckRegistry;

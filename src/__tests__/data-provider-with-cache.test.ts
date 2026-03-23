@@ -1,13 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type Database from 'better-sqlite3';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DataProvider, TokenMetadata } from '../core/data-provider.js';
 import { DataProviderWithCache } from '../core/data-provider.js';
 import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
 import { openMemoryDatabase } from '../db/connection.js';
-import type Database from 'better-sqlite3';
 
 function createMockProvider(overrides?: Partial<DataProvider>): DataProvider {
   return {
-    chain: 'sui',
+    chainId: 'sui:mainnet',
     getPrice: vi.fn().mockResolvedValue(3.5),
     getPrices: vi.fn().mockResolvedValue({ '0x2::sui::SUI': 3.5 }),
     getMetadata: vi.fn().mockResolvedValue({
@@ -35,8 +35,8 @@ describe('DataProviderWithCache', () => {
     provider = new DataProviderWithCache(inner, repo);
   });
 
-  it('exposes the inner provider chain', () => {
-    expect(provider.chain).toBe('sui');
+  it('exposes the inner provider chainId', () => {
+    expect(provider.chainId).toBe('sui:mainnet');
   });
 
   describe('getPrice', () => {
@@ -59,7 +59,7 @@ describe('DataProviderWithCache', () => {
     it('returns from DB without calling inner when cached', async () => {
       repo.upsert({
         coin_type: '0x2::sui::SUI',
-        chain_id: 'sui',
+        chain_id: 'sui:mainnet',
         symbol: 'SUI',
         name: null,
         decimals: 9,
@@ -67,18 +67,27 @@ describe('DataProviderWithCache', () => {
 
       const result = await provider.getMetadata('0x2::sui::SUI');
 
-      expect(result).toEqual({ address: '0x2::sui::SUI', symbol: 'SUI', decimals: 9 });
+      expect(result).toEqual({
+        address: '0x2::sui::SUI',
+        symbol: 'SUI',
+        decimals: 9,
+        name: '',
+      });
       expect(inner.getMetadata).not.toHaveBeenCalled();
     });
 
     it('delegates to inner on DB miss and backfills DB', async () => {
       const result = await provider.getMetadata('0x2::sui::SUI');
 
-      expect(result).toEqual({ address: '0x2::sui::SUI', symbol: 'SUI', decimals: 9 });
+      expect(result).toEqual({
+        address: '0x2::sui::SUI',
+        symbol: 'SUI',
+        decimals: 9,
+      });
       expect(inner.getMetadata).toHaveBeenCalledWith('0x2::sui::SUI');
 
       // Verify backfill
-      const cached = repo.get('0x2::sui::SUI', 'sui');
+      const cached = repo.get('0x2::sui::SUI', 'sui:mainnet');
       expect(cached).not.toBeNull();
       expect(cached!.decimals).toBe(9);
       expect(cached!.symbol).toBe('SUI');
@@ -104,14 +113,14 @@ describe('DataProviderWithCache', () => {
     it('returns all from DB when fully cached', async () => {
       repo.upsert({
         coin_type: '0x2::sui::SUI',
-        chain_id: 'sui',
+        chain_id: 'sui:mainnet',
         symbol: 'SUI',
         name: null,
         decimals: 9,
       });
       repo.upsert({
         coin_type: '0xdba3::usdc::USDC',
-        chain_id: 'sui',
+        chain_id: 'sui:mainnet',
         symbol: 'USDC',
         name: null,
         decimals: 6,
@@ -120,8 +129,18 @@ describe('DataProviderWithCache', () => {
       const result = await provider.getMetadatas(['0x2::sui::SUI', '0xdba3::usdc::USDC']);
 
       expect(result).toEqual({
-        '0x2::sui::SUI': { address: '0x2::sui::SUI', symbol: 'SUI', decimals: 9 },
-        '0xdba3::usdc::USDC': { address: '0xdba3::usdc::USDC', symbol: 'USDC', decimals: 6 },
+        '0x2::sui::SUI': {
+          address: '0x2::sui::SUI',
+          symbol: 'SUI',
+          decimals: 9,
+          name: '',
+        },
+        '0xdba3::usdc::USDC': {
+          address: '0xdba3::usdc::USDC',
+          symbol: 'USDC',
+          decimals: 6,
+          name: '',
+        },
       });
       expect(inner.getMetadatas).not.toHaveBeenCalled();
     });
@@ -130,7 +149,7 @@ describe('DataProviderWithCache', () => {
       // Pre-cache SUI
       repo.upsert({
         coin_type: '0x2::sui::SUI',
-        chain_id: 'sui',
+        chain_id: 'sui:mainnet',
         symbol: 'SUI',
         name: null,
         decimals: 9,
@@ -153,6 +172,7 @@ describe('DataProviderWithCache', () => {
         address: '0x2::sui::SUI',
         symbol: 'SUI',
         decimals: 9,
+        name: '',
       });
       expect(result['0xdba3::usdc::USDC']).toEqual(usdcMeta);
 
@@ -160,7 +180,7 @@ describe('DataProviderWithCache', () => {
       expect(inner.getMetadatas).toHaveBeenCalledWith(['0xdba3::usdc::USDC']);
 
       // USDC backfilled in DB
-      const cached = repo.get('0xdba3::usdc::USDC', 'sui');
+      const cached = repo.get('0xdba3::usdc::USDC', 'sui:mainnet');
       expect(cached).not.toBeNull();
       expect(cached!.decimals).toBe(6);
     });

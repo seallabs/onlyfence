@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseSwapEvent } from '../chain/sui/7k/events.js';
 
 const SETTLE_SWAP_TYPE =

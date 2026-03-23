@@ -1,16 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
-import { openMemoryDatabase } from '../db/connection.js';
-import { TradeLog } from '../db/trade-log.js';
-import { createIntent, createContext, createSupplyIntent, insertTestWallet } from './helpers.js';
-import type { ClaimRewardsIntent } from '../core/action-types.js';
-import type { ChainConfig } from '../types/config.js';
 import type Database from 'better-sqlite3';
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { ClaimRewardsIntent } from '../core/action-types.js';
+import { ActivityLog } from '../db/activity-log.js';
+import { openMemoryDatabase } from '../db/connection.js';
+import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
+import type { ChainConfig } from '../types/config.js';
+import { createContext, createIntent, createSupplyIntent, insertTestWallet } from './helpers.js';
 
 describe('SpendingLimitCheck', () => {
   let check: SpendingLimitCheck;
   let db: Database.Database;
-  let tradeLog: TradeLog;
+  let activityLog: ActivityLog;
 
   const configWithLimits: ChainConfig = {
     rpc: 'https://rpc.example.com',
@@ -23,7 +23,7 @@ describe('SpendingLimitCheck', () => {
   beforeEach(() => {
     check = new SpendingLimitCheck();
     db = openMemoryDatabase();
-    tradeLog = new TradeLog(db);
+    activityLog = new ActivityLog(db);
     insertTestWallet(db, '0xabc');
   });
 
@@ -53,13 +53,12 @@ describe('SpendingLimitCheck', () => {
 
   it('should reject when trade pushes 24h volume over limit', async () => {
     // Insert prior approved trades summing to $400
-    tradeLog.logTrade({
+    activityLog.logActivity({
       chain_id: 'sui:mainnet',
       wallet_address: '0xabc',
-      action: 'swap',
-      from_token: 'SUI',
-      to_token: 'USDC',
-      amount_in: '100',
+      action: 'trade:swap',
+      token_a_type: '0x2::sui::SUI',
+      token_a_amount: '100',
       value_usd: 400,
       policy_decision: 'approved',
     });
@@ -98,13 +97,12 @@ describe('SpendingLimitCheck', () => {
 
   it('should not count rejected trades in 24h volume', async () => {
     // Insert a rejected trade (should not count)
-    tradeLog.logTrade({
+    activityLog.logActivity({
       chain_id: 'sui:mainnet',
       wallet_address: '0xabc',
-      action: 'swap',
-      from_token: 'SUI',
-      to_token: 'USDC',
-      amount_in: '100',
+      action: 'trade:swap',
+      token_a_type: '0x2::sui::SUI',
+      token_a_amount: '100',
       value_usd: 400,
       policy_decision: 'rejected',
       rejection_reason: 'test',
@@ -131,13 +129,12 @@ describe('SpendingLimitCheck', () => {
 
   it('should pass supply intent even when swap 24h volume is high (24h is swap-only)', async () => {
     // Insert prior approved swap trades summing to $450 (close to $500 limit)
-    tradeLog.logTrade({
+    activityLog.logActivity({
       chain_id: 'sui:mainnet',
       wallet_address: '0xabc',
-      action: 'swap',
-      from_token: 'SUI',
-      to_token: 'USDC',
-      amount_in: '100',
+      action: 'trade:swap',
+      token_a_type: '0x2::sui::SUI',
+      token_a_amount: '100',
       value_usd: 450,
       policy_decision: 'approved',
     });
@@ -154,7 +151,7 @@ describe('SpendingLimitCheck', () => {
   it('should pass for claim_rewards action', async () => {
     const intent: ClaimRewardsIntent = {
       chainId: 'sui:mainnet',
-      action: 'claim_rewards',
+      action: 'lending:claim_rewards',
       walletAddress: '0xabc',
       params: { protocol: 'alphalend' },
     };

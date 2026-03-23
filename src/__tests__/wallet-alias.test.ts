@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import type Database from 'better-sqlite3';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { openMemoryDatabase } from '../db/connection.js';
 import {
   generateWallet,
-  registerWalletAddress,
   getWalletByAlias,
-  switchWallet,
-  renameAlias,
   listWallets,
+  registerWalletAddress,
+  renameAlias,
+  switchWallet,
 } from '../wallet/manager.js';
 
 describe('wallet alias', () => {

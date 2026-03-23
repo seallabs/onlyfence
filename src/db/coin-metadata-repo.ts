@@ -1,12 +1,13 @@
 import type Database from 'better-sqlite3';
 import type { Statement } from 'better-sqlite3';
+import type { ChainId } from '../core/action-types.js';
 
 /**
  * A row from the coin_metadata table.
  */
 export interface CoinMetadataRow {
   readonly coin_type: string;
-  readonly chain_id: string;
+  readonly chain_id: ChainId;
   readonly symbol: string;
   readonly name: string | null;
   readonly decimals: number;
@@ -14,7 +15,7 @@ export interface CoinMetadataRow {
 
 /**
  * Repository for the coin_metadata table.
- * Uses cached prepared statements following the same pattern as TradeLog.
+ * Uses cached prepared statements following the same pattern as ActivityLog.
  */
 export class CoinMetadataRepository {
   private readonly getStmt: Statement;
@@ -42,7 +43,7 @@ export class CoinMetadataRepository {
   /**
    * Get a single coin metadata row by primary key.
    */
-  get(coinType: string, chain: string): CoinMetadataRow | null {
+  get(coinType: string, chain: ChainId): CoinMetadataRow | null {
     return (this.getStmt.get(coinType, chain) as CoinMetadataRow | undefined) ?? null;
   }
 
@@ -50,7 +51,7 @@ export class CoinMetadataRepository {
    * Get multiple coin metadata rows by coin types for a given chain.
    * Uses dynamic SQL since better-sqlite3 does not support array binds.
    */
-  getBulk(coinTypes: readonly string[], chain: string): CoinMetadataRow[] {
+  getBulk(coinTypes: readonly string[], chain: ChainId): CoinMetadataRow[] {
     if (coinTypes.length === 0) return [];
 
     const arity = coinTypes.length;

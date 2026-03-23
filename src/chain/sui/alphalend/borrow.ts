@@ -6,7 +6,8 @@ import type {
   FinishContext,
 } from '../../../core/action-builder.js';
 import type { BorrowIntent } from '../../../core/action-types.js';
-import type { LendingLog } from '../../../db/lending-log.js';
+import type { ActivityLog } from '../../../db/activity-log.js';
+import type { SuiRawResponse } from '../types.js';
 import { AlphaLendBase, finishLendingActivity } from './base.js';
 
 /**
@@ -14,16 +15,19 @@ import { AlphaLendBase, finishLendingActivity } from './base.js';
  *
  * Implements ActionBuilder for the "borrow" lending action.
  * Fetches the user's position cap ID, then delegates to the AlphaLend SDK
- * to build the borrow transaction. Logs the activity to LendingLog.
+ * to build the borrow transaction. Logs the activity to ActivityLog.
  */
-export class AlphaLendBorrowBuilder extends AlphaLendBase implements ActionBuilder<BorrowIntent> {
+export class AlphaLendBorrowBuilder
+  extends AlphaLendBase
+  implements ActionBuilder<BorrowIntent, SuiRawResponse>
+{
   readonly builderId = 'alphalend-borrow';
   readonly chain = 'sui';
 
   constructor(
     alphalendClient: AlphalendClient,
     suiClient: SuiClient,
-    private readonly lendingLog: LendingLog,
+    private readonly activityLog: ActivityLog,
   ) {
     super(alphalendClient, suiClient);
   }
@@ -69,7 +73,7 @@ export class AlphaLendBorrowBuilder extends AlphaLendBase implements ActionBuild
     };
   }
 
-  finish(context: FinishContext): void {
-    finishLendingActivity(context, 'borrow', this.lendingLog);
+  finish(context: FinishContext<SuiRawResponse>): void {
+    finishLendingActivity(context, 'lending:borrow', this.activityLog);
   }
 }

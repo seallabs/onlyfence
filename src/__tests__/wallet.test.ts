@@ -1,28 +1,28 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { validateMnemonic, mnemonicToSeedSync } from 'bip39';
+import { join } from 'node:path';
 import type Database from 'better-sqlite3';
+import { mnemonicToSeedSync, validateMnemonic } from 'bip39';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openMemoryDatabase } from '../db/connection.js';
-import {
-  generateWallet,
-  importFromMnemonic,
-  registerWalletAddress,
-  listWallets,
-  getPrimaryWallet,
-} from '../wallet/manager.js';
-import {
-  saveKeystore,
-  loadKeystore,
-  encryptKeystoreData,
-  decryptKeystoreData,
-} from '../wallet/keystore.js';
 import {
   deriveSuiKeypair,
   publicKeyToSuiAddress,
   SUI_DERIVATION_PATH,
 } from '../wallet/derivation.js';
+import {
+  decryptKeystoreData,
+  encryptKeystoreData,
+  loadKeystore,
+  saveKeystore,
+} from '../wallet/keystore.js';
+import {
+  generateWallet,
+  getPrimaryWallet,
+  importFromMnemonic,
+  listWallets,
+  registerWalletAddress,
+} from '../wallet/manager.js';
 import type { KeystoreData } from '../wallet/types.js';
 
 describe('Wallet Derivation', () => {

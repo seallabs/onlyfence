@@ -1,14 +1,14 @@
 import { Box, Text, useInput } from 'ink';
-import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReactElement } from 'react';
-import { theme } from '../theme.js';
-import { useTui } from '../context.js';
-import { TextInput } from '../components/TextInput.js';
-import { Panel } from '../components/Panel.js';
-import { TokenSelectPopup } from '../components/TokenSelectPopup.js';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { updateConfigFile } from '../../config/loader.js';
 import { setNestedValue } from '../../config/utils.js';
 import { parseTokenList, toErrorMessage } from '../../utils/index.js';
+import { Panel } from '../components/Panel.js';
+import { TextInput } from '../components/TextInput.js';
+import { TokenSelectPopup } from '../components/TokenSelectPopup.js';
+import { useTui } from '../context.js';
+import { theme } from '../theme.js';
 
 const FIELD_LABELS = [
   'RPC Endpoint',
@@ -57,7 +57,10 @@ export function PolicyConfig(): ReactElement {
   const [selectedField, setSelectedField] = useState(0);
   const [editValue, setEditValue] = useState('');
   const [dirty, setDirty] = useState(false);
-  const [status, setStatus] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [status, setStatus] = useState<{
+    kind: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const [showTokenPopup, setShowTokenPopup] = useState(false);
 
   // Derive token list for the popup
@@ -149,17 +152,26 @@ export function PolicyConfig(): ReactElement {
       const parsedSingle = parseFloat(maxSingleTrade);
       const parsed24h = parseFloat(max24hVolume);
       if (!Number.isFinite(parsedSingle) || parsedSingle <= 0) {
-        setStatus({ kind: 'error', text: 'Max Single Trade must be a positive number' });
+        setStatus({
+          kind: 'error',
+          text: 'Max Single Trade must be a positive number',
+        });
         return;
       }
       if (!Number.isFinite(parsed24h) || parsed24h <= 0) {
-        setStatus({ kind: 'error', text: 'Max 24h Volume must be a positive number' });
+        setStatus({
+          kind: 'error',
+          text: 'Max 24h Volume must be a positive number',
+        });
         return;
       }
 
       const parsedTokens = parseTokenList(tokens);
       if (parsedTokens.length === 0) {
-        setStatus({ kind: 'error', text: 'At least one token must be in the allowlist' });
+        setStatus({
+          kind: 'error',
+          text: 'At least one token must be in the allowlist',
+        });
         return;
       }
 

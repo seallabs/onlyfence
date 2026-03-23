@@ -5,7 +5,12 @@
  * ensuring consistent machine-readable responses for agent consumers.
  */
 
-import type { ChainId, DeFiAction, DefiProtocol, PipelineStatus } from '../core/action-types.js';
+import type {
+  ActivityAction,
+  ChainId,
+  DefiProtocol,
+  PipelineStatus,
+} from '../core/action-types.js';
 
 /** Map of reward token to amount value */
 type RewardMap = Record<
@@ -64,7 +69,7 @@ export type ActionPayload = SwapOutput | LendingOutput | LendingRewardsOutput | 
  */
 export interface CliOutput<T extends ActionPayload = ActionPayload> {
   readonly status: PipelineStatus;
-  readonly action: DeFiAction;
+  readonly action: ActivityAction;
   readonly chainId: ChainId;
   readonly address: string;
   readonly gasUsed?: number | undefined;

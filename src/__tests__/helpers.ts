@@ -5,9 +5,8 @@ import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import { resolveTokenAddress } from '../chain/sui/tokens.js';
 import type { BorrowIntent, SupplyIntent, SwapIntent } from '../core/action-types.js';
 import type { DataProvider, TokenMetadata } from '../core/data-provider.js';
-import type { LendingRecord } from '../db/lending-log.js';
-import type { TradeRecord } from '../db/trade-log.js';
-import { TradeLog } from '../db/trade-log.js';
+import type { ActivityRecord } from '../db/activity-log.js';
+import { ActivityLog } from '../db/activity-log.js';
 import type { PolicyContext } from '../policy/context.js';
 import type { ChainConfig } from '../types/config.js';
 
@@ -33,7 +32,7 @@ export function createMockLogger(): Logger {
  */
 export function createMockDataProvider(price: number = 1.0): DataProvider {
   return {
-    chain: 'sui',
+    chainId: 'sui:mainnet',
     async getPrice(_address: string): Promise<number> {
       return price;
     },
@@ -66,7 +65,7 @@ export function createIntent(
   const { params: paramOverrides, ...rest } = overrides ?? {};
   return {
     chainId: SUI_CHAIN_ID,
-    action: 'swap',
+    action: 'trade:swap',
     walletAddress: '0xabc',
     params: {
       coinTypeIn: resolveTokenAddress('SUI'),
@@ -90,7 +89,7 @@ export function createContext(
 ): PolicyContext {
   return {
     config,
-    tradeLog: new TradeLog(db),
+    activityLog: new ActivityLog(db),
     ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
   };
 }
@@ -105,17 +104,18 @@ export function insertTestWallet(db: Database.Database, address: string = '0xabc
 }
 
 /**
- * Create a TradeRecord with sensible defaults, overridable via partial.
+ * Create an ActivityRecord with sensible swap defaults, overridable via partial.
  */
-export function createTradeRecord(overrides?: Partial<TradeRecord>): TradeRecord {
+export function createActivityRecord(overrides?: Partial<ActivityRecord>): ActivityRecord {
   return {
     chain_id: SUI_CHAIN_ID,
     wallet_address: '0xabc',
-    action: 'swap',
-    from_token: 'SUI',
-    to_token: 'USDC',
-    amount_in: '100000000',
-    amount_out: '98120000',
+    action: 'trade:swap',
+    protocol: '7k_meta_ag',
+    token_a_type: resolveTokenAddress('SUI'),
+    token_a_amount: '100000000',
+    token_b_type: resolveTokenAddress('USDC'),
+    token_b_amount: '98120000',
     value_usd: 98.0,
     tx_digest: '0xdigest123',
     gas_cost: 0.0021,
@@ -128,12 +128,14 @@ export function createTradeRecord(overrides?: Partial<TradeRecord>): TradeRecord
  * Create a SupplyIntent with sensible defaults, overridable via partial.
  */
 export function createSupplyIntent(
-  overrides?: Partial<SupplyIntent> & { params?: Partial<SupplyIntent['params']> },
+  overrides?: Partial<SupplyIntent> & {
+    params?: Partial<SupplyIntent['params']>;
+  },
 ): SupplyIntent {
   const { params: paramOverrides, ...rest } = overrides ?? {};
   return {
     chainId: SUI_CHAIN_ID,
-    action: 'supply',
+    action: 'lending:supply',
     walletAddress: '0xabc',
     params: {
       coinType: resolveTokenAddress('SUI'),
@@ -151,12 +153,14 @@ export function createSupplyIntent(
  * Create a BorrowIntent with sensible defaults, overridable via partial.
  */
 export function createBorrowIntent(
-  overrides?: Partial<BorrowIntent> & { params?: Partial<BorrowIntent['params']> },
+  overrides?: Partial<BorrowIntent> & {
+    params?: Partial<BorrowIntent['params']>;
+  },
 ): BorrowIntent {
   const { params: paramOverrides, ...rest } = overrides ?? {};
   return {
     chainId: SUI_CHAIN_ID,
-    action: 'borrow',
+    action: 'lending:borrow',
     walletAddress: '0xabc',
     params: {
       coinType: resolveTokenAddress('SUI'),
@@ -171,22 +175,21 @@ export function createBorrowIntent(
 }
 
 /**
- * Create a LendingRecord with sensible defaults, overridable via partial.
+ * Create an ActivityRecord with sensible lending defaults, overridable via partial.
  */
-export function createLendingRecord(overrides?: Partial<LendingRecord>): LendingRecord {
+export function createLendingActivityRecord(overrides?: Partial<ActivityRecord>): ActivityRecord {
   return {
     chain_id: SUI_CHAIN_ID,
     wallet_address: '0xabc',
-    action: 'supply',
+    action: 'lending:supply',
     protocol: 'alphalend',
-    market_id: '1',
-    coin_type: '0x2::sui::SUI',
-    token_symbol: 'SUI',
-    amount: '1000000000',
+    token_a_type: '0x2::sui::SUI',
+    token_a_amount: '1000000000',
     value_usd: 100.0,
     tx_digest: '0xdigest123',
     gas_cost: 0.002,
     policy_decision: 'approved',
+    metadata: { market_id: '1' },
     ...overrides,
   };
 }

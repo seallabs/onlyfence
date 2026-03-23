@@ -46,7 +46,7 @@ export interface CliStats {
 
 /**
  * Data access class for CLI usage events.
- * Follows the same cached-prepared-statement pattern as TradeLog.
+ * Follows the same cached-prepared-statement pattern as ActivityLog.
  */
 export class CliEventLog {
   private readonly insertStmt: Statement;

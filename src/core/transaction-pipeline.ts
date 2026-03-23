@@ -7,6 +7,8 @@ import type { Signer } from '../types/result.js';
 import { toErrorMessage } from '../utils/index.js';
 import type { ActionBuilder } from './action-builder.js';
 import type { ActionIntent, PipelineResult } from './action-types.js';
+import { extractCoinTypes } from './action-types.js';
+import type { DataProvider } from './data-provider.js';
 import type { MevProtector } from './mev-protector.js';
 
 export interface PipelineInput {
@@ -19,6 +21,8 @@ export interface PipelineInput {
   readonly logger: Logger;
   readonly signer?: Signer;
   readonly watchOnly: boolean;
+  /** When provided, the pipeline caches coin metadata for all intent coin types after build. */
+  readonly dataProvider?: DataProvider;
 }
 
 /**
@@ -87,6 +91,17 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
     // Step 3: Build transaction (includes quote fetching)
     log.info('Building transaction');
     const built = await builder.build(intent);
+
+    // Step 3.5: Cache coin metadata for all intent coin types (best-effort)
+    if (input.dataProvider !== undefined) {
+      const coinTypes = extractCoinTypes(intent);
+      if (coinTypes.length > 0) {
+        // Don't await this, just fire and forget
+        input.dataProvider.getMetadatas(coinTypes).catch((err: unknown) => {
+          log.warn({ error: toErrorMessage(err) }, 'Coin metadata caching failed');
+        });
+      }
+    }
 
     // Step 4: Serialize to bytes
     log.info('Serializing transaction bytes');

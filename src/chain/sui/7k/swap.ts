@@ -1,7 +1,7 @@
 import { EProvider, MetaAg } from '@7kprotocol/sdk-ts';
 import {
-  Transaction,
   coinWithBalance,
+  Transaction,
   type TransactionObjectArgument,
 } from '@mysten/sui/transactions';
 import type {
@@ -10,7 +10,7 @@ import type {
   FinishContext,
 } from '../../../core/action-builder.js';
 import type { SwapIntent } from '../../../core/action-types.js';
-import type { TradeLog } from '../../../db/trade-log.js';
+import type { ActivityLog } from '../../../db/activity-log.js';
 import { toErrorMessage } from '../../../utils/index.js';
 import type { SuiTxResponse } from '../adapter.js';
 import type { SwapEventAmounts } from './events.js';
@@ -44,7 +44,7 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent, SuiTxResponse> 
   private readonly metaAg: MetaAg;
 
   constructor(
-    private readonly tradeLog: TradeLog,
+    private readonly activityLog: ActivityLog,
     slippageBps = 100,
   ) {
     this.metaAg = new MetaAg({
@@ -103,7 +103,10 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent, SuiTxResponse> 
 
     // Build transaction from the best quote
     const tx = new Transaction();
-    const coinIn = coinWithBalance({ balance: BigInt(best.amountIn), type: best.coinTypeIn })(tx);
+    const coinIn = coinWithBalance({
+      balance: BigInt(best.amountIn),
+      type: best.coinTypeIn,
+    })(tx);
     // Cast through unknown to bridge ESM/CJS dual-module boundary with @7kprotocol/sdk-ts
     const coinOut = await this.metaAg.swap({
       quote: best.raw as Parameters<MetaAg['swap']>[0]['quote'],
@@ -139,7 +142,7 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent, SuiTxResponse> 
   finish(context: FinishContext<SuiTxResponse>): void {
     const { intent, status, metadata, rawResponse, txDigest, gasUsed, rejection } = context;
 
-    if (intent.action !== 'swap') return;
+    if (intent.action !== 'trade:swap') return;
 
     // Parse actual amounts from on-chain events (source of truth)
     const parsed = rawResponse !== undefined ? this.parseAmounts(rawResponse) : undefined;
@@ -147,17 +150,16 @@ export class SuiSwapBuilder implements ActionBuilder<SwapIntent, SuiTxResponse> 
     const amountOut =
       parsed?.amountOut ?? (typeof expectedOutput === 'string' ? expectedOutput : undefined);
 
-    this.tradeLog.logTrade({
+    this.activityLog.logActivity({
       chain_id: intent.chainId,
       wallet_address: intent.walletAddress,
-      action: intent.action,
-      from_token: intent.params.coinTypeIn,
-      to_token: intent.params.coinTypeOut,
-      from_coin_type: intent.params.coinTypeIn,
-      to_coin_type: intent.params.coinTypeOut,
-      amount_in: intent.params.amountIn,
+      action: 'trade:swap',
+      protocol: '7k_meta_ag',
+      token_a_type: intent.params.coinTypeIn,
+      token_a_amount: intent.params.amountIn,
+      token_b_type: intent.params.coinTypeOut,
+      ...(amountOut !== undefined ? { token_b_amount: amountOut } : {}),
       policy_decision: status,
-      ...(amountOut !== undefined ? { amount_out: amountOut } : {}),
       ...(txDigest !== undefined ? { tx_digest: txDigest } : {}),
       ...(gasUsed !== undefined ? { gas_cost: gasUsed } : {}),
       ...(rejection?.reason !== undefined ? { rejection_reason: rejection.reason } : {}),

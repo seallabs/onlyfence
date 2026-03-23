@@ -51,8 +51,8 @@ export async function resolveTokenInput(
   dataProvider: DataProvider,
 ): Promise<ResolvedTokenInput> {
   const coinType = chainAdapter.resolveTokenAddress(rawToken);
-  const symbol = chainAdapter.resolveTokenSymbol(coinType);
   const meta = await dataProvider.getMetadata(coinType);
+  const symbol = meta.symbol;
   const scaledAmount = scaleToSmallestUnit(rawAmount, meta.decimals);
 
   return { coinType, symbol, decimals: meta.decimals, scaledAmount };

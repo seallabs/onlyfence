@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SwapIntent } from '../core/action-types.js';
 
 // Mock MetaAg
@@ -40,7 +40,7 @@ beforeEach(async () => {
 
 function makeSwapIntent(overrides?: Partial<SwapIntent['params']>): SwapIntent {
   return {
-    action: 'swap',
+    action: 'trade:swap',
     chainId: 'sui:mainnet',
     walletAddress: '0x' + 'a'.repeat(64),
     params: {
@@ -55,8 +55,10 @@ function makeSwapIntent(overrides?: Partial<SwapIntent['params']>): SwapIntent {
 
 describe('SuiSwapBuilder', () => {
   it('has correct builderId and chain', () => {
-    const mockTradeLog = { logTrade: vi.fn() } as unknown as import('../db/trade-log.js').TradeLog;
-    const builder = new SuiSwapBuilder(mockTradeLog);
+    const mockActivityLog = {
+      logActivity: vi.fn(),
+    } as unknown as import('../db/activity-log.js').ActivityLog;
+    const builder = new SuiSwapBuilder(mockActivityLog);
     expect(builder.builderId).toBe('7k-swap');
     expect(builder.chain).toBe('sui');
   });
@@ -65,10 +67,10 @@ describe('SuiSwapBuilder', () => {
     let builder: InstanceType<typeof SuiSwapBuilder>;
 
     beforeEach(() => {
-      const mockTradeLog = {
-        logTrade: vi.fn(),
-      } as unknown as import('../db/trade-log.js').TradeLog;
-      builder = new SuiSwapBuilder(mockTradeLog);
+      const mockActivityLog = {
+        logActivity: vi.fn(),
+      } as unknown as import('../db/activity-log.js').ActivityLog;
+      builder = new SuiSwapBuilder(mockActivityLog);
     });
 
     it('throws when coinTypeIn equals coinTypeOut', () => {
@@ -115,10 +117,10 @@ describe('SuiSwapBuilder', () => {
       mockQuote.mockResolvedValue([fakeQuote]);
       mockSwap.mockResolvedValue('coin-out-arg');
 
-      const mockTradeLog = {
-        logTrade: vi.fn(),
-      } as unknown as import('../db/trade-log.js').TradeLog;
-      const builder = new SuiSwapBuilder(mockTradeLog);
+      const mockActivityLog = {
+        logActivity: vi.fn(),
+      } as unknown as import('../db/activity-log.js').ActivityLog;
+      const builder = new SuiSwapBuilder(mockActivityLog);
       const result = await builder.build(makeSwapIntent());
 
       expect(result.transaction).toBeDefined();
@@ -155,10 +157,10 @@ describe('SuiSwapBuilder', () => {
       mockQuote.mockResolvedValue([quote1, quote2]);
       mockSwap.mockResolvedValue('coin-out-arg');
 
-      const mockTradeLog = {
-        logTrade: vi.fn(),
-      } as unknown as import('../db/trade-log.js').TradeLog;
-      const builder = new SuiSwapBuilder(mockTradeLog);
+      const mockActivityLog = {
+        logActivity: vi.fn(),
+      } as unknown as import('../db/activity-log.js').ActivityLog;
+      const builder = new SuiSwapBuilder(mockActivityLog);
       const result = await builder.build(makeSwapIntent());
 
       // quote2 has higher amountOut (2600000 > 2490000/2500000)
@@ -169,20 +171,20 @@ describe('SuiSwapBuilder', () => {
     it('throws when no quotes available', async () => {
       mockQuote.mockResolvedValue([]);
 
-      const mockTradeLog = {
-        logTrade: vi.fn(),
-      } as unknown as import('../db/trade-log.js').TradeLog;
-      const builder = new SuiSwapBuilder(mockTradeLog);
+      const mockActivityLog = {
+        logActivity: vi.fn(),
+      } as unknown as import('../db/activity-log.js').ActivityLog;
+      const builder = new SuiSwapBuilder(mockActivityLog);
       await expect(builder.build(makeSwapIntent())).rejects.toThrow('No swap quotes available');
     });
 
     it('throws on network error from quote', async () => {
       mockQuote.mockRejectedValue(new Error('Network timeout'));
 
-      const mockTradeLog = {
-        logTrade: vi.fn(),
-      } as unknown as import('../db/trade-log.js').TradeLog;
-      const builder = new SuiSwapBuilder(mockTradeLog);
+      const mockActivityLog = {
+        logActivity: vi.fn(),
+      } as unknown as import('../db/activity-log.js').ActivityLog;
+      const builder = new SuiSwapBuilder(mockActivityLog);
       await expect(builder.build(makeSwapIntent())).rejects.toThrow('Failed to fetch swap quote');
     });
   });
