@@ -8,3 +8,8 @@ export { registerStatsCommand } from './stats.js';
 export { registerUpdateCommand } from './update.js';
 export { registerUnlockCommand } from './unlock.js';
 export { registerLockCommand } from './lock.js';
+export { registerStartCommand } from './start.js';
+export { registerStopCommand } from './stop.js';
+export { registerStatusCommand } from './status.js';
+export { registerReloadCommand } from './reload.js';
+export { registerQuickstartCommand } from './quickstart.js';

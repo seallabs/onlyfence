@@ -7,6 +7,7 @@ import { validateConfig, createDefaultConfig, ConfigAlreadyExistsError } from '.
 import { serializeToToml } from './serializer.js';
 import { toErrorMessage } from '../utils/index.js';
 import { CONFIG_FILE_HEADER } from './utils.js';
+import { enforceFilePermissions, SECURE_DIR_MODE } from '../security/file-permissions.js';
 
 /**
  * Default directory for OnlyFence configuration and data.
@@ -65,7 +66,7 @@ export function loadConfig(configPath: string = CONFIG_PATH): AppConfig {
  * @throws Error if the config already exists and force is false
  */
 export function initConfig(configPath: string = CONFIG_PATH, force = false): string {
-  mkdirSync(dirname(configPath), { recursive: true });
+  mkdirSync(dirname(configPath), { recursive: true, mode: SECURE_DIR_MODE });
 
   const defaultConfig = createDefaultConfig();
   const tomlContent = serializeToToml(defaultConfig as unknown as Record<string, unknown>, [
@@ -75,11 +76,13 @@ export function initConfig(configPath: string = CONFIG_PATH, force = false): str
 
   if (force) {
     writeFileSync(configPath, tomlContent, 'utf-8');
+    enforceFilePermissions(configPath);
   } else {
     try {
       // Atomic create-if-not-exists: 'wx' flag fails if the file already exists,
       // avoiding a TOCTOU race between existsSync and writeFileSync.
       writeFileSync(configPath, tomlContent, { encoding: 'utf-8', flag: 'wx' });
+      enforceFilePermissions(configPath);
     } catch (err: unknown) {
       if (
         err instanceof Error &&
@@ -116,6 +119,7 @@ export function updateConfigFile(
   const validated = validateConfig(raw);
   const toml = serializeToToml(raw, CONFIG_FILE_HEADER);
   writeFileSync(configPath, toml, 'utf-8');
+  enforceFilePermissions(configPath);
 
   return validated;
 }

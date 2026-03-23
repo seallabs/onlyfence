@@ -13,10 +13,12 @@ import { AlphaLendSupplyBuilder } from '../chain/sui/alphalend/supply.js';
 import { AlphaLendWithdrawBuilder } from '../chain/sui/alphalend/withdraw.js';
 import { SuiDataProvider } from '../chain/sui/data-provider.js';
 import { SUI_KNOWN_DECIMALS, tryResolveTokenAddress } from '../chain/sui/tokens.js';
-import { CONFIG_PATH, loadConfig } from '../config/loader.js';
+import { CONFIG_PATH, ONLYFENCE_DIR, loadConfig } from '../config/loader.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
 import { DataProviderRegistry, DataProviderWithCache } from '../core/data-provider.js';
 import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
+import { PriceCache } from '../core/price-cache.js';
+import { ensureSecureDataDir } from '../security/file-permissions.js';
 import { LPProService } from '../data/lp-pro-service.js';
 import { ActivityLog } from '../db/activity-log.js';
 import { CliEventLog } from '../db/cli-events.js';
@@ -66,6 +68,10 @@ export interface AppComponents {
  * @throws Error if DB or config initialization fails
  */
 export function bootstrap(options?: { dbPath?: string; configPath?: string }): AppComponents {
+  // Enforce 0o600 on all sensitive files before opening them.
+  // This runs on every command, not just first-run, catching permission drift.
+  ensureSecureDataDir(ONLYFENCE_DIR);
+
   const db = openDatabase(options?.dbPath ?? DB_PATH);
   const config = loadConfig(options?.configPath ?? CONFIG_PATH);
   const logger = getLogger();
@@ -136,7 +142,11 @@ export function buildDataProviderRegistry(
   registry.register('sui', () => {
     const inner = new SuiDataProvider(lpPro, SUI_KNOWN_DECIMALS);
     const repo = new CoinMetadataRepository(db);
-    return new DataProviderWithCache(inner, repo);
+    const cached = new DataProviderWithCache(inner, repo);
+    // Wrap with fail-closed price cache: if oracle is unreachable and
+    // cached price is older than 5 minutes, trades requiring USD pricing
+    // are rejected. This blocks the #1 attack vector (oracle manipulation).
+    return new PriceCache(cached);
   });
 
   return registry;

@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "fence": "dist/cli/index.js"
+    "fence": "bin/fence"
   },
   "scripts": {
     "prebuild": "node scripts/sync-version.js && node scripts/sync-changelog.js",

@@ -1,0 +1,46 @@
+#!/bin/sh
+# Shell entrypoint for OnlyFence CLI.
+#
+# This wrapper strips environment variables that Node.js processes BEFORE
+# any application code runs (e.g. NODE_OPTIONS --require). Without this,
+# an attacker can inject arbitrary code via NODE_OPTIONS and intercept
+# keystore decryption to steal the mnemonic and private keys.
+#
+# The JS-level sanitizeEnvironment() in src/security/env-sanitizer.ts is
+# a second line of defense that protects child processes, but it cannot
+# undo --require modules that already executed.
+
+# Strip every variable that can inject code or redirect traffic
+unset NODE_OPTIONS
+unset NODE_PATH
+unset NODE_EXTRA_CA_CERTS
+unset NODE_REDIRECT_WARNINGS
+unset NODE_REPL_EXTERNAL_MODULE
+unset LD_PRELOAD
+unset DYLD_INSERT_LIBRARIES
+unset DYLD_LIBRARY_PATH
+unset DYLD_FRAMEWORK_PATH
+unset HTTP_PROXY
+unset HTTPS_PROXY
+unset http_proxy
+unset https_proxy
+
+# Resolve the real script location (follow symlinks)
+# $0 may be a symlink chain (npm link / global install), so resolve it fully.
+SELF="$0"
+while [ -L "$SELF" ]; do
+  DIR="$(cd "$(dirname "$SELF")" && pwd)"
+  SELF="$(readlink "$SELF")"
+  # Handle relative symlink targets
+  case "$SELF" in /*) ;; *) SELF="$DIR/$SELF" ;; esac
+done
+SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+ENTRY="$SCRIPT_DIR/../dist/cli/index.js"
+
+# If running from source (dev mode), use the ts entry
+if [ ! -f "$ENTRY" ]; then
+  ENTRY="$SCRIPT_DIR/../src/cli/index.ts"
+  exec node --import tsx "$ENTRY" "$@"
+fi
+
+exec node "$ENTRY" "$@"

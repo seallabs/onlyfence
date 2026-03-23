@@ -4,7 +4,9 @@ import type { ActionBuilder } from '../../core/action-builder.js';
 import type { Chain, ChainId, PipelineResult, SwapIntent } from '../../core/action-types.js';
 import { NoOpMevProtector } from '../../core/mev-protector.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
+import { detectExecutionMode, DaemonClient } from '../../daemon/index.js';
 import type { PolicyContext } from '../../policy/context.js';
+import { captureException } from '../../telemetry/index.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { loadSessionKeyBytes } from '../../wallet/session.js';
@@ -47,6 +49,14 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           output: string;
         },
       ) => {
+        // Auto-detect: if daemon is running, route through it
+        const execMode = detectExecutionMode();
+        if (execMode.mode === 'daemon-client') {
+          await executeViaDaemon(execMode.address, fromToken, toToken, amountStr, options);
+          return;
+        }
+
+        // In-process execution (Tier 0)
         const components = withComponents(getComponents);
         if (components === undefined) return;
 
@@ -97,26 +107,16 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
             chainAdapter,
             dataProvider,
           );
-          const {
-            coinType: coinTypeIn,
-            symbol: fromSymbol,
-            scaledAmount: scaledAmountIn,
-          } = resolvedIn;
+          const { coinType: coinTypeIn, scaledAmount: scaledAmountIn } = resolvedIn;
           const coinTypeOut = chainAdapter.resolveTokenAddress(toToken);
 
           // Build slippage in basis points
           const slippageBps = Math.round(parseFloat(options.slippage) * 100);
-          let tradeValueUsd: number | undefined;
-          try {
-            const price = await dataProvider.getPrice(coinTypeIn);
-            tradeValueUsd = parseFloat(amountStr) * price;
-          } catch (err: unknown) {
-            log.warn(
-              { token: fromSymbol, error: toErrorMessage(err) },
-              'Price unavailable; USD spending limits will not be enforced',
-            );
-            tradeValueUsd = undefined;
-          }
+          // PriceCache (wrapping the data provider) implements fail-closed:
+          // if the oracle is unreachable and the cache is stale (>5 min),
+          // getPrice() throws OracleStalePriceError — the trade is rejected.
+          const price = await dataProvider.getPrice(coinTypeIn);
+          const tradeValueUsd: number = parseFloat(amountStr) * price;
 
           // Build SwapIntent
           const intent: SwapIntent = {
@@ -136,7 +136,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           const policyCtx: PolicyContext = {
             config: chainConfig,
             activityLog,
-            ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
+            tradeValueUsd,
           };
 
           // Resolve signer from active session if not watch-only
@@ -171,7 +171,8 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
           printJsonOutput(output.cliOutput);
           process.exitCode = output.exitCode;
         } catch (err: unknown) {
-          log.error({ err: toErrorMessage(err) }, 'Swap failed');
+          log.error({ err }, 'Swap failed');
+          captureException(err);
           const errorOutput: CliOutput = {
             status: 'error',
             action: 'trade:swap',
@@ -223,4 +224,73 @@ function mapPipelineResultToOutput(
     cliOutput: { ...base, ...(payload !== undefined ? { payload } : {}) },
     exitCode: EXIT_CODES[result.status],
   };
+}
+
+/**
+ * Execute a swap via the daemon's IPC socket (thin client mode).
+ */
+async function executeViaDaemon(
+  address: string,
+  fromToken: string,
+  toToken: string,
+  amountStr: string,
+  options: { slippage: string; chain: Chain },
+): Promise<void> {
+  const client = new DaemonClient(address);
+  const chainId: ChainId = `${options.chain}:mainnet`;
+  const slippageBps = Math.round(parseFloat(options.slippage) * 100);
+
+  try {
+    const response = await client.send('trade', {
+      intent: {
+        chainId,
+        action: 'trade:swap',
+        walletAddress: '', // Daemon resolves the wallet
+        params: {
+          coinTypeIn: fromToken,
+          coinTypeOut: toToken,
+          amountIn: amountStr,
+          slippageBps,
+        },
+      },
+    });
+
+    // The daemon always returns data.result with the pipeline result,
+    // even on failure — extract it to show the real error/rejection.
+    const data = response.data as { result?: PipelineResult } | undefined;
+    const result = data?.result;
+
+    if (result !== undefined) {
+      printJsonOutput({
+        status: result.status,
+        action: 'trade:swap',
+        chainId,
+        address: '',
+        txDigest: result.txDigest,
+        gasUsed: result.gasUsed,
+        error: result.error,
+        rejectionCheck: result.rejectionCheck,
+        rejectionReason: result.rejectionReason,
+      });
+      process.exitCode = EXIT_CODES[result.status];
+    } else {
+      printJsonOutput({
+        status: 'error',
+        action: 'trade:swap',
+        chainId,
+        address: '',
+        error: response.error ?? 'Daemon returned no result',
+      });
+      process.exitCode = 1;
+    }
+  } catch (err: unknown) {
+    printJsonOutput({
+      status: 'error',
+      action: 'trade:swap',
+      chainId,
+      address: '',
+      error: toErrorMessage(err),
+    });
+    process.exitCode = 1;
+  }
 }

@@ -34,3 +34,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: shellcheck install.sh scripts/*.sh
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image (no push)
+        run: docker build -t onlyfence:ci .

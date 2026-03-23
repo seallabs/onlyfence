@@ -4,6 +4,7 @@ import type {
   ChainConfig,
   GlobalConfig,
   LimitsConfig,
+  SecurityConfig,
   TelemetryConfig,
   UpdateConfig,
 } from '../types/config.js';
@@ -37,6 +38,13 @@ export class ConfigValidationError extends Error {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+
+/**
+ * Default upper bounds for spending limits.
+ * These prevent a compromised config from setting limits to infinity.
+ */
+export const DEFAULT_MAX_SINGLE_TRADE_CEILING = 10_000;
+export const DEFAULT_MAX_24H_VOLUME_CEILING = 100_000;
 
 /**
  * Default allowlist for Sui chain (MVP tokens).
@@ -85,6 +93,18 @@ export function validateConfig(raw: unknown): AppConfig {
     throw new ConfigValidationError('Config must be an object', 'root');
   }
 
+  // Validate security section first so we can use ceilings for limit validation
+  const security = raw['security'];
+  if (security !== undefined && !isRecord(security)) {
+    throw new ConfigValidationError('"security" must be an object if present', 'security');
+  }
+  const validatedSecurity = security !== undefined ? validateSecurityConfig(security) : undefined;
+
+  // Resolve effective ceilings (custom or defaults)
+  const tradeCeiling =
+    validatedSecurity?.max_single_trade_ceiling ?? DEFAULT_MAX_SINGLE_TRADE_CEILING;
+  const volumeCeiling = validatedSecurity?.max_24h_volume_ceiling ?? DEFAULT_MAX_24H_VOLUME_CEILING;
+
   if (!isRecord(raw['chain'])) {
     throw new ConfigValidationError('Missing or invalid "chain" section', 'chain');
   }
@@ -93,7 +113,12 @@ export function validateConfig(raw: unknown): AppConfig {
   const validatedChains: Record<string, ChainConfig> = {};
 
   for (const [chainName, chainValue] of Object.entries(chainSection)) {
-    validatedChains[chainName] = validateChainConfig(chainValue, `chain.${chainName}`);
+    validatedChains[chainName] = validateChainConfig(
+      chainValue,
+      `chain.${chainName}`,
+      tradeCeiling,
+      volumeCeiling,
+    );
   }
 
   const global = raw['global'];
@@ -116,10 +141,16 @@ export function validateConfig(raw: unknown): AppConfig {
     ...(global !== undefined ? { global: validateGlobalConfig(global) } : {}),
     ...(telemetry !== undefined ? { telemetry: validateTelemetryConfig(telemetry) } : {}),
     ...(update !== undefined ? { update: validateUpdateConfig(update) } : {}),
+    ...(validatedSecurity !== undefined ? { security: validatedSecurity } : {}),
   };
 }
 
-function validateChainConfig(raw: unknown, path: string): ChainConfig {
+function validateChainConfig(
+  raw: unknown,
+  path: string,
+  tradeCeiling: number,
+  volumeCeiling: number,
+): ChainConfig {
   if (!isRecord(raw)) {
     throw new ConfigValidationError('Chain config must be an object', path);
   }
@@ -134,7 +165,7 @@ function validateChainConfig(raw: unknown, path: string): ChainConfig {
       ? { allowlist: validateAllowlist(raw['allowlist'], `${path}.allowlist`) }
       : {}),
     ...(raw['limits'] !== undefined
-      ? { limits: validateLimits(raw['limits'], `${path}.limits`) }
+      ? { limits: validateLimits(raw['limits'], `${path}.limits`, tradeCeiling, volumeCeiling) }
       : {}),
   };
 }
@@ -191,7 +222,12 @@ function validateUpdateConfig(raw: Record<string, unknown>): UpdateConfig {
   return { auto_install: autoInstall };
 }
 
-function validateLimits(raw: unknown, path: string): LimitsConfig {
+function validateLimits(
+  raw: unknown,
+  path: string,
+  tradeCeiling: number,
+  volumeCeiling: number,
+): LimitsConfig {
   if (!isRecord(raw)) {
     throw new ConfigValidationError('Limits must be an object', path);
   }
@@ -203,6 +239,14 @@ function validateLimits(raw: unknown, path: string): LimitsConfig {
     );
   }
 
+  if (raw['max_single_trade'] > tradeCeiling) {
+    throw new ConfigValidationError(
+      `"max_single_trade" (${String(raw['max_single_trade'])}) exceeds the safety ceiling of ${String(tradeCeiling)}. ` +
+        `To raise the ceiling, set security.max_single_trade_ceiling in config.toml.`,
+      `${path}.max_single_trade`,
+    );
+  }
+
   if (typeof raw['max_24h_volume'] !== 'number' || raw['max_24h_volume'] <= 0) {
     throw new ConfigValidationError(
       '"max_24h_volume" must be a positive number',
@@ -210,8 +254,39 @@ function validateLimits(raw: unknown, path: string): LimitsConfig {
     );
   }
 
+  if (raw['max_24h_volume'] > volumeCeiling) {
+    throw new ConfigValidationError(
+      `"max_24h_volume" (${String(raw['max_24h_volume'])}) exceeds the safety ceiling of ${String(volumeCeiling)}. ` +
+        `To raise the ceiling, set security.max_24h_volume_ceiling in config.toml.`,
+      `${path}.max_24h_volume`,
+    );
+  }
+
   return {
     max_single_trade: raw['max_single_trade'],
     max_24h_volume: raw['max_24h_volume'],
+  };
+}
+
+function validateSecurityConfig(raw: Record<string, unknown>): SecurityConfig {
+  const tradeCeiling = raw['max_single_trade_ceiling'];
+  if (tradeCeiling !== undefined && (typeof tradeCeiling !== 'number' || tradeCeiling <= 0)) {
+    throw new ConfigValidationError(
+      '"max_single_trade_ceiling" must be a positive number if present',
+      'security.max_single_trade_ceiling',
+    );
+  }
+
+  const volumeCeiling = raw['max_24h_volume_ceiling'];
+  if (volumeCeiling !== undefined && (typeof volumeCeiling !== 'number' || volumeCeiling <= 0)) {
+    throw new ConfigValidationError(
+      '"max_24h_volume_ceiling" must be a positive number if present',
+      'security.max_24h_volume_ceiling',
+    );
+  }
+
+  return {
+    ...(tradeCeiling !== undefined ? { max_single_trade_ceiling: tradeCeiling } : {}),
+    ...(volumeCeiling !== undefined ? { max_24h_volume_ceiling: volumeCeiling } : {}),
   };
 }

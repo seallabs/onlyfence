@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { ONLYFENCE_DIR } from '../config/loader.js';
+import { SECURE_DIR_MODE } from '../security/file-permissions.js';
 import type { UpdateCache } from '../types/update.js';
 
 /**
@@ -71,7 +72,7 @@ export class FileUpdateCacheService implements UpdateCacheService {
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         // Directory doesn't exist yet (first run) — create and retry.
-        mkdirSync(dirname(this.cachePath), { recursive: true });
+        mkdirSync(dirname(this.cachePath), { recursive: true, mode: SECURE_DIR_MODE });
         writeFileSync(tmpPath, data, 'utf-8');
       } else {
         throw err;

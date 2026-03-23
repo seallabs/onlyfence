@@ -1,0 +1,74 @@
+/**
+ * IPC protocol types for daemon ↔ CLI communication.
+ *
+ * Messages are newline-delimited JSON (\n terminated) over Unix domain
+ * sockets or TCP. Each message is a single JSON object.
+ */
+
+import type { ActionIntent, PipelineResult } from '../core/action-types.js';
+
+// ─── Request types ────────────────────────────────────────────────────────────
+
+export type IpcRequestType = 'trade' | 'status' | 'reload' | 'stop';
+
+export interface IpcRequest {
+  readonly id: string;
+  readonly type: IpcRequestType;
+  readonly payload: unknown;
+}
+
+export interface TradePayload {
+  readonly intent: ActionIntent;
+  readonly tradeValueUsd?: number;
+}
+
+export interface ReloadPayload {
+  readonly password: string;
+}
+
+// ─── Response types ───────────────────────────────────────────────────────────
+
+export interface IpcResponse {
+  readonly id: string;
+  readonly ok: boolean;
+  readonly data?: unknown;
+  readonly error?: string;
+}
+
+export interface DaemonStatus {
+  readonly pid: number;
+  readonly uptime: number;
+  readonly tier: 'standalone' | 'daemon' | 'docker';
+  readonly configHash: string;
+  readonly rolling24hVolume: Record<string, number>;
+  readonly connections: number;
+}
+
+export interface TradeResponse {
+  readonly result: PipelineResult;
+}
+
+// ─── Framing helpers ──────────────────────────────────────────────────────────
+
+/** Serialize a message to newline-delimited JSON. */
+export function encodeMessage(msg: IpcRequest | IpcResponse): string {
+  return JSON.stringify(msg) + '\n';
+}
+
+/** Parse a newline-delimited JSON buffer into messages. */
+export function decodeMessages(buffer: string): { messages: unknown[]; remainder: string } {
+  const messages: unknown[] = [];
+  let start = 0;
+
+  for (let i = 0; i < buffer.length; i++) {
+    if (buffer[i] === '\n') {
+      const line = buffer.slice(start, i).trim();
+      if (line.length > 0) {
+        messages.push(JSON.parse(line));
+      }
+      start = i + 1;
+    }
+  }
+
+  return { messages, remainder: buffer.slice(start) };
+}

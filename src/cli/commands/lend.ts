@@ -20,6 +20,7 @@ import type {
 import { NoOpMevProtector } from '../../core/mev-protector.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
 import type { PolicyContext } from '../../policy/context.js';
+import { captureException } from '../../telemetry/index.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { loadSessionKeyBytes } from '../../wallet/session.js';
@@ -178,21 +179,15 @@ async function executeTokenLendingAction(
     // resolveTokenInput handles alias resolution (case-insensitive),
     // coin type normalization, decimal fetching, and amount scaling.
     const resolved = await resolveTokenInput(token, amountStr, chainAdapter, dataProvider);
-    const { coinType, symbol, scaledAmount } = resolved;
+    const { coinType, scaledAmount } = resolved;
 
     // Resolve market ID and USD price in parallel (independent operations)
+    // PriceCache (wrapping the data provider) implements fail-closed:
+    // if the oracle is unreachable and the cache is stale (>5 min),
+    // getPrice() throws OracleStalePriceError — the trade is rejected.
     const [marketId, tradeValueUsd] = await Promise.all([
       resolveMarketId(alphalendClient, coinType, options.market),
-      dataProvider
-        .getPrice(coinType)
-        .then((price) => parseFloat(amountStr) * price)
-        .catch((err: unknown) => {
-          log.warn(
-            { token: symbol, error: toErrorMessage(err) },
-            'Price unavailable; USD spending limits will not be enforced',
-          );
-          return undefined;
-        }),
+      dataProvider.getPrice(coinType).then((price) => parseFloat(amountStr) * price),
     ]);
 
     // Build intent
@@ -211,7 +206,7 @@ async function executeTokenLendingAction(
     const policyCtx: PolicyContext = {
       config: chainConfig,
       activityLog,
-      ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
+      tradeValueUsd,
     };
 
     // Resolve signer from active session if not watch-only
@@ -246,7 +241,8 @@ async function executeTokenLendingAction(
     printJsonOutput(output.cliOutput);
     process.exitCode = output.exitCode;
   } catch (err: unknown) {
-    log.error({ err: toErrorMessage(err) }, `Lend ${action} failed`);
+    log.error({ err }, `Lend ${action} failed`);
+    captureException(err);
     const errorOutput: CliOutput = {
       status: 'error',
       action,

@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { ONLYFENCE_DIR } from '../config/loader.js';
 import type { KeystoreData, EncryptedKeystore } from './types.js';
 import { toErrorMessage } from '../utils/index.js';
+import { enforceFilePermissions, SECURE_DIR_MODE } from '../security/file-permissions.js';
 
 /** Current keystore format version. */
 const KEYSTORE_VERSION = 1;
@@ -43,8 +44,9 @@ export function saveKeystore(
 ): void {
   const encrypted = encryptKeystoreData(data, password);
 
-  mkdirSync(dirname(path), { recursive: true });
+  mkdirSync(dirname(path), { recursive: true, mode: SECURE_DIR_MODE });
   writeFileSync(path, JSON.stringify(encrypted, null, 2), 'utf-8');
+  enforceFilePermissions(path);
 }
 
 /**

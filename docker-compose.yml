@@ -1,0 +1,27 @@
+services:
+  onlyfence:
+    image: ghcr.io/seallabs/onlyfence:latest
+    ports:
+      - "127.0.0.1:19876:19876" # Loopback only — not network-reachable
+    volumes:
+      - onlyfence-data:/data
+    environment:
+      - FENCE_PASSWORD_FILE=/run/secrets/fence_password
+    secrets:
+      - fence_password
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "node", "dist/cli/index.js", "status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  onlyfence-data:
+
+secrets:
+  fence_password:
+    file: ./.fence_password

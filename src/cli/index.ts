@@ -2,6 +2,8 @@
 
 import { Command } from 'commander';
 import { createLogger, getLogger, hasLogger } from '../logger/index.js';
+import { sanitizeEnvironment, runStartupChecks } from '../security/index.js';
+import { assertNoPasswordInArgv } from '../security/runtime-assertions.js';
 import { captureException, closeSentry } from '../telemetry/index.js';
 import {
   CURRENT_VERSION,
@@ -19,14 +21,20 @@ import {
   registerLendCommand,
   registerLockCommand,
   registerQueryCommand,
+  registerQuickstartCommand,
+  registerReloadCommand,
   registerSetupCommand,
+  registerStartCommand,
   registerStatsCommand,
+  registerStatusCommand,
+  registerStopCommand,
   registerSwapCommand,
   registerUnlockCommand,
   registerUpdateCommand,
   registerWalletCommand,
 } from './commands/index.js';
 import { withTiming } from './middleware.js';
+import { warn as styleWarn } from './style.js';
 
 /**
  * Log, report, and print a fatal error. Used by all global error handlers.
@@ -80,6 +88,22 @@ export function createProgram(): { program: Command; cleanup: () => void } {
     }
   });
 
+  // Security: log sanitized env vars and run startup checks (once per process)
+  let startupChecksDone = false;
+  program.hook('preAction', () => {
+    if (startupChecksDone) return;
+    startupChecksDone = true;
+
+    if (hasLogger() && removedVars.length > 0) {
+      getLogger().warn({ removed: removedVars }, 'Dangerous environment variables stripped');
+    }
+
+    const warnings = runStartupChecks();
+    for (const w of warnings) {
+      styleWarn(`${w.message} ${w.fix}`);
+    }
+  });
+
   // Automatic command timing (Phase 2)
   withTiming(program, () => cachedComponents?.cliEventLog);
 
@@ -100,6 +124,13 @@ export function createProgram(): { program: Command; cleanup: () => void } {
   registerUnlockCommand(program);
   registerLockCommand(program);
 
+  // Daemon commands (Tier 1/2)
+  registerStartCommand(program);
+  registerStopCommand(program);
+  registerStatusCommand(program);
+  registerReloadCommand(program);
+  registerQuickstartCommand(program);
+
   // Default action: launch interactive TUI when no subcommand is given.
   // If bootstrap fails (first run), the TUI shows a setup wizard.
   program.action(async () => {
@@ -110,6 +141,17 @@ export function createProgram(): { program: Command; cleanup: () => void } {
 
   return { program, cleanup };
 }
+
+// --- Security: sanitize environment ---
+// NOTE: ES module imports are hoisted, so NODE_OPTIONS injection takes effect
+// before this runs. This is a known limitation — the real defense is:
+// (1) Tier 1 daemon: env is sanitized by the shell entrypoint before Node starts
+// (2) Tier 2 Docker: container namespace isolation
+// This call still strips vars for any *subsequent* child processes.
+const removedVars = sanitizeEnvironment();
+
+// Fail fast if a password leaked into argv (developer bug)
+assertNoPasswordInArgv();
 
 // --- Global error handlers ---
 

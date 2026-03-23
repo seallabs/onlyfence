@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-standalone
+.git
+.github
+landing
+*.md
+.env*
+.fence_password

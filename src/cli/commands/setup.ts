@@ -150,14 +150,7 @@ export function registerSetupCommand(program: Command): void {
         // Step 4: Encrypt and save keystore
         step(4, TOTAL_STEPS, 'Encrypt Keystore');
 
-        const password = await promptPasswordWithRetry(
-          `  ${cyan('?')} Enter a password to encrypt your keystore: `,
-        );
-        const confirmPassword = await promptPasswordWithRetry(`  ${cyan('?')} Confirm password: `);
-
-        if (password !== confirmPassword) {
-          throw new Error('Passwords do not match.');
-        }
+        const password = await promptPasswordWithConfirm();
 
         saveSetupKeystore(result, password);
         success('Keystore saved and encrypted.');
@@ -259,6 +252,24 @@ async function promptPasswordWithRetry(prompt: string): Promise<string> {
       return password;
     }
     warn(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
+  }
+}
+
+/**
+ * Prompt for password + confirmation with retry on mismatch.
+ * Loops until both entries match and meet minimum length.
+ */
+async function promptPasswordWithConfirm(): Promise<string> {
+  for (;;) {
+    const password = await promptPasswordWithRetry(
+      `  ${cyan('?')} Enter a password to encrypt your keystore: `,
+    );
+    const confirm = await promptPasswordWithRetry(`  ${cyan('?')} Confirm password: `);
+
+    if (password === confirm) {
+      return password;
+    }
+    warn('Passwords do not match. Please try again.');
   }
 }
 
