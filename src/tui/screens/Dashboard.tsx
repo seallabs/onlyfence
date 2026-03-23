@@ -131,27 +131,51 @@ export function Dashboard(): ReactElement {
         <Text color={theme.muted}>{`  ─  Chain: ${activeChain}`}</Text>
       </Box>
 
-      {/* Row 1: Wallet + Policy side by side */}
-      <Box>
-        <Panel title="Wallet" width="50%">
-          <Text color={theme.eyes}>{`Chain:   ${activeChain}`}</Text>
-          <Text color={theme.eyes}>
-            {`Address: ${data.walletAddress ?? 'No wallet configured'}`}
-          </Text>
-          <Text
-            color={theme.eyes}
-          >{`Status:  ${data.walletAddress !== null ? 'Primary' : '-'}`}</Text>
-        </Panel>
+      {/* Row 1: Wallet (dedicated row for full-width address) */}
+      <Panel title="Wallet">
+        <Text color={theme.eyes}>{`Chain:   ${activeChain}`}</Text>
+        <Text color={theme.eyes}>{`Address: ${data.walletAddress ?? 'No wallet configured'}`}</Text>
+        <Text
+          color={theme.eyes}
+        >{`Status:  ${data.walletAddress !== null ? 'Primary' : '-'}`}</Text>
+      </Panel>
 
-        <Panel title="Policy Status" width="50%">
+      {/* Row 2: Policy Status + Allowed Tokens + Spending Limits */}
+      <Box marginTop={1}>
+        <Panel title="Policy Status" width="34%">
           <Text color={theme.eyes}>{`Active Checks: ${checks.length}`}</Text>
           {checks.map((name) => (
             <Text key={name} color={theme.success}>{`  + ${name}`}</Text>
           ))}
         </Panel>
+
+        <Panel title="Allowed Tokens" width="33%">
+          {tokens.length > 0 ? (
+            <Box flexWrap="wrap">
+              {tokens.map((token) => (
+                <Box key={token} marginRight={1}>
+                  <Text color={theme.eyes}>{token}</Text>
+                </Box>
+              ))}
+            </Box>
+          ) : (
+            <Text color={theme.muted} italic>
+              {'No tokens configured'}
+            </Text>
+          )}
+        </Panel>
+
+        <Panel title="Spending Limits" width="33%">
+          <Text color={theme.eyes}>
+            {`Max Single Trade: ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : 'None'}`}
+          </Text>
+          <Text color={theme.eyes}>
+            {`Max 24h Volume:   ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : 'None'}`}
+          </Text>
+        </Panel>
       </Box>
 
-      {/* Row 2: Account Balance */}
+      {/* Row 3: Account Balance */}
       <Panel title="Account Balance" marginTop={1}>
         {data.walletAddress === null ? (
           <Text color={theme.muted} italic>
@@ -172,7 +196,7 @@ export function Dashboard(): ReactElement {
         )}
       </Panel>
 
-      {/* Row 3: 24h Volume */}
+      {/* Row 4: 24h Volume */}
       <Panel title="24h Rolling Volume" marginTop={1}>
         <Text color={theme.eyes}>
           {`$${data.volume24h.toFixed(2)} / ${maxVolume > 0 ? `$${maxVolume.toFixed(2)}` : 'No limit'}`}
@@ -185,34 +209,6 @@ export function Dashboard(): ReactElement {
           <Text color={theme.eyes}>{` ${volumePercent.toFixed(1)}%`}</Text>
         </Box>
       </Panel>
-
-      {/* Row 4: Allowed Tokens + Spending Limits */}
-      <Box marginTop={1}>
-        <Panel title="Allowed Tokens" width="50%">
-          {tokens.length > 0 ? (
-            <Box flexWrap="wrap">
-              {tokens.map((token) => (
-                <Box key={token} marginRight={1}>
-                  <Text color={theme.eyes}>{token}</Text>
-                </Box>
-              ))}
-            </Box>
-          ) : (
-            <Text color={theme.muted} italic>
-              {'No tokens configured'}
-            </Text>
-          )}
-        </Panel>
-
-        <Panel title="Spending Limits" width="50%">
-          <Text color={theme.eyes}>
-            {`Max Single Trade: ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_single_trade}` : 'None'}`}
-          </Text>
-          <Text color={theme.eyes}>
-            {`Max 24h Volume:   ${chainConfig.limits !== undefined ? `$${chainConfig.limits.max_24h_volume}` : 'None'}`}
-          </Text>
-        </Panel>
-      </Box>
 
       {/* Row 5: Recent Trades */}
       <Panel title="Recent Trades" marginTop={1}>
