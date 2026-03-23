@@ -26,7 +26,9 @@ Your agent can swap tokens, lend, borrow, open and close positions, and run comp
 
 Think of it like giving your AI agent a **company credit card with spending limits** instead of handing over your bank account.
 
-<!-- TODO: [IMAGE] Hero graphic — split screen showing "Without OnlyFence" (wallet drained, red scary) vs "With OnlyFence" (agent running strategies safely within guardrails) -->
+<p align="center">
+  <img src="static/img/hero.png" width="720" alt="Without OnlyFence vs With OnlyFence — AI trading safety comparison" />
+</p>
 
 ### The Problem
 
@@ -57,7 +59,9 @@ Your AI Agent → OnlyFence → Blockchain
   Any check fails → action blocked, you stay safe
 ```
 
-<!-- TODO: [VIDEO] 30-second demo — show `fence setup` creating a wallet, then `fence swap` with a trade getting approved, then a trade getting blocked by spending limit -->
+<p align="center">
+  <video src="static/video/demo.mp4" width="720" controls alt="OnlyFence demo — setup, swap, and spending limit block"></video>
+</p>
 
 ---
 
@@ -76,7 +80,9 @@ Your AI Agent → OnlyFence → Blockchain
 
 Every action goes through your safety rules first. Your agent gets rich DeFi capabilities — you keep full control.
 
-<!-- TODO: [IMAGE] Diagram showing the agent in the center connected to multiple DeFi actions (swap, lend, borrow, LP, stake) with a shield/fence icon in between -->
+<p align="center">
+  <img src="static/img/diagram/defi_agent_guardrails.png" width="720" alt="Diagram — AI agent connected to DeFi actions through OnlyFence guardrails" />
+</p>
 
 ---
 
@@ -104,7 +110,9 @@ curl -fsSL https://raw.githubusercontent.com/seallabs/onlyfence/main/install.sh 
 
 That's it. No account needed. No sign-up. No credit card.
 
-<!-- TODO: [GIF] Terminal recording of the install script running — show the output messages and success -->
+<p align="center">
+  <img src="static/gif/install.gif" width="720" alt="Terminal recording of OnlyFence install script" />
+</p>
 
 <details>
 <summary><strong>Install a specific version</strong></summary>
@@ -137,36 +145,11 @@ npm install && npm run build
 
 ## Getting Started
 
-### Step 1: Set Up Your Wallet
+The installer runs `fence setup` automatically, so your wallet is ready to go after install.
 
-```sh
-fence setup
-```
+> **Important:** Write down the mnemonic phrase shown during install and keep it somewhere safe. This is the only way to recover your wallet. OnlyFence will never show it again.
 
-The setup wizard walks you through everything:
-
-```
-? How would you like to set up your wallet?
-  ▸ Generate new wallet (recommended)
-    Import existing private key or mnemonic
-
-✓ Wallet generated. Back up this mnemonic:
-  abandon ability able about above ...
-
-  Sui: 0x7a3f...e821
-
-✓ Keystore encrypted
-✓ Config initialized
-✓ Database initialized
-
-  You're all set! Run `fence` to open the dashboard.
-```
-
-<!-- TODO: [GIF] Terminal recording of `fence setup` — show the interactive prompts and the success output -->
-
-> **Important:** Write down the mnemonic phrase (the list of words) and keep it somewhere safe. This is the only way to recover your wallet. OnlyFence will never show it again.
-
-### Step 2: Set Your Rules
+### Step 1: Set Your Rules
 
 Your safety rules are in a simple config file. The defaults are sensible, but you can change them anytime:
 
@@ -192,7 +175,7 @@ fence config set chain.sui.limits.max_24h_volume 1000
 fence config set chain.sui.allowlist.tokens '["SUI", "USDC", "USDT", "DEEP", "BLUE", "WAL", "CETUS"]'
 ```
 
-### Step 3: Let Your Agent Work
+### Step 2: Let Your Agent Work
 
 ```sh
 # Swap tokens — guardrails check every trade automatically
@@ -211,24 +194,12 @@ fence query price SUI,USDC
 
 Your agent calls these commands and gets structured JSON responses. Every action is checked against your rules before it touches the chain.
 
-### Step 4: Open the Dashboard
+### Step 3: Open the Dashboard
 
 You don't have to use the command line for everything. OnlyFence includes a **full interactive dashboard** right in your terminal — just run:
 
 ```sh
 fence
-```
-
-```
-╭──────────────────────────────────────────────────────────────╮
-│ <1> Dashboard  <2> Trades  <3> Policy  <4> Wallet  <q> Quit │
-│                                                              │
-│   ▀▀▀▀▀                                                     │
-│   ▀█▀█▀█   OnlyFence          Account Balance               │
-│   ▀▀ ▀▀ ▀   AI Trading        ──────────────────────        │
-│   ▄ ▄ ▄ ▄   Guardrails        SUI   42.5    $38.25          │
-│                                USDC  100.0   $100.00         │
-╰──────────────────────────────────────────────────────────────╯
 ```
 
 From the dashboard you can:
@@ -237,9 +208,9 @@ From the dashboard you can:
 - **View and change your safety rules** — no need to edit config files manually
 - **Manage wallets** — switch between wallets, check addresses
 
-<!-- TODO: [IMAGE] Screenshot of the actual TUI dashboard — full terminal width, showing the Dashboard tab with balance widget -->
-
-<!-- TODO: [GIF] Quick walkthrough of TUI tabs — switch from Dashboard to Trades to Policy to Wallet, showing each screen -->
+<p align="center">
+  <img src="static/gif/tui.gif" width="720" alt="OnlyFence TUI dashboard — walkthrough of tabs" />
+</p>
 
 ---
 
@@ -329,7 +300,6 @@ Your AI agent calls `fence` commands with `--output json` to get structured resp
 | Command | What it does |
 |---------|-------------|
 | `fence` | Open the interactive dashboard |
-| `fence setup` | Set up your wallet and config (run this first) |
 | `fence swap SUI USDC 10` | Swap tokens (with safety checks) |
 | `fence query balance` | See your wallet balance |
 | `fence query price SUI,USDC` | Check token prices in USD |
