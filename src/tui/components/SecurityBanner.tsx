@@ -27,7 +27,7 @@ export function SecurityBanner(): ReactElement | null {
     <Box paddingX={1} marginBottom={1}>
       <Text color={theme.warning}>
         {
-          '⚠ Standalone mode — Config and keystore accessible to local processes. For better security: fence start'
+          '⚠ Standalone mode — Any same-user process (including AI agents) can extract your private keys. For better security: fence start'
         }
       </Text>
     </Box>

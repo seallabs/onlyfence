@@ -219,7 +219,7 @@ async function resolveMnemonic(mnemonicFile: string | undefined): Promise<string
 
 // ── Interactive setup ────────────────────────────────────────────────────────
 
-const INTERACTIVE_STEPS = 5;
+const INTERACTIVE_STEPS = 6;
 
 /** Interactive setup wizard with TTY prompts. */
 async function runInteractiveSetup(alias?: string): Promise<void> {
@@ -311,10 +311,37 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
     saveSetupKeystore(result, password);
     success('Keystore saved and encrypted.');
 
-    // Step 5: Telemetry opt-in (only if not already configured)
+    // Step 5: Automatic updates (only if not already configured)
     const config = loadConfig(CONFIG_PATH);
+    if (config.update === undefined) {
+      step(5, INTERACTIVE_STEPS, 'Enable Automatic Updates');
+      console.log('');
+      console.log(`  OnlyFence can automatically install new versions when available.`);
+      console.log(
+        `  ${dim('Updates are downloaded from GitHub releases and verified before installing.')}`,
+      );
+      console.log('');
+
+      const updateChoice = await promptYesNo(
+        `  ${cyan('?')} Enable automatic updates? ${dim('[Y/n]')}: `,
+      );
+      const autoInstall = updateChoice === 'y';
+
+      updateConfigFile((raw) => {
+        raw['update'] = { auto_install: autoInstall };
+      });
+
+      if (autoInstall) {
+        success('Automatic updates enabled.');
+      } else {
+        info('Automatic updates disabled.');
+      }
+      info(`You can change this later in ${dim('config.toml [update]')}`);
+    }
+
+    // Step 6: Telemetry opt-in (only if not already configured)
     if (config.telemetry === undefined) {
-      step(5, INTERACTIVE_STEPS, 'Anonymous Error Reporting');
+      step(6, INTERACTIVE_STEPS, 'Anonymous Error Reporting');
       console.log('');
       console.log(`  OnlyFence can report anonymous crash data to help improve the tool.`);
       console.log(`  ${dim('No wallet addresses, keys, balances, or trade data will be sent.')}`);

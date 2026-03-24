@@ -11,17 +11,19 @@ import { theme } from '../theme.js';
  * Security Status screen showing the current security posture.
  *
  * Displays: deployment tier, file permissions status, process hardening,
- * active policy checks, and startup warnings.
+ * active policy checks, trust boundaries, and startup warnings.
  */
 export function SecurityStatus(): ReactElement {
   const [warnings, setWarnings] = useState<StartupWarning[]>([]);
   const [daemonRunning, setDaemonRunning] = useState(false);
   const [daemonPid, setDaemonPid] = useState<number | null>(null);
+  const [isRoot, setIsRoot] = useState(false);
 
   useEffect(() => {
     setWarnings(runStartupChecks());
     setDaemonRunning(isDaemonRunning());
     setDaemonPid(readPidFile());
+    setIsRoot(typeof process.getuid === 'function' && process.getuid() === 0);
   }, []);
 
   const tier = daemonRunning ? 'Tier 1 (Daemon)' : 'Tier 0 (Standalone)';
@@ -55,6 +57,39 @@ export function SecurityStatus(): ReactElement {
               ? '  ✓  Trade history exclusive lock held by daemon'
               : '  ⚠  Trade history writable by local processes'}
           </Text>
+        </Box>
+
+        <Box flexDirection="column">
+          <Text bold>{'Trust Boundary'}</Text>
+          {isRoot ? (
+            <Box flexDirection="column">
+              <Text color={theme.error}>{'  ✖  ROOT ACCESS — ALL protections are bypassed'}</Text>
+              <Text color={theme.error}>
+                {'     Root can: read keystore, session, socket, and daemon memory'}
+              </Text>
+            </Box>
+          ) : daemonRunning ? (
+            <Box flexDirection="column">
+              <Text color={theme.success}>
+                {'  ✓  Same-user agents can execute trades (within policy limits)'}
+              </Text>
+              <Text color={theme.success}>
+                {'  ✓  Same-user agents CANNOT extract private keys'}
+              </Text>
+              <Text color={theme.warning}>
+                {'  ⚠  Root/sudo access would bypass all protections'}
+              </Text>
+            </Box>
+          ) : (
+            <Box flexDirection="column">
+              <Text color={theme.error}>
+                {'  ✖  Same-user agents CAN extract private keys from session file'}
+              </Text>
+              <Text color={theme.warning}>
+                {'  ⚠  Root/sudo access would bypass all protections'}
+              </Text>
+            </Box>
+          )}
         </Box>
 
         {warnings.length > 0 && (

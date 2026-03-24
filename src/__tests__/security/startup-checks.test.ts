@@ -47,4 +47,26 @@ describe('runStartupChecks', () => {
     const dirWarning = warnings.find((w) => w.code === 'DATA_DIR_PERMISSIONS');
     expect(dirWarning).toBeUndefined();
   });
+
+  it('warns about active session file exposing keys to same-user processes', () => {
+    const dir = join(tmpdir(), `fence-test-${randomBytes(4).toString('hex')}`);
+    mkdirSync(dir, { mode: 0o700 });
+    writeFileSync(join(dir, 'session'), '{}', { mode: 0o600 });
+
+    const warnings = runStartupChecks(dir);
+    const sessionWarning = warnings.find((w) => w.code === 'SAME_USER_SESSION_EXPOSURE');
+    expect(sessionWarning).toBeDefined();
+    expect(sessionWarning?.level).toBe('warn');
+    expect(sessionWarning?.message).toContain('extract your private keys');
+    expect(sessionWarning?.fix).toContain('fence start');
+  });
+
+  it('does not warn about session exposure when no session file exists', () => {
+    const dir = join(tmpdir(), `fence-test-${randomBytes(4).toString('hex')}`);
+    mkdirSync(dir, { mode: 0o700 });
+
+    const warnings = runStartupChecks(dir);
+    const sessionWarning = warnings.find((w) => w.code === 'SAME_USER_SESSION_EXPOSURE');
+    expect(sessionWarning).toBeUndefined();
+  });
 });

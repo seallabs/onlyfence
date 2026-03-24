@@ -50,7 +50,27 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   }
   const logger = getLogger();
 
-  // 0. Process hardening — only meaningful for the long-lived daemon process
+  // 0. Root warning — daemon as root means keys are exposed to all root processes.
+  // PR_SET_DUMPABLE and file permissions do NOT protect against root (CAP_SYS_PTRACE).
+  if (typeof process.getuid === 'function' && process.getuid() === 0) {
+    process.stderr.write(
+      '\n' +
+        '╔══════════════════════════════════════════════════════════════════╗\n' +
+        '║  CRITICAL: Daemon running as root                              ║\n' +
+        '║                                                                ║\n' +
+        '║  Root bypasses ALL security controls:                          ║\n' +
+        '║    - File permissions (0o600) are ignored                      ║\n' +
+        '║    - PR_SET_DUMPABLE does not block root (CAP_SYS_PTRACE)     ║\n' +
+        '║    - Socket restrictions do not apply                          ║\n' +
+        '║    - Any root process can ptrace this daemon and read keys     ║\n' +
+        '║                                                                ║\n' +
+        '║  Never grant root/sudo access to AI agents or untrusted code. ║\n' +
+        '╚══════════════════════════════════════════════════════════════════╝\n\n',
+    );
+    logger.error('Daemon started as root — all process hardening is ineffective against root');
+  }
+
+  // 0b. Process hardening — only meaningful for the long-lived daemon process
   const nondumpable = trySetNondumpable();
   const denyAttach = tryDenyAttach();
   if (nondumpable) logger.info('PR_SET_DUMPABLE=0 applied');

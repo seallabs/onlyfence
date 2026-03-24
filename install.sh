@@ -369,6 +369,36 @@ main() {
         # Re-attach stdin to the terminal so interactive prompts work
         # even when the installer was piped via curl | sh
         "${BIN_DIR}/fence" setup </dev/tty
+
+        # ── Mode selection ──────────────────────────────────────────────
+        printf "\n"
+        printf "  %bHow would you like to run OnlyFence?%b\n\n" "$BOLD" "$RESET"
+        printf "  %b1) Standalone%b  (default)\n" "$BOLD" "$RESET"
+        printf "     Best for trying things out. No background process.\n"
+        printf "     You unlock the wallet manually before each session.\n"
+        printf "     %b⚠ Agents can see your password and private keys%b\n\n" "$YELLOW" "$RESET"
+        printf "  %b2) Daemon%b  %b(recommended)%b\n" "$BOLD" "$RESET" "$GREEN" "$RESET"
+        printf "     Best for real use. Keys are protected by a background\n"
+        printf "     process — agents can trade but never see your keys.\n\n"
+        printf "  %b⚠ Important:%b Never grant root/sudo access to AI agents.\n" "$YELLOW" "$RESET"
+        printf "     Root bypasses all OnlyFence protections in every mode.\n\n"
+        printf "  Choose mode [1/2]: "
+
+        mode_choice=""
+        read -r mode_choice </dev/tty
+
+        case "$mode_choice" in
+          2)
+            printf "\n"
+            info "Starting daemon in background..."
+            "${BIN_DIR}/fence" start -d </dev/tty
+            ;;
+          *)
+            printf "\n"
+            ok "Running in standalone mode."
+            info "You can start the daemon later with: fence start -d"
+            ;;
+        esac
       else
         info "No interactive terminal detected — skipping setup wizard."
         printf "\n%bGet started:%b\n" "$BOLD" "$RESET"

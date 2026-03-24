@@ -25,13 +25,21 @@ export interface StartupWarning {
 export function runStartupChecks(dataDir: string = ONLYFENCE_DIR): StartupWarning[] {
   const warnings: StartupWarning[] = [];
 
-  // Check 1: Running as root
+  // Check 1: Running as root — CRITICAL
+  // Root bypasses ALL file permissions (0o600), socket restrictions,
+  // and on Linux even PR_SET_DUMPABLE (root has CAP_SYS_PTRACE).
+  // A root process can read the session file to extract keys without the password,
+  // connect to the daemon socket to execute trades, and ptrace the daemon to
+  // read decrypted keys from memory.
   if (typeof process.getuid === 'function' && process.getuid() === 0) {
     warnings.push({
-      level: 'warn',
+      level: 'error',
       code: 'RUNNING_AS_ROOT',
-      message: 'OnlyFence is running as root. This is unnecessary and increases attack surface.',
-      fix: 'Run as a regular user instead.',
+      message:
+        'Running as root. Root access bypasses ALL OnlyFence security controls: ' +
+        'file permissions, socket restrictions, and process hardening. ' +
+        'Any process with root/sudo can extract your private keys.',
+      fix: 'Run as a regular user. Never grant root/sudo to AI agents or untrusted scripts.',
     });
   }
 
@@ -89,6 +97,24 @@ export function runStartupChecks(dataDir: string = ONLYFENCE_DIR): StartupWarnin
     } catch {
       // stat failed — skip this check
     }
+  }
+
+  // Check 5: Same-user agent access — inherent limitation
+  // File permissions (0o600) protect against OTHER users, not same-user processes.
+  // If an AI agent runs as the same user, it can read the session file (Tier 0)
+  // or connect to the IPC socket (Tier 1) to execute trades.
+  // This is by design — Tier 1 daemon prevents key EXTRACTION, not trade execution.
+  // Warn only in Tier 0 where session file exposes raw key material.
+  const sessionPath = join(dataDir, 'session');
+  if (existsSync(sessionPath)) {
+    warnings.push({
+      level: 'warn',
+      code: 'SAME_USER_SESSION_EXPOSURE',
+      message:
+        'Active session file detected (Tier 0). Any process running as your user ' +
+        'can read this file and extract your private keys without the password.',
+      fix: 'Use daemon mode (fence start) so keys stay in memory, not on disk.',
+    });
   }
 
   return warnings;
