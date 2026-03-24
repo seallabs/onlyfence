@@ -47,6 +47,31 @@ export function deriveSuiKeypair(seed: Buffer, path: string = SUI_DERIVATION_PAT
 }
 
 /**
+ * Derive an ed25519 keypair and Sui address from a raw 32-byte private key seed.
+ *
+ * Unlike `deriveSuiKeypair`, this does not perform HD derivation — it takes
+ * the raw ed25519 seed directly.
+ *
+ * @param rawSeed - 32-byte ed25519 private key seed
+ * @returns The derived keypair and Sui address
+ * @throws Error if rawSeed is not exactly 32 bytes
+ */
+export function keypairFromRawKey(rawSeed: Uint8Array): DerivedKeypair {
+  if (rawSeed.length !== 32) {
+    throw new Error(`Private key seed must be 32 bytes, got ${rawSeed.length}.`);
+  }
+
+  const keypair = nacl.sign.keyPair.fromSeed(rawSeed);
+  const address = publicKeyToSuiAddress(keypair.publicKey);
+
+  return {
+    publicKey: keypair.publicKey,
+    secretKey: keypair.secretKey,
+    address,
+  };
+}
+
+/**
  * Convert an ed25519 public key to a Sui address.
  *
  * Address = 0x + hex(BLAKE2b-256(0x00 || publicKey))[:32 bytes]

@@ -4,9 +4,16 @@ import { stdin, stdout } from 'node:process';
 import { openDatabase, DB_PATH } from '../../db/connection.js';
 import { initConfig, updateConfigFile, loadConfig, CONFIG_PATH } from '../../config/loader.js';
 import { ConfigAlreadyExistsError } from '../../config/schema.js';
-import { generateSetupWallet, importSetupWallet, saveSetupKeystore } from '../../wallet/setup.js';
+import {
+  generateSetupWallet,
+  importSetupWallet,
+  importSetupWalletFromKey,
+  saveSetupKeystore,
+  mergeKeyIntoKeystore,
+} from '../../wallet/setup.js';
 import type { SetupResult } from '../../wallet/setup.js';
-import { MIN_PASSWORD_LENGTH } from '../../wallet/keystore.js';
+import { MIN_PASSWORD_LENGTH, DEFAULT_KEYSTORE_PATH } from '../../wallet/keystore.js';
+import { existsSync } from 'node:fs';
 import { CURRENT_VERSION } from '../../update/version.js';
 import {
   printLogo,
@@ -95,16 +102,31 @@ export function registerSetupCommand(program: Command): void {
         step(3, TOTAL_STEPS, 'Wallet Setup');
 
         const choice = await rl.question(
-          `  ${cyan('?')} Would you like to ${bold('(g)enerate')} a new wallet or ${bold('(i)mport')} an existing one? ${dim('[g/i]')}: `,
+          `  ${cyan('?')} Would you like to ${bold('(g)enerate')} a new wallet, ${bold('(i)mport')} by mnemonic, or import by private ${bold('(k)ey')}? ${dim('[g/i/k]')}: `,
         );
 
         let result: SetupResult;
 
         const trimmed = choice.trim();
-        // Detect if the user pasted a mnemonic phrase directly at the g/i prompt
+        // Detect if the user pasted a mnemonic phrase directly at the prompt
         const looksLikeMnemonic = trimmed.split(/\s+/).length >= 12;
 
-        if (trimmed.toLowerCase() === 'i' || looksLikeMnemonic) {
+        if (trimmed.toLowerCase() === 'k') {
+          // Detach readline before secret prompt — its keypress listeners
+          // echo characters even in raw mode.
+          rl.pause();
+          stdin.removeAllListeners('keypress');
+          stdin.resume();
+
+          const privateKey = await promptPassword(
+            `  ${cyan('?')} Enter your private key (hex or suiprivkey1…): `,
+          );
+          result = importSetupWalletFromKey(db, privateKey, options.alias);
+
+          success('Wallet imported from private key!');
+          console.log('');
+          box([`${bold('Chain')}    ${result.chainId}`, `${bold('Address')}  ${result.address}`]);
+        } else if (trimmed.toLowerCase() === 'i' || looksLikeMnemonic) {
           const mnemonic = looksLikeMnemonic
             ? trimmed
             : await rl.question(`  ${cyan('?')} Enter your BIP-39 mnemonic phrase: `);
@@ -124,7 +146,7 @@ export function registerSetupCommand(program: Command): void {
             [
               bold(yellow('⚠  BACK UP YOUR MNEMONIC PHRASE')),
               '',
-              green(result.mnemonic),
+              green(result.mnemonic ?? ''),
               '',
               dim('Write it down and store it somewhere safe.'),
               dim('You will NOT see this again.'),
@@ -150,16 +172,29 @@ export function registerSetupCommand(program: Command): void {
         // Step 4: Encrypt and save keystore
         step(4, TOTAL_STEPS, 'Encrypt Keystore');
 
-        const password = await promptPasswordWithRetry(
-          `  ${cyan('?')} Enter a password to encrypt your keystore: `,
-        );
-        const confirmPassword = await promptPasswordWithRetry(`  ${cyan('?')} Confirm password: `);
+        const keystoreExists = existsSync(DEFAULT_KEYSTORE_PATH);
 
-        if (password !== confirmPassword) {
-          throw new Error('Passwords do not match.');
+        if (keystoreExists) {
+          info('Existing keystore found. Enter your password to add the new key.');
+          const password = await promptPasswordWithRetry(
+            `  ${cyan('?')} Enter keystore password: `,
+          );
+          mergeKeyIntoKeystore(result.chainId, result.privateKeyHex, password);
+        } else {
+          const password = await promptPasswordWithRetry(
+            `  ${cyan('?')} Enter a password to encrypt your keystore: `,
+          );
+          const confirmPassword = await promptPasswordWithRetry(
+            `  ${cyan('?')} Confirm password: `,
+          );
+
+          if (password !== confirmPassword) {
+            throw new Error('Passwords do not match.');
+          }
+
+          saveSetupKeystore(result, password);
         }
 
-        saveSetupKeystore(result, password);
         success('Keystore saved and encrypted.');
 
         // Step 5: Telemetry opt-in (only if not already configured)

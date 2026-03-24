@@ -4,9 +4,11 @@ import { join } from 'node:path';
 import type Database from 'better-sqlite3';
 import { mnemonicToSeedSync, validateMnemonic } from 'bip39';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { encodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { openMemoryDatabase } from '../db/connection.js';
 import {
   deriveSuiKeypair,
+  keypairFromRawKey,
   publicKeyToSuiAddress,
   SUI_DERIVATION_PATH,
 } from '../wallet/derivation.js';
@@ -16,10 +18,12 @@ import {
   loadKeystore,
   saveKeystore,
 } from '../wallet/keystore.js';
+import { mergeKeyIntoKeystore } from '../wallet/setup.js';
 import {
   generateWallet,
   getPrimaryWallet,
   importFromMnemonic,
+  importFromPrivateKey,
   listWallets,
   registerWalletAddress,
 } from '../wallet/manager.js';
@@ -84,6 +88,30 @@ describe('Wallet Derivation', () => {
     const addr2 = publicKeyToSuiAddress(keypair.publicKey);
     expect(addr1).toBe(addr2);
     expect(addr1).toBe(keypair.address);
+  });
+
+  describe('keypairFromRawKey', () => {
+    it('should derive a valid Sui address from a 32-byte seed', () => {
+      const seed = mnemonicToSeedSync(TEST_MNEMONIC);
+      const bip44Keypair = deriveSuiKeypair(Buffer.from(seed));
+      const rawSeed = bip44Keypair.secretKey.slice(0, 32);
+      const result = keypairFromRawKey(rawSeed);
+
+      expect(result.address).toBe(bip44Keypair.address);
+      expect(Buffer.from(result.publicKey).toString('hex')).toBe(
+        Buffer.from(bip44Keypair.publicKey).toString('hex'),
+      );
+    });
+
+    it('should produce a valid Sui address format', () => {
+      const rawSeed = new Uint8Array(32).fill(0xab);
+      const result = keypairFromRawKey(rawSeed);
+      expect(result.address).toMatch(/^0x[0-9a-f]{64}$/);
+    });
+
+    it('should throw on invalid key length', () => {
+      expect(() => keypairFromRawKey(new Uint8Array(16))).toThrow('32 bytes');
+    });
   });
 });
 
@@ -226,6 +254,53 @@ describe('Wallet Manager', () => {
       expect(evmPrimary?.address).toBe('0xevm_primary');
     });
   });
+
+  describe('importFromPrivateKey', () => {
+    const RAW_SEED = new Uint8Array(32).fill(0xab);
+    const HEX_KEY = Buffer.from(RAW_SEED).toString('hex');
+
+    it('should import a wallet from a hex private key', () => {
+      const result = importFromPrivateKey(db, HEX_KEY);
+      expect(result.wallet.chainId).toBe('sui:mainnet');
+      expect(result.wallet.address).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(result.wallet.derivationPath).toBeNull();
+      expect(result.wallet.isWatchOnly).toBe(false);
+      expect(result.privateKeyHex).toBe(HEX_KEY);
+    });
+
+    it('should import a wallet from suiprivkey bech32 format', () => {
+      const encoded = encodeSuiPrivateKey(RAW_SEED, 'ED25519');
+      const result = importFromPrivateKey(db, encoded);
+      expect(result.wallet.address).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(result.wallet.derivationPath).toBeNull();
+    });
+
+    it('should derive the same address from hex and bech32 of the same key', () => {
+      const db2 = openMemoryDatabase();
+      const hexResult = importFromPrivateKey(db, HEX_KEY);
+      const bech32Key = encodeSuiPrivateKey(RAW_SEED, 'ED25519');
+      const bech32Result = importFromPrivateKey(db2, bech32Key);
+      expect(hexResult.wallet.address).toBe(bech32Result.wallet.address);
+    });
+
+    it('should respect a custom alias', () => {
+      const result = importFromPrivateKey(db, HEX_KEY, 'my-imported');
+      expect(result.wallet.alias).toBe('my-imported');
+    });
+
+    it('should throw on duplicate address', () => {
+      importFromPrivateKey(db, HEX_KEY);
+      expect(() => importFromPrivateKey(db, HEX_KEY)).toThrow('already exists');
+    });
+
+    it('should throw on invalid hex key (wrong length)', () => {
+      expect(() => importFromPrivateKey(db, 'abcd')).toThrow();
+    });
+
+    it('should throw on invalid bech32 key', () => {
+      expect(() => importFromPrivateKey(db, 'suiprivkey1invalid')).toThrow();
+    });
+  });
 });
 
 describe('Keystore', () => {
@@ -333,5 +408,55 @@ describe('Keystore', () => {
       expect(decrypted.mnemonic).toBeUndefined();
       expect(decrypted.keys).toEqual(dataNoMnemonic.keys);
     });
+  });
+});
+
+describe('mergeKeyIntoKeystore', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'onlyfence-merge-test-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should create a new keystore when none exists', () => {
+    const path = join(tmpDir, 'keystore');
+    mergeKeyIntoKeystore('sui:mainnet', 'aabb'.repeat(16), 'testpass', path);
+
+    const loaded = loadKeystore('testpass', path);
+    expect(loaded.keys['sui:mainnet']).toBe('aabb'.repeat(16));
+    expect(loaded.mnemonic).toBeUndefined();
+  });
+
+  it('should merge into an existing keystore preserving existing keys', () => {
+    const path = join(tmpDir, 'keystore');
+    const existing: KeystoreData = {
+      mnemonic: 'test mnemonic',
+      keys: { 'sui:mainnet': 'existingkey123' },
+    };
+    saveKeystore(existing, 'testpass', path);
+
+    mergeKeyIntoKeystore('sui:devnet', 'newkey456', 'testpass', path);
+
+    const loaded = loadKeystore('testpass', path);
+    expect(loaded.mnemonic).toBe('test mnemonic');
+    expect(loaded.keys['sui:mainnet']).toBe('existingkey123');
+    expect(loaded.keys['sui:devnet']).toBe('newkey456');
+  });
+
+  it('should overwrite an existing key for the same chain', () => {
+    const path = join(tmpDir, 'keystore');
+    const existing: KeystoreData = {
+      keys: { 'sui:mainnet': 'oldkey' },
+    };
+    saveKeystore(existing, 'testpass', path);
+
+    mergeKeyIntoKeystore('sui:mainnet', 'newkey', 'testpass', path);
+
+    const loaded = loadKeystore('testpass', path);
+    expect(loaded.keys['sui:mainnet']).toBe('newkey');
   });
 });
