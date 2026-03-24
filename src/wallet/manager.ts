@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { generateMnemonic, validateMnemonic, mnemonicToSeedSync } from 'bip39';
-import { deriveSuiKeypair, SUI_DERIVATION_PATH } from './derivation.js';
+import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
+import { deriveSuiKeypair, keypairFromRawKey, SUI_DERIVATION_PATH } from './derivation.js';
 import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import type { WalletInfo, WalletRow } from './types.js';
 
@@ -32,6 +33,16 @@ export interface ImportWalletResult {
 export interface RegisterWalletResult {
   /** Wallet info for the registered address */
   readonly wallet: WalletInfo;
+}
+
+/**
+ * Result of importing a wallet from a raw private key.
+ */
+export interface ImportFromKeyResult {
+  /** Wallet info for the imported address */
+  readonly wallet: WalletInfo;
+  /** Hex-encoded 32-byte private key seed for keystore storage */
+  readonly privateKeyHex: string;
 }
 
 /**
@@ -275,6 +286,94 @@ export function renameAlias(db: Database.Database, oldAlias: string, newAlias: s
     }
     throw err;
   }
+}
+
+/**
+ * Parse a private key string into a 32-byte ed25519 seed.
+ *
+ * Accepts either:
+ * - `suiprivkey1…` bech32-encoded key (decoded via @mysten/sui)
+ * - 64-character hex string (32 bytes)
+ *
+ * @param input - Private key in hex or bech32 format
+ * @returns 32-byte Uint8Array seed
+ * @throws Error if the input format is invalid
+ */
+function parsePrivateKeyInput(input: string): Uint8Array {
+  const trimmed = input.trim();
+
+  if (trimmed.startsWith('suiprivkey')) {
+    const decoded = decodeSuiPrivateKey(trimmed);
+    if (decoded.scheme !== 'ED25519') {
+      throw new Error(
+        `Unsupported key scheme "${decoded.scheme}". Only ED25519 keys are supported.`,
+      );
+    }
+    return decoded.secretKey;
+  }
+
+  // Hex format: must be exactly 64 hex chars (32 bytes)
+  if (!/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    throw new Error(
+      'Invalid private key format. Expected 64-character hex string or suiprivkey1… bech32 key.',
+    );
+  }
+
+  return new Uint8Array(Buffer.from(trimmed, 'hex'));
+}
+
+/**
+ * Import a wallet from a raw private key (hex or suiprivkey bech32).
+ *
+ * Derives the ed25519 public key and Sui address, then stores the wallet
+ * in the database. No mnemonic or derivation path is associated.
+ *
+ * @param db - SQLite database connection
+ * @param privateKeyInput - Private key in hex or suiprivkey bech32 format
+ * @param alias - Optional custom alias for the wallet
+ * @returns The imported wallet information and hex-encoded private key seed
+ * @throws Error if the key format is invalid or the wallet already exists
+ */
+export function importFromPrivateKey(
+  db: Database.Database,
+  privateKeyInput: string,
+  alias?: string,
+): ImportFromKeyResult {
+  const seed = parsePrivateKeyInput(privateKeyInput);
+  const keypair = keypairFromRawKey(seed);
+
+  const resolvedAlias = alias ?? generateAlias(db, 'sui', false);
+
+  // Set as primary if no other wallet exists for this chain
+  const isPrimary = getPrimaryWallet(db, SUI_CHAIN_ID) === null;
+
+  const wallet: WalletInfo = {
+    chainId: SUI_CHAIN_ID,
+    address: keypair.address,
+    derivationPath: null,
+    isPrimary,
+    isWatchOnly: false,
+    alias: resolvedAlias,
+  };
+
+  insertWallet(db, wallet);
+
+  const privateKeyHex = Buffer.from(seed).toString('hex');
+
+  return { wallet, privateKeyHex };
+}
+
+/**
+ * Remove a wallet record by address.
+ *
+ * Used for rollback when a subsequent operation (e.g., keystore save) fails
+ * after the wallet was already inserted into the database.
+ *
+ * @param db - SQLite database connection
+ * @param address - The wallet address to remove
+ */
+export function removeWallet(db: Database.Database, address: string): void {
+  db.prepare('DELETE FROM wallets WHERE address = ?').run(address);
 }
 
 /**

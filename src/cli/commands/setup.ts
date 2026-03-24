@@ -4,16 +4,22 @@ import { stdin, stdout } from 'node:process';
 import { openDatabase, DB_PATH } from '../../db/connection.js';
 import { initConfig, updateConfigFile, loadConfig, CONFIG_PATH } from '../../config/loader.js';
 import { ConfigAlreadyExistsError } from '../../config/schema.js';
-import { generateSetupWallet, importSetupWallet, saveSetupKeystore } from '../../wallet/setup.js';
+import {
+  generateSetupWallet,
+  importSetupWallet,
+  importSetupWalletFromKey,
+  saveSetupKeystore,
+  mergeKeyIntoKeystore,
+} from '../../wallet/setup.js';
 import type { SetupResult } from '../../wallet/setup.js';
-import { MIN_PASSWORD_LENGTH } from '../../wallet/keystore.js';
+import { DEFAULT_KEYSTORE_PATH } from '../../wallet/keystore.js';
+import { existsSync } from 'node:fs';
 import { CURRENT_VERSION } from '../../update/version.js';
 import {
   printLogo,
   step,
   info,
   success,
-  warn,
   error,
   box,
   bold,
@@ -22,32 +28,9 @@ import {
   yellow,
   green,
 } from '../style.js';
+import { promptSecret, promptPasswordWithRetry, promptYesNo } from '../prompt.js';
 
 const TOTAL_STEPS = 5;
-
-/** Terminal control character constants. */
-const KEY = {
-  CTRL_C: '\x03',
-  BACKSPACE_DEL: '\x7f',
-  BACKSPACE_BS: '\b',
-  ENTER_CR: '\r',
-  ENTER_LF: '\n',
-  ESCAPE: '\x1b',
-} as const;
-
-/**
- * Execute a callback with stdin in raw mode, restoring the previous
- * raw-mode state afterwards — even on error.
- */
-async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
-  const wasRaw = stdin.isRaw;
-  stdin.setRawMode(true);
-  try {
-    return await fn();
-  } finally {
-    stdin.setRawMode(wasRaw);
-  }
-}
 
 /**
  * Register the `fence setup` command on the given program.
@@ -95,16 +78,31 @@ export function registerSetupCommand(program: Command): void {
         step(3, TOTAL_STEPS, 'Wallet Setup');
 
         const choice = await rl.question(
-          `  ${cyan('?')} Would you like to ${bold('(g)enerate')} a new wallet or ${bold('(i)mport')} an existing one? ${dim('[g/i]')}: `,
+          `  ${cyan('?')} Would you like to ${bold('(g)enerate')} a new wallet, ${bold('(i)mport')} by mnemonic, or import by private ${bold('(k)ey')}? ${dim('[g/i/k]')}: `,
         );
 
         let result: SetupResult;
 
         const trimmed = choice.trim();
-        // Detect if the user pasted a mnemonic phrase directly at the g/i prompt
+        // Detect if the user pasted a mnemonic phrase directly at the prompt
         const looksLikeMnemonic = trimmed.split(/\s+/).length >= 12;
 
-        if (trimmed.toLowerCase() === 'i' || looksLikeMnemonic) {
+        if (trimmed.toLowerCase() === 'k') {
+          // Detach readline before secret prompt — its keypress listeners
+          // echo characters even in raw mode.
+          rl.pause();
+          stdin.removeAllListeners('keypress');
+          stdin.resume();
+
+          const privateKey = await promptSecret(
+            `  ${cyan('?')} Enter your private key (hex or suiprivkey1…): `,
+          );
+          result = importSetupWalletFromKey(db, privateKey, options.alias);
+
+          success('Wallet imported from private key!');
+          console.log('');
+          box([`${bold('Chain')}    ${result.chainId}`, `${bold('Address')}  ${result.address}`]);
+        } else if (trimmed.toLowerCase() === 'i' || looksLikeMnemonic) {
           const mnemonic = looksLikeMnemonic
             ? trimmed
             : await rl.question(`  ${cyan('?')} Enter your BIP-39 mnemonic phrase: `);
@@ -124,7 +122,7 @@ export function registerSetupCommand(program: Command): void {
             [
               bold(yellow('⚠  BACK UP YOUR MNEMONIC PHRASE')),
               '',
-              green(result.mnemonic),
+              green(result.mnemonic ?? ''),
               '',
               dim('Write it down and store it somewhere safe.'),
               dim('You will NOT see this again.'),
@@ -150,16 +148,29 @@ export function registerSetupCommand(program: Command): void {
         // Step 4: Encrypt and save keystore
         step(4, TOTAL_STEPS, 'Encrypt Keystore');
 
-        const password = await promptPasswordWithRetry(
-          `  ${cyan('?')} Enter a password to encrypt your keystore: `,
-        );
-        const confirmPassword = await promptPasswordWithRetry(`  ${cyan('?')} Confirm password: `);
+        const keystoreExists = existsSync(DEFAULT_KEYSTORE_PATH);
 
-        if (password !== confirmPassword) {
-          throw new Error('Passwords do not match.');
+        if (keystoreExists) {
+          info('Existing keystore found. Enter your password to add the new key.');
+          const password = await promptPasswordWithRetry(
+            `  ${cyan('?')} Enter keystore password: `,
+          );
+          mergeKeyIntoKeystore(result.chainId, result.privateKeyHex, password);
+        } else {
+          const password = await promptPasswordWithRetry(
+            `  ${cyan('?')} Enter a password to encrypt your keystore: `,
+          );
+          const confirmPassword = await promptPasswordWithRetry(
+            `  ${cyan('?')} Confirm password: `,
+          );
+
+          if (password !== confirmPassword) {
+            throw new Error('Passwords do not match.');
+          }
+
+          saveSetupKeystore(result, password);
         }
 
-        saveSetupKeystore(result, password);
         success('Keystore saved and encrypted.');
 
         // Step 5: Telemetry opt-in (only if not already configured)
@@ -211,93 +222,4 @@ export function registerSetupCommand(program: Command): void {
         stdin.pause();
       }
     });
-}
-
-/**
- * Prompt for a single-key y/n input using raw stdin.
- * Returns the lowercase key pressed ('y' or 'n').
- * Any key other than y/Y defaults to 'n'.
- */
-async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
-  return withRawMode(() => {
-    stdout.write(prompt);
-
-    return new Promise<'y' | 'n'>((resolve) => {
-      const onData = (key: Buffer): void => {
-        const ch = key.toString('utf8');
-
-        if (ch === KEY.CTRL_C) {
-          stdin.removeListener('data', onData);
-          stdout.write('\n');
-          process.exit(130);
-        }
-
-        stdin.removeListener('data', onData);
-
-        if (ch.toLowerCase() === 'y') {
-          stdout.write('y\n');
-          resolve('y');
-        } else {
-          stdout.write('n\n');
-          resolve('n');
-        }
-      };
-
-      stdin.on('data', onData);
-    });
-  });
-}
-
-/**
- * Prompt for a password with retry on validation failure.
- * Loops until the user provides a valid password.
- */
-async function promptPasswordWithRetry(prompt: string): Promise<string> {
-  for (;;) {
-    const password = await promptPassword(prompt);
-    if (password.length >= MIN_PASSWORD_LENGTH) {
-      return password;
-    }
-    warn(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
-  }
-}
-
-/**
- * Prompt for a password input with echo disabled so the password
- * is not visible in the terminal.
- *
- * Raw mode is enabled BEFORE writing the prompt to prevent
- * the terminal from echoing the first keystroke in plain text.
- */
-async function promptPassword(prompt: string): Promise<string> {
-  return withRawMode(() => {
-    stdout.write(prompt);
-
-    return new Promise<string>((resolve) => {
-      let buf = '';
-      const onData = (key: Buffer): void => {
-        const ch = key.toString('utf8');
-
-        if (ch === KEY.ENTER_CR || ch === KEY.ENTER_LF) {
-          stdin.removeListener('data', onData);
-          stdout.write('\n');
-          resolve(buf);
-        } else if (ch === KEY.BACKSPACE_DEL || ch === KEY.BACKSPACE_BS) {
-          if (buf.length > 0) {
-            buf = buf.slice(0, -1);
-            stdout.write('\b \b');
-          }
-        } else if (ch === KEY.CTRL_C) {
-          stdin.removeListener('data', onData);
-          stdout.write('\n');
-          process.exit(130);
-        } else if (!ch.startsWith(KEY.ESCAPE)) {
-          buf += ch;
-          stdout.write('•');
-        }
-      };
-
-      stdin.on('data', onData);
-    });
-  });
 }

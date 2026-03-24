@@ -4,6 +4,7 @@ import { toErrorMessage } from '../../utils/index.js';
 import { listWallets } from '../../wallet/manager.js';
 import type { AppComponents } from '../bootstrap.js';
 import { withComponents } from '../with-components.js';
+import { registerWalletImportKeyCommand } from './wallet-import-key.js';
 import { registerWalletRenameCommand } from './wallet-rename.js';
 import { registerWalletSwitchCommand } from './wallet-switch.js';
 import { registerWalletWatchCommand } from './wallet-watch.js';
@@ -26,6 +27,7 @@ export function registerWalletCommand(program: Command, getComponents: () => App
   registerWalletWatchCommand(walletCmd, getDb);
   registerWalletSwitchCommand(walletCmd, getDb);
   registerWalletRenameCommand(walletCmd, getDb);
+  registerWalletImportKeyCommand(walletCmd, getDb);
 
   // fence wallet list
   walletCmd
