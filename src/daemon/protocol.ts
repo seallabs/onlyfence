@@ -7,6 +7,24 @@
 
 import type { ActionIntent, PipelineResult } from '../core/action-types.js';
 
+// ─── Lifecycle messages (Node IPC between parent ↔ forked daemon) ────────────
+
+/** Message type sent by the daemon to signal it is ready to accept connections. */
+export const DAEMON_READY_MSG = 'daemon-ready' as const;
+
+export interface DaemonReadyMessage {
+  readonly type: typeof DAEMON_READY_MSG;
+  readonly pid: number;
+}
+
+export function isDaemonReadyMessage(msg: unknown): msg is DaemonReadyMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    (msg as Record<string, unknown>)['type'] === DAEMON_READY_MSG
+  );
+}
+
 // ─── Request types ────────────────────────────────────────────────────────────
 
 export type IpcRequestType = 'trade' | 'status' | 'reload' | 'stop';

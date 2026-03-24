@@ -203,10 +203,20 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   // 8. Write PID file
   writePidFile();
 
-  // 9. Print startup summary to stderr
+  // 9. Signal parent process (detached mode) that daemon is ready
+  if (typeof process.send === 'function') {
+    const { DAEMON_READY_MSG } = await import('./protocol.js');
+    process.send({ type: DAEMON_READY_MSG, pid: process.pid });
+    // Disconnect IPC channel — parent no longer needs it
+    if (typeof process.disconnect === 'function') {
+      process.disconnect();
+    }
+  }
+
+  // 10. Print startup summary to stderr
   printStartupSummary(serverOptions, configSnapshot.configHash, components.config);
 
-  // 10. Graceful shutdown handler
+  // 11. Graceful shutdown handler
   async function shutdown(): Promise<void> {
     logger.info('Shutting down daemon...');
     await server.stop();

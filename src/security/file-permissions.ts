@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, lstatSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Owner-only read/write: the permission mode for all sensitive files. */
@@ -40,7 +40,16 @@ export function enforceFilePermissions(filePath: string, mode: number = SECURE_F
 export const SECURE_DIR_MODE = 0o700;
 
 /** Files that contain sensitive data and must be 0o600. */
-export const SENSITIVE_FILES = ['keystore', 'config.toml', 'trades.db', 'session'] as const;
+export const SENSITIVE_FILES = [
+  'keystore',
+  'config.toml',
+  'trades.db',
+  'session',
+  'update-check.json',
+] as const;
+
+/** Subdirectories that must be 0o700, with their file contents at 0o600. */
+const SENSITIVE_DIRS = ['logs'] as const;
 
 /**
  * Enforce secure permissions on the data directory and all sensitive files.
@@ -69,6 +78,28 @@ export function ensureSecureDataDir(dataDir: string): void {
     const filePath = join(dataDir, filename);
     if (existsSync(filePath)) {
       enforceFilePermissions(filePath, SECURE_FILE_MODE);
+    }
+  }
+
+  // Enforce permissions on sensitive subdirectories and their contents
+  for (const dirName of SENSITIVE_DIRS) {
+    const subDir = join(dataDir, dirName);
+    if (!existsSync(subDir)) continue;
+
+    const dirStat = lstatSync(subDir);
+    if (dirStat.isSymbolicLink()) {
+      throw new Error(
+        `Refusing to use "${subDir}": directory is a symlink. ` +
+          `Remove the symlink and re-create the directory.`,
+      );
+    }
+    chmodSync(subDir, SECURE_DIR_MODE);
+
+    for (const entry of readdirSync(subDir)) {
+      const entryPath = join(subDir, entry);
+      if (lstatSync(entryPath).isFile()) {
+        enforceFilePermissions(entryPath, SECURE_FILE_MODE);
+      }
     }
   }
 }

@@ -1,7 +1,11 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { ONLYFENCE_DIR } from '../config/loader.js';
-import { SECURE_DIR_MODE } from '../security/file-permissions.js';
+import {
+  SECURE_DIR_MODE,
+  SECURE_FILE_MODE,
+  enforceFilePermissions,
+} from '../security/file-permissions.js';
 import type { UpdateCache } from '../types/update.js';
 
 /**
@@ -80,6 +84,7 @@ export class FileUpdateCacheService implements UpdateCacheService {
     }
 
     renameSync(tmpPath, this.cachePath);
+    enforceFilePermissions(this.cachePath, SECURE_FILE_MODE);
   }
 
   isStale(cache: UpdateCache, ttlMs: number = DEFAULT_CACHE_TTL_MS): boolean {

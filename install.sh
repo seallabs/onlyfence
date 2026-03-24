@@ -134,10 +134,14 @@ download_to_stdout() {
 # ─── Version resolution ─────────────────────────────────────────────────────
 
 get_latest_version() {
-  download_to_stdout "https://api.github.com/repos/${REPO}/releases/latest" \
+  # List all releases and pick the first stable (non-prerelease) tag.
+  # Stable = vX.Y.Z or X.Y.Z with no suffix like -rc.1, -beta.2, etc.
+  # Pre-releases can still be installed via ONLYFENCE_VERSION.
+  download_to_stdout "https://api.github.com/repos/${REPO}/releases" \
     | grep '"tag_name"' \
-    | head -1 \
-    | cut -d'"' -f4
+    | cut -d'"' -f4 \
+    | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
+    | head -1
 }
 
 # ─── Installation ───────────────────────────────────────────────────────────

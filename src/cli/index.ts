@@ -2,7 +2,8 @@
 
 import { Command } from 'commander';
 import { createLogger, getLogger, hasLogger } from '../logger/index.js';
-import { sanitizeEnvironment, runStartupChecks } from '../security/index.js';
+import { sanitizeEnvironment, runStartupChecks, ensureSecureDataDir } from '../security/index.js';
+import { ONLYFENCE_DIR } from '../config/loader.js';
 import { assertNoPasswordInArgv } from '../security/runtime-assertions.js';
 import { captureException, closeSentry } from '../telemetry/index.js';
 import {
@@ -94,6 +95,8 @@ export function createProgram(): { program: Command; cleanup: () => void } {
     if (startupChecksDone) return;
     startupChecksDone = true;
 
+    ensureSecureDataDir(ONLYFENCE_DIR);
+
     if (hasLogger() && removedVars.length > 0) {
       getLogger().warn({ removed: removedVars }, 'Dangerous environment variables stripped');
     }
@@ -149,6 +152,21 @@ export function createProgram(): { program: Command; cleanup: () => void } {
 // (2) Tier 2 Docker: container namespace isolation
 // This call still strips vars for any *subsequent* child processes.
 const removedVars = sanitizeEnvironment();
+
+// If NODE_OPTIONS was set, injected code (e.g. --require) already ran before
+// sanitizeEnvironment() could strip it. Abort immediately to prevent the CLI
+// from decrypting the keystore where a hook could intercept the plaintext keys.
+if (removedVars.includes('NODE_OPTIONS')) {
+  console.error(
+    'Security error: NODE_OPTIONS was set in the environment.\n' +
+      'This variable can inject code that runs before any security checks,\n' +
+      'allowing an attacker to intercept decrypted keys.\n\n' +
+      'If you set NODE_OPTIONS intentionally, unset it and use bin/fence instead:\n' +
+      '  unset NODE_OPTIONS && fence <command>\n\n' +
+      'Refusing to continue.',
+  );
+  process.exit(78); // EX_CONFIG
+}
 
 // Fail fast if a password leaked into argv (developer bug)
 assertNoPasswordInArgv();

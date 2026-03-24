@@ -34,7 +34,7 @@ export function registerQuickstartCommand(program: Command): void {
 
       if (options.detach) {
         const { forkDaemonDetached } = await import('../daemon-fork.js');
-        const pid = forkDaemonDetached({ password, ...options });
+        const pid = await forkDaemonDetached({ password, ...options });
         process.stderr.write(`\n  ✓ Daemon started in background (PID ${String(pid)})\n`);
         process.stderr.write('\n  Ready! Try:\n');
         process.stderr.write('    fence swap SUI USDC 100 --output json\n');

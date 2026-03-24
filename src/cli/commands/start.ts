@@ -25,16 +25,19 @@ export function registerStartCommand(program: Command): void {
           const { promptPassword } = await import('../password-prompt.js');
           const password = await promptPassword('Enter keystore password: ');
           const { forkDaemonDetached } = await import('../daemon-fork.js');
-          const pid = forkDaemonDetached({ password, ...options });
+          const pid = await forkDaemonDetached({ password, ...options });
           process.stderr.write(`Daemon started in background (PID ${String(pid)})\n`);
           process.stderr.write('  Check status:  fence status\n');
           process.stderr.write('  Stop daemon:   fence stop\n');
         } else {
           const { startDaemon } = await import('../../daemon/index.js');
           const { securePasswordFromPrompt } = await import('../../security/branded-types.js');
-          // Only prompt if no env var is set — daemon resolves env/file sources itself
+          // Only prompt if no env var is set AND stdin is a TTY.
+          // When forked in detached mode, stdin is a pipe carrying the password —
+          // startDaemon's resolvePassword() reads it via readStdinLine().
           let password: SecurePassword | undefined;
           if (
+            process.stdin.isTTY &&
             process.env['FENCE_PASSWORD'] === undefined &&
             process.env['FENCE_PASSWORD_FILE'] === undefined
           ) {
