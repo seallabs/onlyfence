@@ -131,14 +131,14 @@ describe('SuiAdapter', () => {
   });
 
   it('simulate should call the RPC client', async () => {
-    await expect(adapter.simulate(new Uint8Array(), '0xabc')).rejects.toThrow();
+    await expect(adapter.simulate(new Uint8Array())).rejects.toThrow();
   });
 
   it('signAndSubmit should call the RPC client', async () => {
     const signer: Signer = {
       address: '0xabc',
       publicKey: new Uint8Array(32),
-      sign: async (_data: Uint8Array) => new Uint8Array(64),
+      signTransaction: async (_bytes: Uint8Array) => ({ signature: '', bytes: '' }),
     };
     await expect(adapter.signAndSubmit(new Uint8Array(), signer)).rejects.toThrow();
   });

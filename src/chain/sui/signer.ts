@@ -20,6 +20,12 @@ export function buildSuiSigner(keyBytes: Uint8Array): Signer {
   return {
     address,
     publicKey,
-    sign: (data: Uint8Array): Promise<Uint8Array> => keypair.sign(data),
+    signTransaction: async (data: Uint8Array) => {
+      const payload = await keypair.signTransaction(data);
+      return {
+        signature: payload.signature,
+        bytes: payload.bytes,
+      };
+    },
   };
 }
