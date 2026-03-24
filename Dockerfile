@@ -4,9 +4,10 @@ FROM node:25-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+COPY scripts/ scripts/
 RUN npm ci
 
-COPY tsconfig.json ./
+COPY tsconfig.json CHANGELOG.md ./
 COPY src/ src/
 
 RUN npm run build

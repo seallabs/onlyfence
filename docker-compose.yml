@@ -1,18 +1,36 @@
+# OnlyFence daemon — Docker Compose reference.
+#
+# First run:
+#   echo "your-mnemonic" > .fence_mnemonic && chmod 600 .fence_mnemonic
+#   echo "your-password" > .fence_password && chmod 600 .fence_password
+#   docker compose up -d
+#
+# After the keystore is created you can delete .fence_mnemonic or leave
+# it empty — the entrypoint skips setup when the keystore already exists.
+#
+# Agent connects via TCP 127.0.0.1:19876 for trade/status requests.
 services:
   onlyfence:
-    image: ghcr.io/seallabs/onlyfence:latest
+    build: .
+    image: onlyfence:dev
     ports:
-      - "127.0.0.1:19876:19876" # Loopback only — not network-reachable
+      - "127.0.0.1:19876:19876"
     volumes:
       - onlyfence-data:/data
     environment:
       - FENCE_PASSWORD_FILE=/run/secrets/fence_password
     secrets:
       - fence_password
+      - fence_mnemonic
     restart: unless-stopped
     read_only: true
     tmpfs:
       - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 50
     healthcheck:
       test: ["CMD", "node", "dist/cli/index.js", "status"]
       interval: 30s
@@ -25,3 +43,5 @@ volumes:
 secrets:
   fence_password:
     file: ./.fence_password
+  fence_mnemonic:
+    file: ./.fence_mnemonic
