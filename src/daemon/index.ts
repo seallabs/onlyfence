@@ -315,3 +315,4 @@ function printStartupSummary(
 export { DaemonClient } from './client.js';
 export { detectExecutionMode, type ExecutionMode } from './detect.js';
 export { isDaemonRunning } from './pid-manager.js';
+export { stopDaemonGracefully, type StopResult } from './stop-helper.js';

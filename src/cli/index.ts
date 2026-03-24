@@ -30,6 +30,7 @@ import {
   registerStatusCommand,
   registerStopCommand,
   registerSwapCommand,
+  registerUninstallCommand,
   registerUnlockCommand,
   registerUpdateCommand,
   registerWalletCommand,
@@ -133,6 +134,7 @@ export function createProgram(): { program: Command; cleanup: () => void } {
   registerStatusCommand(program);
   registerReloadCommand(program);
   registerQuickstartCommand(program);
+  registerUninstallCommand(program);
 
   // Default action: launch interactive TUI when no subcommand is given.
   // If bootstrap fails (first run), the TUI shows a setup wizard.
