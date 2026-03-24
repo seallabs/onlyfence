@@ -161,7 +161,7 @@ if (removedVars.includes('NODE_OPTIONS')) {
     'Security error: NODE_OPTIONS was set in the environment.\n' +
       'This variable can inject code that runs before any security checks,\n' +
       'allowing an attacker to intercept decrypted keys.\n\n' +
-      'If you set NODE_OPTIONS intentionally, unset it and use bin/fence instead:\n' +
+      'If you set NODE_OPTIONS intentionally, unset it first:\n' +
       '  unset NODE_OPTIONS && fence <command>\n\n' +
       'Refusing to continue.',
   );

@@ -489,7 +489,7 @@ Yes. During `fence setup`, choose "Import existing private key or mnemonic" to u
 <details>
 <summary><strong>What happens if the price oracle is down?</strong></summary>
 
-If OnlyFence can't fetch USD prices, it still enforces your token allowlist. USD-based spending limits are skipped (not silently bypassed — this is logged). Your token restrictions always apply.
+OnlyFence uses a **fail-closed** approach. If the oracle is unreachable, it falls back to a cached price for up to 5 minutes. If the cache is stale or absent, the trade is **rejected** — not silently allowed. Token allowlist checks always apply regardless of oracle status.
 
 </details>
 

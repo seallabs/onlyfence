@@ -75,16 +75,24 @@ export function runStartupChecks(dataDir: string = ONLYFENCE_DIR): StartupWarnin
 
   // Check 4: Install directory writable by current user
   // (if the binary is in a user-writable location, an attacker could replace it)
+  // Skip for the standard ~/.onlyfence install path — that's our default and warning
+  // about it is just noise. Only warn for genuinely risky locations (/tmp, /var/tmp, etc.).
   const execDir = process.execPath.length > 0 ? join(process.execPath, '..') : null;
   if (execDir !== null && existsSync(execDir)) {
     try {
       const dirStat = statSync(execDir);
       const uid = typeof process.getuid === 'function' ? process.getuid() : -1;
-      // Warn if the install dir is owned by the current user (not root)
-      // AND the binary is not in a system path
+      const home = process.env['HOME'] ?? '';
+      const defaultInstallDir = home.length > 0 ? join(home, '.onlyfence') : '';
+      const isDefaultInstall =
+        defaultInstallDir.length > 0 &&
+        (execDir.startsWith(defaultInstallDir + '/') || execDir === defaultInstallDir);
+      // Warn if the install dir is owned by the current user (not root),
+      // not in a system path, AND not the standard ~/.onlyfence location
       if (
         uid !== 0 &&
         dirStat.uid === uid &&
+        !isDefaultInstall &&
         !execDir.startsWith('/usr/') &&
         !execDir.startsWith('/opt/')
       ) {

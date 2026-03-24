@@ -192,10 +192,32 @@ install_from_github_release() {
     return 1
   fi
 
-  # Create bin wrapper that uses the bundled Node.js
+  # Create bin wrapper that uses the bundled Node.js.
+  # The wrapper MUST strip environment variables that Node.js processes
+  # before any application code runs (e.g. NODE_OPTIONS --require).
+  # Without this, an attacker can inject arbitrary code via NODE_OPTIONS
+  # and intercept keystore decryption to steal the mnemonic and private keys.
   cat > "${BIN_DIR}/fence" <<'WRAPPER'
 #!/usr/bin/env sh
 set -eu
+
+# Strip environment variables that inject code or redirect traffic.
+# NODE_OPTIONS is processed by the Node.js runtime BEFORE any JS runs,
+# so the JS-level sanitizeEnvironment() cannot prevent --require injection.
+unset NODE_OPTIONS
+unset NODE_PATH
+unset NODE_EXTRA_CA_CERTS
+unset NODE_REDIRECT_WARNINGS
+unset NODE_REPL_EXTERNAL_MODULE
+unset LD_PRELOAD
+unset DYLD_INSERT_LIBRARIES
+unset DYLD_LIBRARY_PATH
+unset DYLD_FRAMEWORK_PATH
+unset HTTP_PROXY
+unset HTTPS_PROXY
+unset http_proxy
+unset https_proxy
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
 exec "${INSTALL_DIR}/runtime/node" "${INSTALL_DIR}/lib/cli/index.js" "$@"
