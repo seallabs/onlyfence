@@ -12,5 +12,4 @@ export { registerStartCommand } from './start.js';
 export { registerStopCommand } from './stop.js';
 export { registerStatusCommand } from './status.js';
 export { registerReloadCommand } from './reload.js';
-export { registerQuickstartCommand } from './quickstart.js';
 export { registerUninstallCommand } from './uninstall.js';
