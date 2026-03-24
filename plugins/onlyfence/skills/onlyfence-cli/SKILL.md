@@ -3,11 +3,12 @@ name: onlyfence-cli
 description: >
   How to use the OnlyFence CLI (`fence`) to execute DeFi actions on-chain with safety guardrails.
   Use this skill whenever the user asks to swap tokens, check wallet balances, query token prices,
-  manage wallets, configure trading limits or token allowlists, or perform any on-chain DeFi action
-  through OnlyFence. Also use when the user mentions "fence", "OnlyFence", trading guardrails,
-  DeFi safety rules, or wants an AI agent to interact with the Sui blockchain. If the user asks
-  to "trade", "swap", "check balance", "check price", or "set spending limit" in the context of
-  this project, this skill applies.
+  query activity history, analyze trading patterns, manage wallets, configure trading limits or
+  token allowlists, or perform any on-chain DeFi action through OnlyFence. Also use when the user
+  mentions "fence", "OnlyFence", trading guardrails, DeFi safety rules, activity analysis, or
+  wants an AI agent to interact with the Sui blockchain. If the user asks to "trade", "swap",
+  "check balance", "check price", "query activities", "show history", "analyze trades",
+  or "set spending limit" in the context of this project, this skill applies.
 ---
 
 # OnlyFence CLI — Agent Usage Guide
@@ -221,6 +222,90 @@ fence config show chain.sui.limits
 ```
 
 When setting array values, pass the full array as a JSON string — there is no "append" operation.
+
+### Query Activities
+
+Flexible querying of all DeFi activity history (trades, lending, LP, perp, staking) with filtering, aggregation, sorting, and grouping.
+
+```bash
+fence query activities [options]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-s, --select <cols>` | all | Comma-separated columns or aggregations (`SUM(value_usd)`, `COUNT(*)`) |
+| `-f, --filter <expr>` | — | Repeatable. `column=op=value` (ops: `eq`,`neq`,`gt`,`lt`,`gte`,`lte`,`in`,`like`,`between`) |
+| `-g, --group-by <cols>` | — | Comma-separated GROUP BY columns |
+| `--having <expr>` | — | Repeatable. Same format as filter |
+| `--order-by <expr>` | — | Repeatable. `column=asc` or `column=desc` |
+| `-l, --limit <n>` | `100` | Max rows (1-1000) |
+| `--offset <n>` | `0` | Pagination offset |
+| `--no-resolve-tokens` | — | Skip token symbol/decimal resolution (faster for aggregations) |
+| `-o, --output <format>` | `table` | `json` or `table` |
+
+Filters use `=` as delimiter (not `:`) because Sui coin types contain `::`. For `in`/`between`, comma-separate values: `category=in=trade,lending`. For `like`, use `%` as wildcard: `action=like=%swap%`.
+
+**Key columns:** `category` (trade/lending/lp/perp/staking), `action` (trade:swap, lending:supply, ...), `protocol`, `value_usd`, `gas_cost`, `policy_decision` (approved/rejected), `token_a_symbol`, `token_b_symbol`, `created_at`. Use `--no-resolve-tokens` when you only need aggregations — symbol columns require the join.
+
+**JSON output:** `{ columns: [...], rows: [...], totalCount: number }`. `totalCount` is the full count, not capped by limit.
+
+**Use `-o json`** for machine-parseable output. `chain_id` is auto-filtered by `--chain`.
+
+**Gotchas:**
+- **Timestamps are space-separated** (`2026-03-23 00:00:00`), not ISO `T`-format. Always use `YYYY-MM-DD HH:MM:SS` in date filters.
+- **`action` is always `category:action` format** (e.g., `trade:swap`, `lending:supply`). Filter with `eq=trade:swap`, not bare `swap`.
+
+#### Examples
+
+```bash
+# Recent swaps
+fence query activities -f action=eq=trade:swap --order-by created_at=desc -l 20 -o json
+
+# Volume by category
+fence query activities -s category,COUNT\(*\),SUM\(value_usd\) -g category --no-resolve-tokens -o json
+
+# Yesterday's volume (use space-separated timestamps)
+fence query activities -f 'created_at=gte=2026-03-23 00:00:00' -f 'created_at=lt=2026-03-24 00:00:00' -s 'COUNT(*),SUM(value_usd)' --no-resolve-tokens -o json
+
+# Rejected activities
+fence query activities -s action,rejection_reason,value_usd -f policy_decision=eq=rejected -o json
+```
+
+#### Programmatic Usage
+
+```typescript
+import { executeActivityQuery } from './db/activity-query-tool.js';
+const result = executeActivityQuery(db, {
+  select: ['category', 'SUM(value_usd)'],
+  filters: [{ column: 'policy_decision', op: 'eq', value: 'approved' }],
+  groupBy: ['category'],
+  resolveTokens: false,
+});
+```
+
+Tool schema for LLM function-calling: `getActivityQueryToolSchema()`.
+
+#### Common Agent Workflows
+
+**PnL calculation:** Query swap activities for token amounts/costs, then `fence query price` for current prices. Compare `value_usd` at swap time vs current token value.
+
+```bash
+# 1. Get all swap details
+fence query activities -f action=like=%swap% -s token_a_symbol,token_b_symbol,token_a_amount,token_b_amount,token_a_decimals,token_b_decimals,value_usd -o json
+# 2. Get current prices for tokens involved
+fence query price SUI WAL USDC -o json
+# 3. Calculate: current_value = (amount / 10^decimals) * current_price, PnL = current_value - value_usd
+```
+
+**Portfolio overview:** Combine balance + prices to get full holdings value.
+
+```bash
+# 1. Get all balances
+fence query balance -o json
+# 2. Price the meaningful tokens (filter out zero balances and dust)
+fence query price SUI USDC WAL CETUS DEEP -o json
+# 3. Calculate: value = (amount / 10^decimals) * price, sum for total portfolio
+```
 
 ### Usage Statistics
 
