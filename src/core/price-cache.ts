@@ -41,14 +41,11 @@ const DEFAULT_STALE_TTL_MS = 5 * 60 * 1000;
  */
 export class PriceCache implements DataProvider {
   private readonly cache = new Map<string, CachedPrice>();
-  private readonly staleTtlMs: number;
 
   constructor(
     private readonly inner: DataProvider,
-    staleTtlMs: number = DEFAULT_STALE_TTL_MS,
-  ) {
-    this.staleTtlMs = staleTtlMs;
-  }
+    private readonly staleTtlMs: number = DEFAULT_STALE_TTL_MS,
+  ) {}
 
   get chainId(): ChainId {
     return this.inner.chainId;

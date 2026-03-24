@@ -42,10 +42,7 @@ export class ConfigSnapshot {
    * @throws Error if the password is wrong or the new config is invalid
    */
   reload(password: string, configPath?: string, keystorePath?: string): string {
-    // Verify password by decrypting keystore (throws on wrong password)
     loadKeystore(password, keystorePath);
-
-    // Re-read and validate config
     const newConfig = loadConfig(configPath ?? CONFIG_PATH);
     this.config = Object.freeze(structuredClone(newConfig));
     this.hash = computeHash(newConfig);

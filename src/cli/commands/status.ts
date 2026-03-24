@@ -1,4 +1,5 @@
 import type { Command } from 'commander';
+import { toErrorMessage } from '../../utils/index.js';
 
 /**
  * Register the `fence status` command.
@@ -31,9 +32,7 @@ export function registerStatusCommand(program: Command): void {
           console.error(`Daemon error: ${response.error ?? 'Unknown error'}`);
           process.exitCode = 1;
         } catch (err: unknown) {
-          console.error(
-            `Failed to query daemon: ${err instanceof Error ? err.message : 'Unknown error'}`,
-          );
+          console.error(`Failed to query daemon: ${toErrorMessage(err)}`);
           process.exitCode = 1;
         }
       } else {

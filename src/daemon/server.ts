@@ -6,6 +6,7 @@
 import { createServer, type Server, type Socket } from 'node:net';
 import { chmodSync, unlinkSync, existsSync } from 'node:fs';
 import { assertLoopbackOnly } from '../security/tcp-guard.js';
+import { toErrorMessage } from '../utils/index.js';
 import { encodeMessage, decodeMessages, type IpcRequest, type IpcResponse } from './protocol.js';
 import { RateLimiter, ConnectionTracker } from './rate-limiter.js';
 
@@ -149,7 +150,7 @@ export class DaemonServer {
                 encodeMessage({
                   id: req.id,
                   ok: false,
-                  error: err instanceof Error ? err.message : 'Internal error',
+                  error: toErrorMessage(err),
                 }),
               );
             }

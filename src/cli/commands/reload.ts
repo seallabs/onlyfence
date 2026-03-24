@@ -1,4 +1,5 @@
 import type { Command } from 'commander';
+import { toErrorMessage } from '../../utils/index.js';
 
 /**
  * Register the `fence reload` command.
@@ -10,8 +11,8 @@ export function registerReloadCommand(program: Command): void {
     .command('reload')
     .description('Reload config in the running daemon (requires password)')
     .action(async () => {
-      const { isDaemonRunning, DaemonClient } = await import('../../daemon/index.js');
-      const { SOCKET_PATH } = await import('../../daemon/detect.js');
+      const { isDaemonRunning, DaemonClient, detectExecutionMode } =
+        await import('../../daemon/index.js');
 
       if (!isDaemonRunning()) {
         console.error(
@@ -22,11 +23,11 @@ export function registerReloadCommand(program: Command): void {
         return;
       }
 
-      // Prompt for password
       const { promptPassword } = await import('../password-prompt.js');
       const password = await promptPassword('Enter keystore password: ');
 
-      const addr = process.env['FENCE_DAEMON_ADDR'] ?? SOCKET_PATH;
+      const mode = detectExecutionMode();
+      const addr = mode.mode === 'daemon-client' ? mode.address : '';
       const client = new DaemonClient(addr);
 
       try {
@@ -43,7 +44,7 @@ export function registerReloadCommand(program: Command): void {
           process.exitCode = 1;
         }
       } catch (err: unknown) {
-        console.error(`Failed to reload: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        console.error(`Failed to reload: ${toErrorMessage(err)}`);
         process.exitCode = 1;
       }
     });

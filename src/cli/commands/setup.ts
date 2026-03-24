@@ -377,7 +377,7 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
     );
     console.log('');
   } catch (err: unknown) {
-    error(err instanceof Error ? err.message : String(err));
+    error(toErrorMessage(err));
     throw err;
   } finally {
     db?.close();

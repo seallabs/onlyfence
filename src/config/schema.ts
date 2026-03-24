@@ -46,6 +46,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export const DEFAULT_MAX_SINGLE_TRADE_CEILING = 10_000;
 export const DEFAULT_MAX_24H_VOLUME_CEILING = 100_000;
 
+/** Upper bounds passed through validation to cap per-chain limits. */
+interface LimitCeilings {
+  readonly tradeCeiling: number;
+  readonly volumeCeiling: number;
+}
+
 /**
  * Default allowlist for Sui chain (MVP tokens).
  */
@@ -100,10 +106,10 @@ export function validateConfig(raw: unknown): AppConfig {
   }
   const validatedSecurity = security !== undefined ? validateSecurityConfig(security) : undefined;
 
-  // Resolve effective ceilings (custom or defaults)
-  const tradeCeiling =
-    validatedSecurity?.max_single_trade_ceiling ?? DEFAULT_MAX_SINGLE_TRADE_CEILING;
-  const volumeCeiling = validatedSecurity?.max_24h_volume_ceiling ?? DEFAULT_MAX_24H_VOLUME_CEILING;
+  const ceilings: LimitCeilings = {
+    tradeCeiling: validatedSecurity?.max_single_trade_ceiling ?? DEFAULT_MAX_SINGLE_TRADE_CEILING,
+    volumeCeiling: validatedSecurity?.max_24h_volume_ceiling ?? DEFAULT_MAX_24H_VOLUME_CEILING,
+  };
 
   if (!isRecord(raw['chain'])) {
     throw new ConfigValidationError('Missing or invalid "chain" section', 'chain');
@@ -113,12 +119,7 @@ export function validateConfig(raw: unknown): AppConfig {
   const validatedChains: Record<string, ChainConfig> = {};
 
   for (const [chainName, chainValue] of Object.entries(chainSection)) {
-    validatedChains[chainName] = validateChainConfig(
-      chainValue,
-      `chain.${chainName}`,
-      tradeCeiling,
-      volumeCeiling,
-    );
+    validatedChains[chainName] = validateChainConfig(chainValue, `chain.${chainName}`, ceilings);
   }
 
   const global = raw['global'];
@@ -145,12 +146,7 @@ export function validateConfig(raw: unknown): AppConfig {
   };
 }
 
-function validateChainConfig(
-  raw: unknown,
-  path: string,
-  tradeCeiling: number,
-  volumeCeiling: number,
-): ChainConfig {
+function validateChainConfig(raw: unknown, path: string, ceilings: LimitCeilings): ChainConfig {
   if (!isRecord(raw)) {
     throw new ConfigValidationError('Chain config must be an object', path);
   }
@@ -165,7 +161,7 @@ function validateChainConfig(
       ? { allowlist: validateAllowlist(raw['allowlist'], `${path}.allowlist`) }
       : {}),
     ...(raw['limits'] !== undefined
-      ? { limits: validateLimits(raw['limits'], `${path}.limits`, tradeCeiling, volumeCeiling) }
+      ? { limits: validateLimits(raw['limits'], `${path}.limits`, ceilings) }
       : {}),
   };
 }
@@ -225,8 +221,7 @@ function validateUpdateConfig(raw: Record<string, unknown>): UpdateConfig {
 function validateLimits(
   raw: unknown,
   path: string,
-  tradeCeiling: number,
-  volumeCeiling: number,
+  { tradeCeiling, volumeCeiling }: LimitCeilings,
 ): LimitsConfig {
   if (!isRecord(raw)) {
     throw new ConfigValidationError('Limits must be an object', path);

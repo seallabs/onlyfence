@@ -7,7 +7,9 @@
 
 import { readFileSync } from 'node:fs';
 import type { ChainId } from '../core/action-types.js';
+import { toErrorMessage } from '../utils/index.js';
 import { trySetNondumpable, tryDenyAttach } from '../security/process-hardening.js';
+import { isRunningAsRoot } from '../security/index.js';
 import type { AppConfig } from '../types/config.js';
 import { bootstrap } from '../cli/bootstrap.js';
 import { createLogger, getLogger, hasLogger } from '../logger/index.js';
@@ -50,9 +52,8 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   }
   const logger = getLogger();
 
-  // 0. Root warning — daemon as root means keys are exposed to all root processes.
   // PR_SET_DUMPABLE and file permissions do NOT protect against root (CAP_SYS_PTRACE).
-  if (typeof process.getuid === 'function' && process.getuid() === 0) {
+  if (isRunningAsRoot()) {
     process.stderr.write(
       '\n' +
         '╔══════════════════════════════════════════════════════════════════╗\n' +
@@ -70,38 +71,30 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
     logger.error('Daemon started as root — all process hardening is ineffective against root');
   }
 
-  // 0b. Process hardening — only meaningful for the long-lived daemon process
   const nondumpable = trySetNondumpable();
   const denyAttach = tryDenyAttach();
   if (nondumpable) logger.info('PR_SET_DUMPABLE=0 applied');
   if (denyAttach) logger.info('PT_DENY_ATTACH applied');
 
-  // 1. Resolve password
   const password = await resolvePassword(options);
   logger.info('Password resolved');
 
-  // 2. Decrypt keystore → KeyHolder
   const keyHolder = KeyHolder.fromPassword(password);
   logger.info('Keystore decrypted, keys held in memory');
 
-  // 3. Bootstrap application components
   const components = bootstrap();
   logger.info('Bootstrap complete');
 
-  // 4. Create config snapshot (immutable until reload)
   const configSnapshot = new ConfigSnapshot(components.config);
   logger.info({ configHash: configSnapshot.configHash }, 'Config snapshot created');
 
-  // 5. Create in-memory trade window (pre-loaded from SQLite)
   const tradeWindow = new InMemoryTradeWindow();
   const chainIds = Object.keys(components.config.chain).map((c) => `${c}:mainnet`);
   tradeWindow.preload(components.activityLog, chainIds);
   logger.info('In-memory trade window initialized');
 
-  // 6. Create executor
   const executor = new DaemonExecutor(components, keyHolder, configSnapshot, tradeWindow, logger);
 
-  // 7. Start server
   const serverOptions: DaemonServerOptions = {
     socketPath: SOCKET_PATH,
     tcpHost: options.tcpHost ?? '127.0.0.1',
@@ -207,7 +200,7 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   } catch (err: unknown) {
     keyHolder.destroy();
     components.close();
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = toErrorMessage(err);
     if (msg.includes('EADDRINUSE')) {
       throw new Error(
         `Cannot start daemon: port ${String(serverOptions.tcpPort)} is already in use.\n` +
@@ -220,23 +213,19 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
     throw err;
   }
 
-  // 8. Write PID file
   writePidFile();
 
-  // 9. Signal parent process (detached mode) that daemon is ready
+  // Signal parent (detached mode) that daemon is ready, then disconnect IPC
   if (typeof process.send === 'function') {
     const { DAEMON_READY_MSG } = await import('./protocol.js');
     process.send({ type: DAEMON_READY_MSG, pid: process.pid });
-    // Disconnect IPC channel — parent no longer needs it
     if (typeof process.disconnect === 'function') {
       process.disconnect();
     }
   }
 
-  // 10. Print startup summary to stderr
   printStartupSummary(serverOptions, configSnapshot.configHash, components.config);
 
-  // 11. Graceful shutdown handler
   async function shutdown(): Promise<void> {
     logger.info('Shutting down daemon...');
     await server.stop();

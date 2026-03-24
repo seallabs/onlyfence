@@ -2,6 +2,7 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { ONLYFENCE_DIR } from '../config/loader.js';
 import { SENSITIVE_FILES } from './file-permissions.js';
+import { isRunningAsRoot } from './root-check.js';
 
 /**
  * A security warning detected during startup.
@@ -31,7 +32,7 @@ export function runStartupChecks(dataDir: string = ONLYFENCE_DIR): StartupWarnin
   // A root process can read the session file to extract keys without the password,
   // connect to the daemon socket to execute trades, and ptrace the daemon to
   // read decrypted keys from memory.
-  if (typeof process.getuid === 'function' && process.getuid() === 0) {
+  if (isRunningAsRoot()) {
     warnings.push({
       level: 'error',
       code: 'RUNNING_AS_ROOT',

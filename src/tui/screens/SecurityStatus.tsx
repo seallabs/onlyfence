@@ -1,9 +1,8 @@
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
 import { useEffect, useState } from 'react';
-import { runStartupChecks, type StartupWarning } from '../../security/index.js';
-import { isDaemonRunning } from '../../daemon/pid-manager.js';
-import { readPidFile } from '../../daemon/pid-manager.js';
+import { isRunningAsRoot, runStartupChecks, type StartupWarning } from '../../security/index.js';
+import { isDaemonRunning, readPidFile } from '../../daemon/pid-manager.js';
 import { Panel } from '../components/Panel.js';
 import { theme } from '../theme.js';
 
@@ -17,14 +16,15 @@ export function SecurityStatus(): ReactElement {
   const [warnings, setWarnings] = useState<StartupWarning[]>([]);
   const [daemonRunning, setDaemonRunning] = useState(false);
   const [daemonPid, setDaemonPid] = useState<number | null>(null);
-  const [isRoot, setIsRoot] = useState(false);
 
   useEffect(() => {
     setWarnings(runStartupChecks());
-    setDaemonRunning(isDaemonRunning());
-    setDaemonPid(readPidFile());
-    setIsRoot(typeof process.getuid === 'function' && process.getuid() === 0);
+    const running = isDaemonRunning();
+    setDaemonRunning(running);
+    if (running) setDaemonPid(readPidFile());
   }, []);
+
+  const isRoot = isRunningAsRoot();
 
   const tier = daemonRunning ? 'Tier 1 (Daemon)' : 'Tier 0 (Standalone)';
   const passedChecks = warnings.length === 0;

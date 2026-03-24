@@ -7,3 +7,10 @@
 export function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+/**
+ * Type guard for ENOENT filesystem errors.
+ */
+export function isEnoentError(err: unknown): boolean {
+  return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT';
+}

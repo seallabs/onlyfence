@@ -75,7 +75,8 @@ export class DaemonClient {
 
       socket.on('data', (chunk: Buffer) => {
         buffer += chunk.toString('utf-8');
-        const { messages } = decodeMessages(buffer);
+        const { messages, remainder } = decodeMessages(buffer);
+        buffer = remainder;
 
         for (const msg of messages) {
           const response = msg as IpcResponse;

@@ -6,8 +6,9 @@
  * 2. Fallback SIGTERM via PID file if IPC fails
  */
 
+import { toErrorMessage } from '../utils/index.js';
 import { DaemonClient } from './client.js';
-import { SOCKET_PATH } from './detect.js';
+import { detectExecutionMode } from './detect.js';
 import { readPidFile, removePidFile } from './pid-manager.js';
 
 export interface StopResult {
@@ -22,7 +23,8 @@ export interface StopResult {
  * @throws Error if the daemon could not be stopped
  */
 export async function stopDaemonGracefully(): Promise<StopResult> {
-  const addr = process.env['FENCE_DAEMON_ADDR'] ?? SOCKET_PATH;
+  const mode = detectExecutionMode();
+  const addr = mode.mode === 'daemon-client' ? mode.address : '';
 
   // Phase 1: Try IPC stop
   try {
@@ -54,8 +56,6 @@ export async function stopDaemonGracefully(): Promise<StopResult> {
     }
     // EPERM or other real error — surface it
     removePidFile();
-    throw new Error(
-      `Failed to signal daemon (PID ${String(pid)}): ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new Error(`Failed to signal daemon (PID ${String(pid)}): ${toErrorMessage(err)}`);
   }
 }

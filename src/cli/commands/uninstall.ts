@@ -16,6 +16,7 @@ export function registerUninstallCommand(program: Command): void {
       const { join } = await import('node:path');
       const { homedir } = await import('node:os');
       const { execFileSync } = await import('node:child_process');
+      const { isEnoentError } = await import('../../utils/index.js');
       const { ONLYFENCE_DIR } = await import('../../config/loader.js');
       const { isDaemonRunning } = await import('../../daemon/index.js');
       const { stopDaemonGracefully } = await import('../../daemon/stop-helper.js');
@@ -37,11 +38,7 @@ export function registerUninstallCommand(program: Command): void {
         rmSync(ONLYFENCE_DIR, { recursive: true });
         success('Data directory removed.');
       } catch (err: unknown) {
-        if (
-          err instanceof Error &&
-          'code' in err &&
-          (err as NodeJS.ErrnoException).code === 'ENOENT'
-        ) {
+        if (isEnoentError(err)) {
           info('Data directory already removed.');
         } else {
           throw err;
@@ -78,12 +75,7 @@ export function registerUninstallCommand(program: Command): void {
             success(`Cleaned PATH from ${profile}`);
           }
         } catch (err: unknown) {
-          if (
-            err instanceof Error &&
-            'code' in err &&
-            (err as NodeJS.ErrnoException).code === 'ENOENT'
-          )
-            continue;
+          if (isEnoentError(err)) continue;
           throw err;
         }
       }
