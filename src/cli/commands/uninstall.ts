@@ -65,8 +65,13 @@ export function registerUninstallCommand(program: Command): void {
           if (!content.includes(binDir) && !content.includes('.onlyfence/bin')) continue;
 
           const cleaned = content
-            .replace(/\n*# OnlyFence\n[^\n]*\.onlyfence\/bin[^\n]*\n?/g, '')
-            .replace(/\n*[^\n]*fish_add_path[^\n]*\.onlyfence\/bin[^\n]*\n?/g, '');
+            .split('\n')
+            .filter((line) => {
+              if (line.includes('.onlyfence/bin')) return false;
+              if (line === '# OnlyFence') return false;
+              return true;
+            })
+            .join('\n');
 
           if (cleaned !== content) {
             writeFileSync(profile, cleaned);
