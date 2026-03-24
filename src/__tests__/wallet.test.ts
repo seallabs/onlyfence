@@ -26,6 +26,7 @@ import {
   importFromPrivateKey,
   listWallets,
   registerWalletAddress,
+  removeWallet,
 } from '../wallet/manager.js';
 import type { KeystoreData } from '../wallet/types.js';
 
@@ -265,7 +266,20 @@ describe('Wallet Manager', () => {
       expect(result.wallet.address).toMatch(/^0x[0-9a-f]{64}$/);
       expect(result.wallet.derivationPath).toBeNull();
       expect(result.wallet.isWatchOnly).toBe(false);
+      expect(result.wallet.isPrimary).toBe(true);
       expect(result.privateKeyHex).toBe(HEX_KEY);
+    });
+
+    it('should set isPrimary to false when a primary wallet already exists', () => {
+      // First wallet gets primary
+      const first = importFromPrivateKey(db, HEX_KEY);
+      expect(first.wallet.isPrimary).toBe(true);
+
+      // Second wallet (different key) should not be primary
+      const otherSeed = new Uint8Array(32).fill(0xcd);
+      const otherHex = Buffer.from(otherSeed).toString('hex');
+      const second = importFromPrivateKey(db, otherHex);
+      expect(second.wallet.isPrimary).toBe(false);
     });
 
     it('should import a wallet from suiprivkey bech32 format', () => {
@@ -299,6 +313,21 @@ describe('Wallet Manager', () => {
 
     it('should throw on invalid bech32 key', () => {
       expect(() => importFromPrivateKey(db, 'suiprivkey1invalid')).toThrow();
+    });
+  });
+
+  describe('removeWallet', () => {
+    it('should remove a wallet by address', () => {
+      const result = registerWalletAddress(db, 'sui', '0xremoveme', false);
+      expect(listWallets(db).length).toBe(1);
+
+      removeWallet(db, result.wallet.address);
+      expect(listWallets(db).length).toBe(0);
+    });
+
+    it('should be a no-op for a non-existent address', () => {
+      removeWallet(db, '0xnonexistent');
+      expect(listWallets(db).length).toBe(0);
     });
   });
 });

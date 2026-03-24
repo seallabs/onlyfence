@@ -344,11 +344,14 @@ export function importFromPrivateKey(
 
   const resolvedAlias = alias ?? generateAlias(db, 'sui', false);
 
+  // Set as primary if no other wallet exists for this chain
+  const isPrimary = getPrimaryWallet(db, SUI_CHAIN_ID) === null;
+
   const wallet: WalletInfo = {
     chainId: SUI_CHAIN_ID,
     address: keypair.address,
     derivationPath: null,
-    isPrimary: false,
+    isPrimary,
     isWatchOnly: false,
     alias: resolvedAlias,
   };
@@ -358,6 +361,19 @@ export function importFromPrivateKey(
   const privateKeyHex = Buffer.from(seed).toString('hex');
 
   return { wallet, privateKeyHex };
+}
+
+/**
+ * Remove a wallet record by address.
+ *
+ * Used for rollback when a subsequent operation (e.g., keystore save) fails
+ * after the wallet was already inserted into the database.
+ *
+ * @param db - SQLite database connection
+ * @param address - The wallet address to remove
+ */
+export function removeWallet(db: Database.Database, address: string): void {
+  db.prepare('DELETE FROM wallets WHERE address = ?').run(address);
 }
 
 /**

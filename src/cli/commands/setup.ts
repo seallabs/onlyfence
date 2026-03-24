@@ -12,7 +12,7 @@ import {
   mergeKeyIntoKeystore,
 } from '../../wallet/setup.js';
 import type { SetupResult } from '../../wallet/setup.js';
-import { MIN_PASSWORD_LENGTH, DEFAULT_KEYSTORE_PATH } from '../../wallet/keystore.js';
+import { DEFAULT_KEYSTORE_PATH } from '../../wallet/keystore.js';
 import { existsSync } from 'node:fs';
 import { CURRENT_VERSION } from '../../update/version.js';
 import {
@@ -20,7 +20,6 @@ import {
   step,
   info,
   success,
-  warn,
   error,
   box,
   bold,
@@ -29,32 +28,9 @@ import {
   yellow,
   green,
 } from '../style.js';
+import { promptSecret, promptPasswordWithRetry, promptYesNo } from '../prompt.js';
 
 const TOTAL_STEPS = 5;
-
-/** Terminal control character constants. */
-const KEY = {
-  CTRL_C: '\x03',
-  BACKSPACE_DEL: '\x7f',
-  BACKSPACE_BS: '\b',
-  ENTER_CR: '\r',
-  ENTER_LF: '\n',
-  ESCAPE: '\x1b',
-} as const;
-
-/**
- * Execute a callback with stdin in raw mode, restoring the previous
- * raw-mode state afterwards — even on error.
- */
-async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
-  const wasRaw = stdin.isRaw;
-  stdin.setRawMode(true);
-  try {
-    return await fn();
-  } finally {
-    stdin.setRawMode(wasRaw);
-  }
-}
 
 /**
  * Register the `fence setup` command on the given program.
@@ -118,7 +94,7 @@ export function registerSetupCommand(program: Command): void {
           stdin.removeAllListeners('keypress');
           stdin.resume();
 
-          const privateKey = await promptPassword(
+          const privateKey = await promptSecret(
             `  ${cyan('?')} Enter your private key (hex or suiprivkey1…): `,
           );
           result = importSetupWalletFromKey(db, privateKey, options.alias);
@@ -246,93 +222,4 @@ export function registerSetupCommand(program: Command): void {
         stdin.pause();
       }
     });
-}
-
-/**
- * Prompt for a single-key y/n input using raw stdin.
- * Returns the lowercase key pressed ('y' or 'n').
- * Any key other than y/Y defaults to 'n'.
- */
-async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
-  return withRawMode(() => {
-    stdout.write(prompt);
-
-    return new Promise<'y' | 'n'>((resolve) => {
-      const onData = (key: Buffer): void => {
-        const ch = key.toString('utf8');
-
-        if (ch === KEY.CTRL_C) {
-          stdin.removeListener('data', onData);
-          stdout.write('\n');
-          process.exit(130);
-        }
-
-        stdin.removeListener('data', onData);
-
-        if (ch.toLowerCase() === 'y') {
-          stdout.write('y\n');
-          resolve('y');
-        } else {
-          stdout.write('n\n');
-          resolve('n');
-        }
-      };
-
-      stdin.on('data', onData);
-    });
-  });
-}
-
-/**
- * Prompt for a password with retry on validation failure.
- * Loops until the user provides a valid password.
- */
-async function promptPasswordWithRetry(prompt: string): Promise<string> {
-  for (;;) {
-    const password = await promptPassword(prompt);
-    if (password.length >= MIN_PASSWORD_LENGTH) {
-      return password;
-    }
-    warn(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
-  }
-}
-
-/**
- * Prompt for a password input with echo disabled so the password
- * is not visible in the terminal.
- *
- * Raw mode is enabled BEFORE writing the prompt to prevent
- * the terminal from echoing the first keystroke in plain text.
- */
-async function promptPassword(prompt: string): Promise<string> {
-  return withRawMode(() => {
-    stdout.write(prompt);
-
-    return new Promise<string>((resolve) => {
-      let buf = '';
-      const onData = (key: Buffer): void => {
-        const ch = key.toString('utf8');
-
-        if (ch === KEY.ENTER_CR || ch === KEY.ENTER_LF) {
-          stdin.removeListener('data', onData);
-          stdout.write('\n');
-          resolve(buf);
-        } else if (ch === KEY.BACKSPACE_DEL || ch === KEY.BACKSPACE_BS) {
-          if (buf.length > 0) {
-            buf = buf.slice(0, -1);
-            stdout.write('\b \b');
-          }
-        } else if (ch === KEY.CTRL_C) {
-          stdin.removeListener('data', onData);
-          stdout.write('\n');
-          process.exit(130);
-        } else if (!ch.startsWith(KEY.ESCAPE)) {
-          buf += ch;
-          stdout.write('•');
-        }
-      };
-
-      stdin.on('data', onData);
-    });
-  });
 }
