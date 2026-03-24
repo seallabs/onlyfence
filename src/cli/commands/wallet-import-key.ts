@@ -1,7 +1,9 @@
 import type Database from 'better-sqlite3';
 import type { Command } from 'commander';
+import { existsSync } from 'node:fs';
 import { importFromPrivateKey } from '../../wallet/manager.js';
-import { mergeKeyIntoKeystore } from '../../wallet/setup.js';
+import { mergeKeyIntoKeystore, saveSetupKeystore } from '../../wallet/setup.js';
+import { DEFAULT_KEYSTORE_PATH } from '../../wallet/keystore.js';
 import { toErrorMessage } from '../../utils/index.js';
 
 /**
@@ -79,15 +81,42 @@ export function registerWalletImportKeyCommand(
           throw new Error('Private key cannot be empty.');
         }
 
-        const password = await promptSecret('Enter keystore password: ');
-        if (password.length === 0) {
-          throw new Error('Password cannot be empty.');
+        const keystoreExists = existsSync(DEFAULT_KEYSTORE_PATH);
+
+        let password: string;
+
+        if (keystoreExists) {
+          password = await promptSecret('Enter keystore password: ');
+          if (password.length === 0) {
+            throw new Error('Password cannot be empty.');
+          }
+        } else {
+          password = await promptSecret('Enter a password to encrypt your keystore: ');
+          if (password.length === 0) {
+            throw new Error('Password cannot be empty.');
+          }
+          const confirm = await promptSecret('Confirm password: ');
+          if (password !== confirm) {
+            throw new Error('Passwords do not match.');
+          }
         }
 
         const db = getDb();
         const result = importFromPrivateKey(db, privateKeyInput, options.alias);
 
-        mergeKeyIntoKeystore(result.wallet.chainId, result.privateKeyHex, password);
+        if (keystoreExists) {
+          mergeKeyIntoKeystore(result.wallet.chainId, result.privateKeyHex, password);
+        } else {
+          saveSetupKeystore(
+            {
+              address: result.wallet.address,
+              chainId: result.wallet.chainId,
+              derivationPath: null,
+              privateKeyHex: result.privateKeyHex,
+            },
+            password,
+          );
+        }
 
         console.log(
           `Wallet imported: ${result.wallet.address} (${result.wallet.chainId}) [alias: ${result.wallet.alias}]`,
