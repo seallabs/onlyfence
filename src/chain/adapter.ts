@@ -64,10 +64,10 @@ export interface ChainAdapter {
    * Simulate (dry-run) a transaction without submitting it.
    *
    * @param txBytes - Serialized transaction bytes
-   * @param sender - Address of the transaction sender
+   * @param sender - Address of the transaction sender (optional, chain-dependent)
    * @returns Simulation result including success status and gas estimate
    */
-  simulate(txBytes: Uint8Array, sender: string): Promise<SimulationResult>;
+  simulate(txBytes: Uint8Array, sender?: string): Promise<SimulationResult>;
 
   /**
    * Sign and submit a transaction to the blockchain.

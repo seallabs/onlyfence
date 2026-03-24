@@ -1,12 +1,9 @@
-import { toBase64 } from '@mysten/bcs';
-import { messageWithIntent } from '@mysten/sui/cryptography';
 import type {
   DevInspectResults,
   SuiJsonRpcClient,
   SuiTransactionBlockResponse,
 } from '@mysten/sui/jsonRpc';
 import type { Transaction } from '@mysten/sui/transactions';
-import { blake2b } from '@noble/hashes/blake2.js';
 import type { BalanceResult, Signer, SimulationResult, TxResult } from '../../types/result.js';
 import type { ChainAdapter } from '../adapter.js';
 import {
@@ -17,12 +14,6 @@ import {
 
 /** Default decimals for unknown Sui tokens. */
 const DEFAULT_DECIMALS = 9;
-
-/** Ed25519 signature scheme flag byte used by Sui. */
-const ED25519_SCHEME_FLAG = 0x00;
-
-/** Length of a serialized Sui Ed25519 signature: 1 (flag) + 64 (sig) + 32 (pubkey). */
-const SUI_ED25519_SIGNATURE_LENGTH = 97;
 
 /** Extract gas total from a GasCostSummary. */
 function computeGas(gasUsed: {
@@ -82,14 +73,13 @@ export class SuiAdapter implements ChainAdapter {
   }
 
   async buildTransactionBytes(transaction: Transaction): Promise<Uint8Array> {
-    return transaction.build({ client: this.suiClient, onlyTransactionKind: true });
+    return transaction.build({ client: this.suiClient });
   }
 
-  async simulate(txBytes: Uint8Array, sender: string): Promise<SimulationResult> {
+  async simulate(txBytes: Uint8Array, _sender?: string): Promise<SimulationResult> {
     // Network/RPC errors propagate — only dry-run logic failures return { success: false }.
-    const result = await this.suiClient.devInspectTransactionBlock({
+    const result = await this.suiClient.dryRunTransactionBlock({
       transactionBlock: txBytes,
-      sender,
     });
 
     const gasEstimate = computeGas(result.effects.gasUsed);
@@ -107,27 +97,12 @@ export class SuiAdapter implements ChainAdapter {
   }
 
   async signAndSubmit(txBytes: Uint8Array, signer: Signer): Promise<TxResult> {
-    // 1. Compute intent-prefixed digest (Sui verifies signatures against this)
-    const intentMessage = messageWithIntent('TransactionData', txBytes);
-    const digest = blake2b(intentMessage, { dkLen: 32 });
+    const { signature } = await signer.signTransaction(txBytes);
 
-    // 2. Sign the digest
-    const rawSignature = await signer.sign(digest);
-
-    // 3. Construct Sui serialized signature:
-    //    [Ed25519 flag, ...rawSig(64 bytes), ...publicKey(32 bytes)]
-    const suiSignature = new Uint8Array(SUI_ED25519_SIGNATURE_LENGTH);
-    suiSignature[0] = ED25519_SCHEME_FLAG;
-    suiSignature.set(rawSignature, 1);
-    suiSignature.set(signer.publicKey, 65);
-
-    // 4. Base64-encode the signature
-    const signatureBase64 = toBase64(suiSignature);
-
-    // 5. Submit the transaction
+    // Submit the transaction
     const result = await this.suiClient.executeTransactionBlock({
       transactionBlock: txBytes,
-      signature: signatureBase64,
+      signature,
       options: { showEffects: true, showEvents: true },
     });
 

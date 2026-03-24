@@ -3,23 +3,18 @@ import type { Signer } from '../types/result.js';
 
 // Mock @mysten/sui/jsonRpc before importing the adapter
 const mockGetAllBalances = vi.fn();
-const mockDevInspectTransactionBlock = vi.fn();
+const mockDryRunTransactionBlock = vi.fn();
 const mockExecuteTransactionBlock = vi.fn();
 
 vi.mock('@mysten/sui/jsonRpc', () => {
   return {
     SuiJsonRpcClient: class MockSuiJsonRpcClient {
       getAllBalances = mockGetAllBalances;
-      devInspectTransactionBlock = mockDevInspectTransactionBlock;
+      dryRunTransactionBlock = mockDryRunTransactionBlock;
       executeTransactionBlock = mockExecuteTransactionBlock;
     },
   };
 });
-
-// Mock @mysten/bcs
-vi.mock('@mysten/bcs', () => ({
-  toBase64: vi.fn((bytes: Uint8Array) => Buffer.from(bytes).toString('base64')),
-}));
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
 let SuiAdapter: typeof import('../chain/sui/adapter.js').SuiAdapter;
@@ -129,14 +124,13 @@ describe('SuiAdapter', () => {
       expect(bytes).toEqual(new Uint8Array([1, 2, 3]));
       expect(mockBuild).toHaveBeenCalledWith({
         client: expect.anything(),
-        onlyTransactionKind: true,
       });
     });
   });
 
   describe('simulate', () => {
     it('returns success with gas estimate on successful dry run', async () => {
-      mockDevInspectTransactionBlock.mockResolvedValue({
+      mockDryRunTransactionBlock.mockResolvedValue({
         effects: {
           status: { status: 'success' },
           gasUsed: {
@@ -148,7 +142,7 @@ describe('SuiAdapter', () => {
       });
 
       const adapter = new SuiAdapter(createMockClient());
-      const result = await adapter.simulate(new Uint8Array([1, 2]), '0xsender');
+      const result = await adapter.simulate(new Uint8Array([1, 2]));
 
       expect(result.success).toBe(true);
       expect(result.gasEstimate).toBe(1300); // 1000 + 500 - 200
@@ -156,7 +150,7 @@ describe('SuiAdapter', () => {
     });
 
     it('returns failure with error for failed dry run', async () => {
-      mockDevInspectTransactionBlock.mockResolvedValue({
+      mockDryRunTransactionBlock.mockResolvedValue({
         effects: {
           status: { status: 'failure', error: 'InsufficientGas' },
           gasUsed: {
@@ -168,31 +162,31 @@ describe('SuiAdapter', () => {
       });
 
       const adapter = new SuiAdapter(createMockClient());
-      const result = await adapter.simulate(new Uint8Array([1, 2]), '0xsender');
+      const result = await adapter.simulate(new Uint8Array([1, 2]));
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
     });
 
     it('re-throws network/RPC errors instead of catching them', async () => {
-      mockDevInspectTransactionBlock.mockRejectedValue(new Error('Network timeout'));
+      mockDryRunTransactionBlock.mockRejectedValue(new Error('Network timeout'));
 
       const adapter = new SuiAdapter(createMockClient());
-      await expect(adapter.simulate(new Uint8Array([1, 2]), '0xsender')).rejects.toThrow(
-        'Network timeout',
-      );
+      await expect(adapter.simulate(new Uint8Array([1, 2]))).rejects.toThrow('Network timeout');
     });
   });
 
   describe('signAndSubmit', () => {
-    it('constructs 97-byte signature and submits transaction', async () => {
-      const rawSignature = new Uint8Array(64).fill(0xab);
+    it('signs and submits transaction', async () => {
       const publicKey = new Uint8Array(32).fill(0xcd);
 
       const signer: Signer = {
         address: '0x' + 'ff'.repeat(32),
         publicKey,
-        sign: vi.fn().mockResolvedValue(rawSignature),
+        signTransaction: vi.fn().mockResolvedValue({
+          signature: 'mockSignatureBase64',
+          bytes: 'mockBytesBase64',
+        }),
       };
 
       mockExecuteTransactionBlock.mockResolvedValue({
@@ -211,19 +205,15 @@ describe('SuiAdapter', () => {
       const txBytes = new Uint8Array([10, 20, 30]);
       const result = await adapter.signAndSubmit(txBytes, signer);
 
-      // signer.sign is called with the blake2b intent digest, not raw txBytes
-      expect(signer.sign).toHaveBeenCalledTimes(1);
-      const signArg = (signer.sign as ReturnType<typeof vi.fn>).mock.calls[0]![0] as Uint8Array;
-      expect(signArg).toBeInstanceOf(Uint8Array);
-      expect(signArg).toHaveLength(32); // blake2b digest is 32 bytes
+      expect(signer.signTransaction).toHaveBeenCalledTimes(1);
+      expect(signer.signTransaction).toHaveBeenCalledWith(txBytes);
       expect(result.txDigest).toBe('txDigest123');
       expect(result.status).toBe('success');
       expect(result.gasUsed).toBe(2700); // 2000 + 1000 - 300
 
-      // Verify signature was passed as base64
       const call = mockExecuteTransactionBlock.mock.calls[0] as unknown[];
       const args = call[0] as Record<string, unknown>;
-      expect(args['signature']).toBeDefined();
+      expect(args['signature']).toBe('mockSignatureBase64');
       expect(args['options']).toEqual({ showEffects: true, showEvents: true });
     });
 
@@ -231,7 +221,10 @@ describe('SuiAdapter', () => {
       const signer: Signer = {
         address: '0xabc',
         publicKey: new Uint8Array(32),
-        sign: vi.fn().mockResolvedValue(new Uint8Array(64)),
+        signTransaction: vi.fn().mockResolvedValue({
+          signature: 'mockSig',
+          bytes: 'mockBytes',
+        }),
       };
 
       mockExecuteTransactionBlock.mockResolvedValue({
@@ -257,7 +250,10 @@ describe('SuiAdapter', () => {
       const signer: Signer = {
         address: '0xabc',
         publicKey: new Uint8Array(32),
-        sign: vi.fn().mockResolvedValue(new Uint8Array(64)),
+        signTransaction: vi.fn().mockResolvedValue({
+          signature: 'mockSig',
+          bytes: 'mockBytes',
+        }),
       };
 
       mockExecuteTransactionBlock.mockRejectedValue(new Error('RPC auth failed'));

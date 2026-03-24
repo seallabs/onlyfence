@@ -64,11 +64,16 @@ export interface TokenBalance {
   readonly decimals: number;
 }
 
+interface SignatureWithBytes {
+  signature: string;
+  bytes: string;
+}
+
 /**
  * Signer abstraction for signing transactions.
  */
 export interface Signer {
   readonly address: string;
   readonly publicKey: Uint8Array;
-  sign(data: Uint8Array): Promise<Uint8Array>;
+  signTransaction(bytes: Uint8Array): Promise<SignatureWithBytes>;
 }
