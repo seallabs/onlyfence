@@ -16,7 +16,7 @@ import {
 import type { SetupResult } from '../../wallet/setup.js';
 import { DEFAULT_KEYSTORE_PATH, MIN_PASSWORD_LENGTH } from '../../wallet/keystore.js';
 import { CURRENT_VERSION } from '../../update/version.js';
-import { toErrorMessage } from '../../utils/errors.js';
+import { isEnoentError, toErrorMessage } from '../../utils/errors.js';
 import {
   printLogo,
   step,
@@ -89,9 +89,8 @@ function readSecretFile(filePath: string, label: string): string {
   try {
     return readFileSync(filePath, 'utf-8').trim();
   } catch (err: unknown) {
-    const isNotFound = err instanceof Error && 'code' in err && err.code === 'ENOENT';
     throw new Error(
-      isNotFound
+      isEnoentError(err)
         ? `${label} not found: ${filePath}`
         : `Cannot read ${label}: ${toErrorMessage(err)}`,
     );

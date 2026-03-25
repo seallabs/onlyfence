@@ -1,6 +1,12 @@
-import { stdin, stdout } from 'node:process';
+import { stdin, stdout, stderr } from 'node:process';
 import { MIN_PASSWORD_LENGTH } from '../wallet/keystore.js';
 import { warn } from './style.js';
+
+/** Options for secret input prompts. */
+export interface PromptSecretOptions {
+  /** Write prompt/mask to stderr instead of stdout (avoids polluting structured output). */
+  readonly stderr?: boolean;
+}
 
 /** Terminal control character constants. */
 const KEY = {
@@ -36,9 +42,10 @@ async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
  * @returns The entered string
  * @throws Error if the user cancels with Ctrl+C
  */
-export function promptSecret(prompt: string): Promise<string> {
+export function promptSecret(prompt: string, options?: PromptSecretOptions): Promise<string> {
+  const out = options?.stderr === true ? stderr : stdout;
   return withRawMode(() => {
-    stdout.write(prompt);
+    out.write(prompt);
 
     return new Promise<string>((resolve) => {
       let buf = '';
@@ -47,20 +54,20 @@ export function promptSecret(prompt: string): Promise<string> {
 
         if (ch === KEY.ENTER_CR || ch === KEY.ENTER_LF) {
           stdin.removeListener('data', onData);
-          stdout.write('\n');
+          out.write('\n');
           resolve(buf);
         } else if (ch === KEY.BACKSPACE_DEL || ch === KEY.BACKSPACE_BS) {
           if (buf.length > 0) {
             buf = buf.slice(0, -1);
-            stdout.write('\b \b');
+            out.write('\b \b');
           }
         } else if (ch === KEY.CTRL_C) {
           stdin.removeListener('data', onData);
-          stdout.write('\n');
+          out.write('\n');
           process.exit(130);
         } else if (!ch.startsWith(KEY.ESCAPE)) {
           buf += ch;
-          stdout.write('•');
+          out.write('•');
         }
       };
 

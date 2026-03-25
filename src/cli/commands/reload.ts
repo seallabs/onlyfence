@@ -23,8 +23,8 @@ export function registerReloadCommand(program: Command): void {
         return;
       }
 
-      const { promptPassword } = await import('../password-prompt.js');
-      const password = await promptPassword('Enter keystore password: ');
+      const { promptSecret } = await import('../prompt.js');
+      const password = await promptSecret('Enter keystore password: ', { stderr: true });
 
       const mode = detectExecutionMode();
       const addr = mode.mode === 'daemon-client' ? mode.address : '';

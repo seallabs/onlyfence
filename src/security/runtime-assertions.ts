@@ -6,8 +6,6 @@
  * error message.
  */
 
-import { existsSync, lstatSync } from 'node:fs';
-
 /**
  * Assert that no password appears in the current process argv.
  *
@@ -24,21 +22,5 @@ export function assertNoPasswordInArgv(): void {
           '  This is a bug — please report it.',
       );
     }
-  }
-}
-
-/**
- * Assert that the data directory is not a symlink.
- *
- * A symlinked data directory could redirect reads/writes to an
- * attacker-controlled location.
- */
-export function assertDataDirNotSymlink(dataDir: string): void {
-  if (existsSync(dataDir) && lstatSync(dataDir).isSymbolicLink()) {
-    throw new Error(
-      `SECURITY: Data directory "${dataDir}" is a symlink.\n` +
-        `  This could redirect sensitive data to an attacker-controlled location.\n` +
-        `  Remove the symlink and re-create as a real directory.`,
-    );
   }
 }

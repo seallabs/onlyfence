@@ -22,8 +22,8 @@ export function registerStartCommand(program: Command): void {
         allowRemote: boolean;
       }) => {
         if (options.detach) {
-          const { promptPassword } = await import('../password-prompt.js');
-          const password = await promptPassword('Enter keystore password: ');
+          const { promptSecret } = await import('../prompt.js');
+          const password = await promptSecret('Enter keystore password: ', { stderr: true });
           const { forkDaemonDetached } = await import('../daemon-fork.js');
           const pid = await forkDaemonDetached({ password, ...options });
           process.stderr.write(`Daemon started in background (PID ${String(pid)})\n`);
@@ -41,8 +41,10 @@ export function registerStartCommand(program: Command): void {
             process.env['FENCE_PASSWORD'] === undefined &&
             process.env['FENCE_PASSWORD_FILE'] === undefined
           ) {
-            const { promptPassword } = await import('../password-prompt.js');
-            password = securePasswordFromPrompt(await promptPassword('Enter keystore password: '));
+            const { promptSecret } = await import('../prompt.js');
+            password = securePasswordFromPrompt(
+              await promptSecret('Enter keystore password: ', { stderr: true }),
+            );
           }
           await startDaemon({
             ...(password !== undefined ? { password } : {}),

@@ -158,14 +158,16 @@ export class DaemonServer {
       }
     });
 
-    socket.on('close', () => {
+    let released = false;
+    const releaseOnce = (): void => {
+      if (released) return;
+      released = true;
       this.connectionTracker.release();
       this.rateLimiter.clear(sourceKey);
-    });
+    };
 
-    socket.on('error', () => {
-      this.connectionTracker.release();
-    });
+    socket.on('close', releaseOnce);
+    socket.on('error', releaseOnce);
   }
 
   private async closeServer(server: Server | null): Promise<void> {
