@@ -33,6 +33,21 @@ async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Resume stdin for one event-loop tick so any bytes already queued in
+ * its internal buffer (e.g. a trailing `\n` from a `\r\n` Enter
+ * keystroke) are emitted and discarded before the next prompt.
+ */
+function drainStdin(): Promise<void> {
+  return new Promise((resolve) => {
+    stdin.resume();
+    setImmediate(() => {
+      stdin.pause();
+      resolve();
+    });
+  });
+}
+
+/**
  * Prompt for hidden input from the terminal with echo disabled.
  *
  * Uses raw mode so the input is not visible on screen.
@@ -44,7 +59,8 @@ async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
  */
 export function promptSecret(prompt: string, options?: PromptSecretOptions): Promise<string> {
   const out = options?.stderr === true ? stderr : stdout;
-  return withRawMode(() => {
+  return withRawMode(async () => {
+    await drainStdin();
     out.write(prompt);
 
     return new Promise<string>((resolve) => {
@@ -74,6 +90,7 @@ export function promptSecret(prompt: string, options?: PromptSecretOptions): Pro
       };
 
       stdin.on('data', onData);
+      stdin.resume();
     });
   });
 }
@@ -101,7 +118,9 @@ export async function promptPasswordWithRetry(prompt: string): Promise<string> {
  * Any key other than y/Y defaults to 'n'.
  */
 export async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
-  return withRawMode(() => {
+  return withRawMode(async () => {
+    await drainStdin();
+
     stdout.write(prompt);
 
     return new Promise<'y' | 'n'>((resolve) => {
@@ -128,6 +147,7 @@ export async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
       };
 
       stdin.on('data', onData);
+      stdin.resume();
     });
   });
 }
