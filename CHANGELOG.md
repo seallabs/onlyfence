@@ -5,10 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+
+## [0.2.0] - 2026-03-25
 
 ### Added
 
+- **Daemon Tier** — background daemon with security hardening for persistent agent operation (#18)
+- **Activity Query Engine** — structured DSL for agent-driven data access across all activity types (#19)
+- **Import by Private Key** — wallet import via raw private key in addition to mnemonic (#20)
+- **AlphaLend Integration** — lending/borrowing support via AlphaLend protocol (#14)
+- **LP Pro Price Service** — replaced Noodles/CoinGecko with LP Pro for prices and metadata (#15)
+- **Expanded Token Registry** — Sui token registry expanded from 6 to 97 tokens (#9)
+- **Raw Coin Type Support** — accept raw coin types directly in swap and query commands (#7)
+- **TUI Visual Polish** — Panel component and visual beautification for terminal dashboard (#11)
+- **Claude Code Skill** — prompt to install Claude Code skill during setup (#10)
+- **Account Balance Widget** — balance widget on TUI dashboard (#3)
+- **Landing Page** — project landing page (#8)
+
+### Changed
+
+- **Unified Activities Table** — trades and lending unified into single activities table with ActivityLog (#17)
+- **SDK Transaction Signing** — use SDK built-in transaction signing instead of manual signature construction (#21)
+- **Bare Semver Convention** — use bare semver everywhere, dropped v-prefix convention (#5)
+
+### Fixed
+
+- Install script auto-setup and release pipeline (#4)
+- Mnemonic input handling in wallet setup command (#6)
+- PR CI workflow (#4)
+
+### Docs
+
+- Added media assets to README and simplified getting started (#16)
 - `SECURITY.md` with vulnerability reporting policy
 - `CONTRIBUTING.md` with development guidelines
 - `CHANGELOG.md`
@@ -68,5 +96,6 @@ Initial release of OnlyFence — agent wallet guardrails for DeFi.
 - Vitest test suite
 - Cross-platform install script (`install.sh`)
 
-[Unreleased]: https://github.com/seallabs/onlyfence/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/seallabs/onlyfence/releases/tag/v0.1.0
+[Unreleased]: https://github.com/seallabs/onlyfence/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/seallabs/onlyfence/compare/0.1.0...0.2.0
+[0.1.0]: https://github.com/seallabs/onlyfence/releases/tag/0.1.0

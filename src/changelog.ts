@@ -9,6 +9,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: 'v0.2.0',
+    date: '2026-03-25',
+    changes:
+      'Daemon tier, AlphaLend lending, activity query engine, wallet import by private key, expanded token registry, unified activities table, LP Pro price service, TUI polish.',
+  },
+  {
     version: 'v0.1.0',
     date: '2026-03-18',
     changes: 'Initial release of OnlyFence — agent wallet guardrails for DeFi.',
