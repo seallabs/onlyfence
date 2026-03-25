@@ -29,6 +29,7 @@ export function registerStartCommand(program: Command): void {
           process.stderr.write(`Daemon started in background (PID ${String(pid)})\n`);
           process.stderr.write('  Check status:  fence status\n');
           process.stderr.write('  Stop daemon:   fence stop\n');
+          process.exit(0);
         } else {
           const { startDaemon } = await import('../../daemon/index.js');
           const { securePasswordFromPrompt } = await import('../../security/branded-types.js');

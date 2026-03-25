@@ -64,6 +64,7 @@ export function createLogger(options: LoggerOptions): Logger {
 
   _logger = pino({
     level: options.verbose ? 'debug' : 'info',
+    timestamp: () => `,"time":"${new Date().toISOString()}"`,
     base: { app: 'onlyfence', pid: process.pid },
     redact: {
       paths: [...REDACT_PATHS],
