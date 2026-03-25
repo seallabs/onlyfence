@@ -12,7 +12,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
     version: 'v0.2.0',
     date: '2026-03-25',
     changes:
-      'Daemon tier, AlphaLend lending, activity query engine, wallet import by private key, expanded token registry, unified activities table, LP Pro price service, TUI polish.',
+      'Daemon tier, AlphaLend lending, activity query engine, wallet import by private key, expanded token registry, unified activities table, and TUI polish.',
   },
   {
     version: 'v0.1.0',

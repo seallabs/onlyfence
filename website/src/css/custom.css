@@ -1,0 +1,54 @@
+/**
+ * OnlyFence docs theme — custom Infima overrides.
+ */
+
+:root {
+  --ifm-color-primary: #2e86c1;
+  --ifm-color-primary-dark: #2878ae;
+  --ifm-color-primary-darker: #2671a4;
+  --ifm-color-primary-darkest: #1f5d87;
+  --ifm-color-primary-light: #3d93ca;
+  --ifm-color-primary-lighter: #4599cd;
+  --ifm-color-primary-lightest: #63aad6;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-font-family-base: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #4da2ff;
+  --ifm-color-primary-dark: #2e90ff;
+  --ifm-color-primary-darker: #1f87ff;
+  --ifm-color-primary-darkest: #006be0;
+  --ifm-color-primary-light: #6cb4ff;
+  --ifm-color-primary-lighter: #7bbcff;
+  --ifm-color-primary-lightest: #b3d9ff;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* Hero section */
+.hero--primary {
+  --ifm-hero-background-color: #1a2332;
+  --ifm-hero-text-color: #ffffff;
+}
+
+.hero__subtitle {
+  font-size: 1.3rem;
+  opacity: 0.9;
+}
+
+/* Feature cards */
+.feature-card {
+  padding: 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.feature-card h3 {
+  margin-top: 0.5rem;
+}
+
+/* Code blocks in dark theme */
+[data-theme='dark'] .prism-code {
+  background-color: #1a2332;
+}

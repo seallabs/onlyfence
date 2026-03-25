@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-03-25
 
+Daemon tier, AlphaLend lending, activity query engine, wallet import by private key, expanded token registry, unified activities table, and TUI polish.
+
 ### Added
 
 - **Daemon Tier** — background daemon with security hardening for persistent agent operation (#18)
