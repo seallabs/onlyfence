@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { SUI_CHAIN_ID } from '../../chain/sui/adapter.js';
 import { createSession, hasActiveSession } from '../../wallet/session.js';
 import { toErrorMessage } from '../../utils/index.js';
-import { promptPassword } from '../password-prompt.js';
+import { promptSecret } from '../prompt.js';
 
 /** Allowed TTL values and their seconds equivalent. */
 const TTL_MAP: Record<string, number> = {
@@ -45,7 +45,7 @@ export function registerUnlockCommand(program: Command): void {
           process.stderr.write('Warning: An active session already exists. It will be replaced.\n');
         }
 
-        const password = await promptPassword('Enter password: ');
+        const password = await promptSecret('Enter password: ');
         if (password.length === 0) {
           throw new Error('Password cannot be empty.');
         }

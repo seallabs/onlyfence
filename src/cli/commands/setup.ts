@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { openDatabase, DB_PATH } from '../../db/connection.js';
@@ -9,10 +9,12 @@ import {
   ensureSetupEnvironment,
   generateSetupWallet,
   importSetupWallet,
+  importSetupWalletFromKey,
   saveSetupKeystore,
+  mergeKeyIntoKeystore,
 } from '../../wallet/setup.js';
 import type { SetupResult } from '../../wallet/setup.js';
-import { MIN_PASSWORD_LENGTH } from '../../wallet/keystore.js';
+import { DEFAULT_KEYSTORE_PATH, MIN_PASSWORD_LENGTH } from '../../wallet/keystore.js';
 import { CURRENT_VERSION } from '../../update/version.js';
 import { toErrorMessage } from '../../utils/errors.js';
 import {
@@ -20,7 +22,6 @@ import {
   step,
   info,
   success,
-  warn,
   error,
   box,
   bold,
@@ -29,16 +30,7 @@ import {
   yellow,
   green,
 } from '../style.js';
-
-/** Terminal control character constants. */
-const KEY = {
-  CTRL_C: '\x03',
-  BACKSPACE_DEL: '\x7f',
-  BACKSPACE_BS: '\b',
-  ENTER_CR: '\r',
-  ENTER_LF: '\n',
-  ESCAPE: '\x1b',
-} as const;
+import { promptSecret, promptPasswordWithRetry, promptYesNo } from '../prompt.js';
 
 interface SetupOptions {
   readonly alias?: string;
@@ -189,7 +181,7 @@ async function runNonInteractiveSetup(
       chain: result.chainId,
     };
     if (options.generate === true) {
-      output['mnemonic'] = result.mnemonic;
+      output['mnemonic'] = result.mnemonic ?? '';
     }
     if (result.derivationPath !== null) {
       output['derivationPath'] = result.derivationPath;
@@ -219,7 +211,7 @@ async function resolveMnemonic(mnemonicFile: string | undefined): Promise<string
 
 // ── Interactive setup ────────────────────────────────────────────────────────
 
-const INTERACTIVE_STEPS = 6;
+const INTERACTIVE_STEPS = 5;
 
 /** Interactive setup wizard with TTY prompts. */
 async function runInteractiveSetup(alias?: string): Promise<void> {
@@ -251,16 +243,31 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
     step(3, INTERACTIVE_STEPS, 'Wallet Setup');
 
     const choice = await rl.question(
-      `  ${cyan('?')} Would you like to ${bold('(g)enerate')} a new wallet or ${bold('(i)mport')} an existing one? ${dim('[g/i]')}: `,
+      `  ${cyan('?')} Would you like to ${bold('(g)enerate')} a new wallet, ${bold('(i)mport')} by mnemonic, or import by private ${bold('(k)ey')}? ${dim('[g/i/k]')}: `,
     );
 
     let result: SetupResult;
 
     const trimmed = choice.trim();
-    // Detect if the user pasted a mnemonic phrase directly at the g/i prompt
+    // Detect if the user pasted a mnemonic phrase directly at the prompt
     const looksLikeMnemonic = trimmed.split(/\s+/).length >= 12;
 
-    if (trimmed.toLowerCase() === 'i' || looksLikeMnemonic) {
+    if (trimmed.toLowerCase() === 'k') {
+      // Detach readline before secret prompt — its keypress listeners
+      // echo characters even in raw mode.
+      rl.pause();
+      stdin.removeAllListeners('keypress');
+      stdin.resume();
+
+      const privateKey = await promptSecret(
+        `  ${cyan('?')} Enter your private key (hex or suiprivkey1…): `,
+      );
+      result = importSetupWalletFromKey(db, privateKey, alias);
+
+      success('Wallet imported from private key!');
+      console.log('');
+      box([`${bold('Chain')}    ${result.chainId}`, `${bold('Address')}  ${result.address}`]);
+    } else if (trimmed.toLowerCase() === 'i' || looksLikeMnemonic) {
       const mnemonic = looksLikeMnemonic
         ? trimmed
         : await rl.question(`  ${cyan('?')} Enter your BIP-39 mnemonic phrase: `);
@@ -280,7 +287,7 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
         [
           bold(yellow('⚠  BACK UP YOUR MNEMONIC PHRASE')),
           '',
-          green(result.mnemonic),
+          green(result.mnemonic ?? ''),
           '',
           dim('Write it down and store it somewhere safe.'),
           dim('You will NOT see this again.'),
@@ -306,42 +313,31 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
     // Step 4: Encrypt and save keystore
     step(4, INTERACTIVE_STEPS, 'Encrypt Keystore');
 
-    const password = await promptPasswordWithConfirm();
+    const keystoreExists = existsSync(DEFAULT_KEYSTORE_PATH);
 
-    saveSetupKeystore(result, password);
-    success('Keystore saved and encrypted.');
-
-    // Step 5: Automatic updates (only if not already configured)
-    const config = loadConfig(CONFIG_PATH);
-    if (config.update === undefined) {
-      step(5, INTERACTIVE_STEPS, 'Enable Automatic Updates');
-      console.log('');
-      console.log(`  OnlyFence can automatically install new versions when available.`);
-      console.log(
-        `  ${dim('Updates are downloaded from GitHub releases and verified before installing.')}`,
+    if (keystoreExists) {
+      info('Existing keystore found. Enter your password to add the new key.');
+      const password = await promptPasswordWithRetry(`  ${cyan('?')} Enter keystore password: `);
+      mergeKeyIntoKeystore(result.chainId, result.privateKeyHex, password);
+    } else {
+      const password = await promptPasswordWithRetry(
+        `  ${cyan('?')} Enter a password to encrypt your keystore: `,
       );
-      console.log('');
+      const confirmPassword = await promptPasswordWithRetry(`  ${cyan('?')} Confirm password: `);
 
-      const updateChoice = await promptYesNo(
-        `  ${cyan('?')} Enable automatic updates? ${dim('[Y/n]')}: `,
-      );
-      const autoInstall = updateChoice === 'y';
-
-      updateConfigFile((raw) => {
-        raw['update'] = { auto_install: autoInstall };
-      });
-
-      if (autoInstall) {
-        success('Automatic updates enabled.');
-      } else {
-        info('Automatic updates disabled.');
+      if (password !== confirmPassword) {
+        throw new Error('Passwords do not match.');
       }
-      info(`You can change this later in ${dim('config.toml [update]')}`);
+
+      saveSetupKeystore(result, password);
     }
 
-    // Step 6: Telemetry opt-in (only if not already configured)
+    success('Keystore saved and encrypted.');
+
+    // Step 5: Telemetry opt-in (only if not already configured)
+    const config = loadConfig(CONFIG_PATH);
     if (config.telemetry === undefined) {
-      step(6, INTERACTIVE_STEPS, 'Anonymous Error Reporting');
+      step(5, INTERACTIVE_STEPS, 'Anonymous Error Reporting');
       console.log('');
       console.log(`  OnlyFence can report anonymous crash data to help improve the tool.`);
       console.log(`  ${dim('No wallet addresses, keys, balances, or trade data will be sent.')}`);
@@ -384,127 +380,4 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
     rl.close();
     stdin.pause();
   }
-}
-
-// ── Interactive prompt helpers ───────────────────────────────────────────────
-
-/**
- * Execute a callback with stdin in raw mode, restoring the previous
- * raw-mode state afterwards — even on error.
- */
-async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
-  const wasRaw = stdin.isRaw;
-  stdin.setRawMode(true);
-  try {
-    return await fn();
-  } finally {
-    stdin.setRawMode(wasRaw);
-  }
-}
-
-/**
- * Prompt for a single-key y/n input using raw stdin.
- * Returns the lowercase key pressed ('y' or 'n').
- * Any key other than y/Y defaults to 'n'.
- */
-async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
-  return withRawMode(() => {
-    stdout.write(prompt);
-
-    return new Promise<'y' | 'n'>((resolve) => {
-      const onData = (key: Buffer): void => {
-        const ch = key.toString('utf8');
-
-        if (ch === KEY.CTRL_C) {
-          stdin.removeListener('data', onData);
-          stdout.write('\n');
-          process.exit(130);
-        }
-
-        stdin.removeListener('data', onData);
-
-        if (ch.toLowerCase() === 'y') {
-          stdout.write('y\n');
-          resolve('y');
-        } else {
-          stdout.write('n\n');
-          resolve('n');
-        }
-      };
-
-      stdin.on('data', onData);
-    });
-  });
-}
-
-/**
- * Prompt for a password with retry on validation failure.
- * Loops until the user provides a valid password.
- */
-async function promptPasswordWithRetry(prompt: string): Promise<string> {
-  for (;;) {
-    const password = await promptPassword(prompt);
-    if (password.length >= MIN_PASSWORD_LENGTH) {
-      return password;
-    }
-    warn(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
-  }
-}
-
-/**
- * Prompt for password + confirmation with retry on mismatch.
- * Loops until both entries match and meet minimum length.
- */
-async function promptPasswordWithConfirm(): Promise<string> {
-  for (;;) {
-    const password = await promptPasswordWithRetry(
-      `  ${cyan('?')} Enter a password to encrypt your keystore: `,
-    );
-    const confirm = await promptPasswordWithRetry(`  ${cyan('?')} Confirm password: `);
-
-    if (password === confirm) {
-      return password;
-    }
-    warn('Passwords do not match. Please try again.');
-  }
-}
-
-/**
- * Prompt for a password input with echo disabled so the password
- * is not visible in the terminal.
- *
- * Raw mode is enabled BEFORE writing the prompt to prevent
- * the terminal from echoing the first keystroke in plain text.
- */
-async function promptPassword(prompt: string): Promise<string> {
-  return withRawMode(() => {
-    stdout.write(prompt);
-
-    return new Promise<string>((resolve) => {
-      let buf = '';
-      const onData = (key: Buffer): void => {
-        const ch = key.toString('utf8');
-
-        if (ch === KEY.ENTER_CR || ch === KEY.ENTER_LF) {
-          stdin.removeListener('data', onData);
-          stdout.write('\n');
-          resolve(buf);
-        } else if (ch === KEY.BACKSPACE_DEL || ch === KEY.BACKSPACE_BS) {
-          if (buf.length > 0) {
-            buf = buf.slice(0, -1);
-            stdout.write('\b \b');
-          }
-        } else if (ch === KEY.CTRL_C) {
-          stdin.removeListener('data', onData);
-          stdout.write('\n');
-          process.exit(130);
-        } else if (!ch.startsWith(KEY.ESCAPE)) {
-          buf += ch;
-          stdout.write('•');
-        }
-      };
-
-      stdin.on('data', onData);
-    });
-  });
 }

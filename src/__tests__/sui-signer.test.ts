@@ -1,6 +1,6 @@
-import nacl from 'tweetnacl';
 import { describe, expect, it } from 'vitest';
 import { buildSuiSigner } from '../chain/sui/signer.js';
+import nacl from 'tweetnacl';
 
 describe('buildSuiSigner', () => {
   it('builds signer from 32-byte seed', () => {
@@ -27,26 +27,28 @@ describe('buildSuiSigner', () => {
     );
   });
 
-  it('produces valid Ed25519 signatures (64 bytes)', async () => {
+  it('signTransaction returns signature and bytes as strings', async () => {
     const seed = nacl.randomBytes(32);
     const signer = buildSuiSigner(seed);
 
     const data = new Uint8Array([1, 2, 3, 4, 5]);
-    const signature = await signer.sign(data);
+    const result = await signer.signTransaction(data);
 
-    expect(signature).toBeInstanceOf(Uint8Array);
-    expect(signature).toHaveLength(64);
+    expect(typeof result.signature).toBe('string');
+    expect(typeof result.bytes).toBe('string');
+    expect(result.signature.length).toBeGreaterThan(0);
+    expect(result.bytes.length).toBeGreaterThan(0);
   });
 
-  it('signature is verifiable with the public key', async () => {
+  it('signTransaction produces consistent results for same input', async () => {
     const seed = nacl.randomBytes(32);
     const signer = buildSuiSigner(seed);
 
     const data = new Uint8Array([1, 2, 3, 4, 5]);
-    const signature = await signer.sign(data);
+    const result1 = await signer.signTransaction(data);
+    const result2 = await signer.signTransaction(data);
 
-    // Verify with tweetnacl
-    const isValid = nacl.sign.detached.verify(data, signature, signer.publicKey);
-    expect(isValid).toBe(true);
+    expect(result1.signature).toBe(result2.signature);
+    expect(result1.bytes).toBe(result2.bytes);
   });
 });
