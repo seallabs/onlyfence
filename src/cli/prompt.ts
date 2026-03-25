@@ -54,6 +54,7 @@ export function promptSecret(prompt: string, options?: PromptSecretOptions): Pro
 
         if (ch === KEY.ENTER_CR || ch === KEY.ENTER_LF) {
           stdin.removeListener('data', onData);
+          stdin.pause();
           out.write('\n');
           resolve(buf);
         } else if (ch === KEY.BACKSPACE_DEL || ch === KEY.BACKSPACE_BS) {
@@ -63,6 +64,7 @@ export function promptSecret(prompt: string, options?: PromptSecretOptions): Pro
           }
         } else if (ch === KEY.CTRL_C) {
           stdin.removeListener('data', onData);
+          stdin.pause();
           out.write('\n');
           process.exit(130);
         } else if (!ch.startsWith(KEY.ESCAPE)) {
@@ -108,11 +110,13 @@ export async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
 
         if (ch === KEY.CTRL_C) {
           stdin.removeListener('data', onData);
+          stdin.pause();
           stdout.write('\n');
           process.exit(130);
         }
 
         stdin.removeListener('data', onData);
+        stdin.pause();
 
         if (ch.toLowerCase() === 'y') {
           stdout.write('y\n');

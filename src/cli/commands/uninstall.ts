@@ -3,16 +3,17 @@ import type { Command } from 'commander';
 /**
  * Register the `fence uninstall` command.
  *
- * Completely removes OnlyFence: stops daemon, deletes data directory,
- * cleans PATH from shell profiles, and optionally removes Claude Code plugin.
+ * Completely removes OnlyFence: stops daemon, deletes entire install
+ * directory (binary, runtime, keystore, config, logs), cleans PATH from
+ * shell profiles, and removes Claude Code plugin.
  */
 export function registerUninstallCommand(program: Command): void {
   program
     .command('uninstall')
-    .description('Uninstall OnlyFence and remove all data')
+    .description('Completely remove OnlyFence and all its data from this machine')
     .option('-y, --yes', 'Skip confirmation prompt')
     .action(async (opts: { yes?: boolean }) => {
-      const { readFileSync, writeFileSync, rmSync } = await import('node:fs');
+      const { readFileSync, writeFileSync, rmSync, existsSync } = await import('node:fs');
       const { join } = await import('node:path');
       const { homedir } = await import('node:os');
       const { execFileSync } = await import('node:child_process');
@@ -23,28 +24,25 @@ export function registerUninstallCommand(program: Command): void {
       const { bold, red, dim, info, success, warn } = await import('../style.js');
 
       if (opts.yes !== true) {
-        const confirmed = await promptUninstallConfirmation({ bold, red, dim, info, warn });
+        const confirmed = await promptUninstallConfirmation(ONLYFENCE_DIR, {
+          bold,
+          red,
+          dim,
+          info,
+          warn,
+        });
         if (!confirmed) return;
       }
 
+      // 1. Stop daemon
       if (isDaemonRunning()) {
         info('Stopping daemon...');
         await stopDaemonGracefully();
         success('Daemon stopped.');
       }
 
-      info(`Removing ${ONLYFENCE_DIR}...`);
-      try {
-        rmSync(ONLYFENCE_DIR, { recursive: true });
-        success('Data directory removed.');
-      } catch (err: unknown) {
-        if (isEnoentError(err)) {
-          info('Data directory already removed.');
-        } else {
-          throw err;
-        }
-      }
-
+      // 2. Clean shell profiles before removing the directory so PATH
+      //    cleanup happens even if rmSync partially fails.
       const home = homedir();
       const fishConfigDir = process.env['XDG_CONFIG_HOME'] ?? join(home, '.config');
       const shellProfiles = [
@@ -55,11 +53,10 @@ export function registerUninstallCommand(program: Command): void {
         join(fishConfigDir, 'fish', 'config.fish'),
       ];
 
-      const binDir = join(ONLYFENCE_DIR, 'bin');
       for (const profile of shellProfiles) {
         try {
           const content = readFileSync(profile, 'utf-8');
-          if (!content.includes(binDir) && !content.includes('.onlyfence/bin')) continue;
+          if (!content.includes('.onlyfence/bin')) continue;
 
           const cleaned = content
             .split('\n')
@@ -80,6 +77,7 @@ export function registerUninstallCommand(program: Command): void {
         }
       }
 
+      // 3. Remove Claude Code plugin
       try {
         execFileSync('claude', ['plugin', 'uninstall', 'onlyfence@onlyfence'], { stdio: 'ignore' });
         execFileSync('claude', ['plugin', 'marketplace', 'remove', 'seallabs/onlyfence'], {
@@ -90,9 +88,24 @@ export function registerUninstallCommand(program: Command): void {
         // Claude CLI not installed or plugin not present — both are fine
       }
 
+      // 4. Remove the entire install directory (binary, runtime, keystore, config, logs)
+      info(`Removing ${ONLYFENCE_DIR}...`);
+      try {
+        rmSync(ONLYFENCE_DIR, { recursive: true, force: true });
+      } catch (err: unknown) {
+        if (!isEnoentError(err)) throw err;
+      }
+
+      // 5. Verify removal
+      if (existsSync(ONLYFENCE_DIR)) {
+        warn(`Could not fully remove ${ONLYFENCE_DIR} — please delete it manually.`);
+      } else {
+        success(`Removed ${ONLYFENCE_DIR}`);
+      }
+
       console.log('');
-      success(bold('OnlyFence has been uninstalled.'));
-      info('Restart your shell to complete PATH cleanup.');
+      success(bold('OnlyFence has been completely removed from this machine.'));
+      info('Restart your shell to finish PATH cleanup.');
       console.log('');
     });
 }
@@ -108,16 +121,24 @@ interface PromptStyles {
 
 const CONFIRM_WORD = 'uninstall';
 
-async function promptUninstallConfirmation(style: PromptStyles): Promise<boolean> {
+async function promptUninstallConfirmation(
+  installDir: string,
+  style: PromptStyles,
+): Promise<boolean> {
   const readline = await import('node:readline');
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
   console.log('');
-  style.warn(`This will ${style.bold('permanently delete')} all OnlyFence data:`);
+  style.warn(`This will ${style.bold('completely remove')} OnlyFence from this machine:`);
+  console.log('');
+  console.log(`    ${style.dim('•')} The ${style.bold('fence')} CLI binary and bundled runtime`);
   console.log(`    ${style.dim('•')} Encrypted keystore (wallet private keys)`);
   console.log(`    ${style.dim('•')} Configuration, trade history, and logs`);
   console.log(`    ${style.dim('•')} Daemon process and socket`);
   console.log(`    ${style.dim('•')} Shell PATH entries`);
+  console.log(`    ${style.dim('•')} Claude Code plugin`);
+  console.log('');
+  console.log(`    ${style.dim(`Everything under ${installDir} will be deleted.`)}`);
   console.log('');
   style.warn(
     style.red('This action cannot be undone. Make sure you have your mnemonic backed up.'),
