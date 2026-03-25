@@ -3,54 +3,36 @@ import {
   fetchAllMarkets,
   fetchMarketDetail,
   fetchPortfolio,
-  resolveMarketId,
 } from '../../chain/sui/alphalend/markets.js';
-import { buildSuiSigner } from '../../chain/sui/signer.js';
-import type { ActionBuilder } from '../../core/action-builder.js';
 import type {
+  ActionIntent,
   BorrowIntent,
   Chain,
   ChainId,
   ClaimRewardsIntent,
-  PipelineResult,
+  LendingAction,
   RepayIntent,
   SupplyIntent,
+  TokenLendingIntent,
   WithdrawIntent,
 } from '../../core/action-types.js';
-import { NoOpMevProtector } from '../../core/mev-protector.js';
-import { executePipeline } from '../../core/transaction-pipeline.js';
-import type { PolicyContext } from '../../policy/context.js';
+import { createActionExecutor, type ExecutionResult } from '../../core/action-executor.js';
 import { captureException } from '../../telemetry/index.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
-import { loadSessionKeyBytes } from '../../wallet/session.js';
 import type { AppComponents } from '../bootstrap.js';
 import type { CliOutput, LendingOutput, LendingRewardsOutput, MappedOutput } from '../output.js';
-import { EXIT_CODES, printJsonOutput } from '../output.js';
-import { resolveTokenInput } from '../resolve.js';
+import { EXIT_CODES, handleCommandError, printJsonOutput } from '../output.js';
 import { withComponents } from '../with-components.js';
-
-/** Shared fallback MEV protector for chains without a registered protector. */
-const FALLBACK_MEV_PROTECTOR = new NoOpMevProtector();
-
-/** Lending actions that take token + amount args. */
-type LendingAction = 'lending:supply' | 'lending:borrow' | 'lending:withdraw' | 'lending:repay';
-
-/** Intent type for a token-based lending action. */
-type TokenLendingIntent = SupplyIntent | BorrowIntent | WithdrawIntent | RepayIntent;
 
 /**
  * Register the `fence lend` command group on the given program.
  *
- * Subcommands:
- *   supply <token> <amount>   - Supply tokens as collateral
- *   borrow <token> <amount>   - Borrow tokens against collateral
- *   withdraw <token> <amount> - Withdraw supplied tokens
- *   repay <token> <amount>    - Repay borrowed tokens
- *   claim                     - Claim accumulated rewards
- *   markets                   - List all lending markets
- *   market <token>            - Show detailed market info
- *   portfolio                 - Show user lending positions
+ * Transactional subcommands are thin shells: parse args → build raw intent →
+ * delegate to ActionExecutor → map result to CLI output.
+ *
+ * Execution mode (in-process vs daemon) is handled transparently
+ * by the executor — commands have zero awareness of it.
  */
 export function registerLendCommand(program: Command, getComponents: () => AppComponents): void {
   const lend = program.command('lend').description('AlphaLend lending operations');
@@ -82,7 +64,7 @@ export function registerLendCommand(program: Command, getComponents: () => AppCo
 
 /**
  * Register a token-based lending subcommand (supply, borrow, repay).
- * All share the same flow: resolve token, scale amount, resolve market, build intent, execute pipeline.
+ * All share the same flow: build raw intent → executor → output.
  */
 function registerTokenAction(
   parent: Command,
@@ -96,8 +78,13 @@ function registerTokenAction(
     .description(description)
     .option('-m, --market <marketId>', 'Explicit market ID (auto-resolved if omitted)')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-o, --output <format>', 'Output format (json)', 'json')
     .action(
-      async (token: string, amountStr: string, options: { market?: string; chain: Chain }) => {
+      async (
+        token: string,
+        amountStr: string,
+        options: { market?: string; chain: Chain; output: string },
+      ) => {
         await executeTokenLendingAction(action, token, amountStr, options, getComponents);
       },
     );
@@ -112,12 +99,13 @@ function registerWithdrawAction(parent: Command, getComponents: () => AppCompone
     .description('Withdraw supplied tokens')
     .option('-m, --market <marketId>', 'Explicit market ID (auto-resolved if omitted)')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-o, --output <format>', 'Output format (json)', 'json')
     .option('-a, --all', 'Withdraw entire position')
     .action(
       async (
         token: string,
         amountStr: string,
-        options: { market?: string; chain: Chain; all?: boolean },
+        options: { market?: string; chain: Chain; output: string; all?: boolean },
       ) => {
         await executeTokenLendingAction(
           'lending:withdraw',
@@ -132,6 +120,10 @@ function registerWithdrawAction(parent: Command, getComponents: () => AppCompone
 
 /**
  * Core transactional flow shared by supply, borrow, withdraw, repay.
+ *
+ * Builds a raw intent with user-provided inputs and delegates to the
+ * ActionExecutor. Resolution (tokens, markets, prices) happens inside
+ * the executor — this function has zero awareness of execution mode.
  */
 async function executeTokenLendingAction(
   action: LendingAction,
@@ -140,146 +132,45 @@ async function executeTokenLendingAction(
   options: { market?: string; chain: Chain; all?: boolean },
   getComponents: () => AppComponents,
 ): Promise<void> {
-  const components = withComponents(getComponents);
-  if (components === undefined) return;
-
-  const {
-    db,
-    config,
-    dataProviders,
-    policyRegistry,
-    activityLog,
-    chainAdapterFactory,
-    actionBuilderRegistry,
-    mevProtectors,
-    alphalendClient,
-    logger,
-  } = components;
   const chain = options.chain;
   const chainId: ChainId = `${chain}:mainnet`;
-  const log = logger.child({ command: `lend-${action}` });
 
   try {
-    const chainConfig = config.chain[chain];
+    const executor = createActionExecutor(getComponents);
 
-    const wallet = getPrimaryWallet(db, chainId);
-    if (wallet === null) {
-      throw new Error(`No primary wallet found for chain "${chainId}". Run "fence setup" first.`);
-    }
+    // Build raw intent with user-provided values — the executor's resolver
+    // will transform symbols → coin types, scale amounts, resolve market IDs.
+    const rawIntent = buildRawTokenIntent(action, chainId, token, amountStr, options);
+    const result = await executor.execute(rawIntent);
 
-    const watchOnly = wallet.isWatchOnly;
-
-    log.info({ action, token, amount: amountStr, chain, watchOnly }, 'Lend command invoked');
-
-    // Get chain adapter and data provider
-    const chainAdapter = chainAdapterFactory.get(chain);
-    const dataProvider = dataProviders.get(chain);
-
-    // === Resolve CLI inputs to stable internal representations ===
-    // resolveTokenInput handles alias resolution (case-insensitive),
-    // coin type normalization, decimal fetching, and amount scaling.
-    const resolved = await resolveTokenInput(token, amountStr, chainAdapter, dataProvider);
-    const { coinType, scaledAmount } = resolved;
-
-    // Resolve market ID and USD price in parallel (independent operations)
-    // PriceCache (wrapping the data provider) implements fail-closed:
-    // if the oracle is unreachable and the cache is stale (>5 min),
-    // getPrice() throws OracleStalePriceError — the trade is rejected.
-    const [marketId, tradeValueUsd] = await Promise.all([
-      resolveMarketId(alphalendClient, coinType, options.market),
-      dataProvider.getPrice(coinType).then((price) => parseFloat(amountStr) * price),
-    ]);
-
-    // Build intent
-    const intent = buildTokenIntent(
-      action,
-      chainId,
-      wallet.address,
-      coinType,
-      scaledAmount,
-      marketId,
-      tradeValueUsd,
-      options.all,
-    );
-
-    // Build policy context
-    const policyCtx: PolicyContext = {
-      config: chainConfig,
-      activityLog,
-      tradeValueUsd,
-    };
-
-    // Resolve signer from active session if not watch-only
-    const signer = watchOnly ? undefined : buildSuiSigner(loadSessionKeyBytes(chainId));
-
-    // Get builder from registry
-    const builder = actionBuilderRegistry.getDefault(
-      chain,
-      action,
-      intent,
-    ) as ActionBuilder<TokenLendingIntent>;
-
-    // Get MEV protector (fallback to NoOp)
-    const mevProtector = mevProtectors.get(chain) ?? FALLBACK_MEV_PROTECTOR;
-
-    // Execute pipeline
-    const result = await executePipeline({
-      intent,
-      builder,
-      chainAdapter,
-      policyRegistry,
-      policyContext: policyCtx,
-      mevProtector,
-      logger: log,
-      ...(signer !== undefined ? { signer } : {}),
-      watchOnly,
-      dataProvider,
-    });
-
-    // Map PipelineResult to CliOutput + exit code
-    const output = mapLendingResultToOutput(result, intent, action, tradeValueUsd);
+    const output = mapLendingResultToOutput(result, action);
     printJsonOutput(output.cliOutput);
     process.exitCode = output.exitCode;
   } catch (err: unknown) {
-    log.error({ err }, `Lend ${action} failed`);
-    captureException(err);
-    const errorOutput: CliOutput = {
-      status: 'error',
-      action,
-      chainId,
-      address: '',
-      error: toErrorMessage(err),
-    };
-    printJsonOutput(errorOutput);
-    process.exitCode = 1;
+    handleCommandError(err, action, chainId, captureException);
   }
 }
 
 /**
- * Build the correct intent type for a given lending action.
+ * Build a raw (unresolved) intent for a token-based lending action.
+ * Fields like coinType, amount, and marketId contain user-provided values
+ * that the IntentResolver will resolve before pipeline execution.
  */
-function buildTokenIntent(
+function buildRawTokenIntent(
   action: LendingAction,
   chainId: ChainId,
-  walletAddress: string,
-  coinType: string,
+  token: string,
   amount: string,
-  marketId: string,
-  tradeValueUsd: number | undefined,
-  withdrawAll?: boolean,
-): TokenLendingIntent {
-  const base = {
-    chainId,
-    walletAddress,
-    ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
-  } as const;
+  options: { market?: string; all?: boolean },
+): ActionIntent {
+  const base = { chainId, walletAddress: '' } as const;
 
   switch (action) {
     case 'lending:supply': {
       const intent: SupplyIntent = {
         ...base,
         action: 'lending:supply',
-        params: { coinType, amount, protocol: 'alphalend', marketId },
+        params: { coinType: token, amount, protocol: 'alphalend', marketId: options.market ?? '' },
       };
       return intent;
     }
@@ -287,7 +178,7 @@ function buildTokenIntent(
       const intent: BorrowIntent = {
         ...base,
         action: 'lending:borrow',
-        params: { coinType, amount, protocol: 'alphalend', marketId },
+        params: { coinType: token, amount, protocol: 'alphalend', marketId: options.market ?? '' },
       };
       return intent;
     }
@@ -296,11 +187,11 @@ function buildTokenIntent(
         ...base,
         action: 'lending:withdraw',
         params: {
-          coinType,
+          coinType: token,
           amount,
           protocol: 'alphalend',
-          marketId,
-          ...(withdrawAll === true ? { withdrawAll: true } : {}),
+          marketId: options.market ?? '',
+          ...(options.all === true ? { withdrawAll: true } : {}),
         },
       };
       return intent;
@@ -309,7 +200,7 @@ function buildTokenIntent(
       const intent: RepayIntent = {
         ...base,
         action: 'lending:repay',
-        params: { coinType, amount, protocol: 'alphalend', marketId },
+        params: { coinType: token, amount, protocol: 'alphalend', marketId: options.market ?? '' },
       };
       return intent;
     }
@@ -324,88 +215,27 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
     .command('claim')
     .description('Claim accumulated lending rewards')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
-    .action(async (options: { chain: Chain }) => {
-      const components = withComponents(getComponents);
-      if (components === undefined) return;
-
-      const {
-        db,
-        config,
-        dataProviders,
-        policyRegistry,
-        activityLog,
-        chainAdapterFactory,
-        actionBuilderRegistry,
-        mevProtectors,
-        logger,
-      } = components;
+    .option('-o, --output <format>', 'Output format (json)', 'json')
+    .action(async (options: { chain: Chain; output: string }) => {
       const chain = options.chain;
       const chainId: ChainId = `${chain}:mainnet`;
-      const log = logger.child({ command: 'lend-claim' });
 
       try {
-        const chainConfig = config.chain[chain];
+        const executor = createActionExecutor(getComponents);
 
-        const wallet = getPrimaryWallet(db, chainId);
-        if (wallet === null) {
-          throw new Error(
-            `No primary wallet found for chain "${chainId}". Run "fence setup" first.`,
-          );
-        }
-
-        const watchOnly = wallet.isWatchOnly;
-        log.info({ chain, watchOnly }, 'Claim rewards invoked');
-
-        const intent: ClaimRewardsIntent = {
+        const rawIntent: ClaimRewardsIntent = {
           chainId,
           action: 'lending:claim_rewards',
-          walletAddress: wallet.address,
+          walletAddress: '',
           params: { protocol: 'alphalend' },
         };
 
-        const policyCtx: PolicyContext = {
-          config: chainConfig,
-          activityLog,
-        };
-
-        const signer = watchOnly ? undefined : buildSuiSigner(loadSessionKeyBytes(chainId));
-
-        const builder = actionBuilderRegistry.getDefault(
-          chain,
-          'lending:claim_rewards',
-          intent,
-        ) as ActionBuilder<ClaimRewardsIntent>;
-
-        const chainAdapter = chainAdapterFactory.get(chain);
-        const mevProtector = mevProtectors.get(chain) ?? FALLBACK_MEV_PROTECTOR;
-
-        const result = await executePipeline({
-          intent,
-          builder,
-          chainAdapter,
-          policyRegistry,
-          policyContext: policyCtx,
-          mevProtector,
-          logger: log,
-          ...(signer !== undefined ? { signer } : {}),
-          watchOnly,
-          dataProvider: dataProviders.get(chain),
-        });
-
-        const output = mapLendingResultToOutput(result, intent, 'lending:claim_rewards', undefined);
+        const result = await executor.execute(rawIntent);
+        const output = mapLendingResultToOutput(result, 'lending:claim_rewards');
         printJsonOutput(output.cliOutput);
         process.exitCode = output.exitCode;
       } catch (err: unknown) {
-        log.error({ err: toErrorMessage(err) }, 'Claim rewards failed');
-        const errorOutput: CliOutput = {
-          status: 'error',
-          action: 'lending:claim_rewards',
-          chainId,
-          address: '',
-          error: toErrorMessage(err),
-        };
-        printJsonOutput(errorOutput);
-        process.exitCode = 1;
+        handleCommandError(err, 'lending:claim_rewards', chainId, captureException);
       }
     });
 }
@@ -509,19 +339,24 @@ function registerPortfolioQuery(parent: Command, getComponents: () => AppCompone
 type LendingPayload = LendingOutput | LendingRewardsOutput;
 
 /**
- * Map a PipelineResult to a CliOutput and process exit code for lending actions.
+ * Map an ExecutionResult to a CliOutput and process exit code for lending actions.
  */
 function mapLendingResultToOutput(
-  result: PipelineResult,
-  intent: TokenLendingIntent | ClaimRewardsIntent,
+  execResult: ExecutionResult,
   action: LendingAction | 'lending:claim_rewards',
-  tradeValueUsd: number | undefined,
 ): MappedOutput<LendingPayload> {
+  const {
+    pipelineResult: result,
+    resolvedIntent: intent,
+    walletAddress,
+    tradeValueUsd,
+  } = execResult;
+
   const base: CliOutput<LendingPayload> = {
     status: result.status,
     action,
     chainId: intent.chainId,
-    address: intent.walletAddress,
+    address: walletAddress,
     gasUsed: result.gasUsed,
     txDigest: result.txDigest,
     protocol: 'alphalend',
@@ -534,10 +369,11 @@ function mapLendingResultToOutput(
   let payload: LendingPayload | undefined;
 
   if (hasPayload && intent.action !== 'lending:claim_rewards') {
+    const tokenIntent = intent as TokenLendingIntent;
     payload = {
-      token: intent.params.coinType,
-      amount: parseFloat(intent.params.amount),
-      marketId: intent.params.marketId,
+      token: tokenIntent.params.coinType,
+      amount: parseFloat(tokenIntent.params.amount),
+      marketId: tokenIntent.params.marketId,
       valueUsd: tradeValueUsd ?? null,
     };
   }

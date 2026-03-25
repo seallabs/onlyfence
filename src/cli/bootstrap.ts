@@ -5,8 +5,10 @@ import type { Logger } from 'pino';
 import { ChainAdapterFactory } from '../chain/factory.js';
 import { SuiSwapBuilder } from '../chain/sui/7k/swap.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
+import { buildSuiSigner } from '../chain/sui/signer.js';
 import { AlphaLendBorrowBuilder } from '../chain/sui/alphalend/borrow.js';
 import { AlphaLendClaimRewardsBuilder } from '../chain/sui/alphalend/claim-rewards.js';
+import { resolveMarketId } from '../chain/sui/alphalend/markets.js';
 import { createAlphaLendClient } from '../chain/sui/alphalend/client.js';
 import { AlphaLendRepayBuilder } from '../chain/sui/alphalend/repay.js';
 import { AlphaLendSupplyBuilder } from '../chain/sui/alphalend/supply.js';
@@ -15,6 +17,8 @@ import { SuiDataProvider } from '../chain/sui/data-provider.js';
 import { SUI_KNOWN_DECIMALS, tryResolveTokenAddress } from '../chain/sui/tokens.js';
 import { CONFIG_PATH, loadConfig } from '../config/loader.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
+import type { IntentResolverRegistry, ResolverServices } from '../core/intent-resolver.js';
+import { buildIntentResolverRegistry } from '../core/resolvers/index.js';
 import { DataProviderRegistry, DataProviderWithCache } from '../core/data-provider.js';
 import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
 import { PriceCache } from '../core/price-cache.js';
@@ -29,6 +33,7 @@ import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
 import { PolicyCheckRegistry } from '../policy/registry.js';
 import { initSentry } from '../telemetry/sentry.js';
 import type { AppConfig } from '../types/config.js';
+import type { Signer } from '../types/result.js';
 
 /**
  * All initialized application components returned by bootstrap.
@@ -43,7 +48,12 @@ export interface AppComponents {
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
   readonly actionBuilderRegistry: ActionBuilderRegistry;
+  readonly intentResolverRegistry: IntentResolverRegistry;
   readonly mevProtectors: Map<string, MevProtector>;
+  /** Chain-agnostic signer factory: builds a Signer from raw key bytes. */
+  readonly buildSigner: (keyBytes: Uint8Array) => Signer;
+  /** Protocol-specific services for intent resolvers. */
+  readonly resolverServices: ResolverServices;
   readonly logger: Logger;
 
   /** Close the database and release resources. Safe to call multiple times. */
@@ -86,6 +96,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const alphalendClient = createAlphaLendClient(suiClient, 'mainnet');
   const chainAdapterFactory = buildChainAdapterFactory(suiClient);
   const actionBuilderRegistry = buildActionBuilderRegistry(activityLog, alphalendClient, suiClient);
+  const intentResolverRegistry = buildIntentResolverRegistry();
   const mevProtectors = buildMevProtectors();
 
   let closed = false;
@@ -112,7 +123,13 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     policyRegistry,
     chainAdapterFactory,
     actionBuilderRegistry,
+    intentResolverRegistry,
     mevProtectors,
+    buildSigner: buildSuiSigner,
+    resolverServices: {
+      marketResolver: (coinType: string, explicitMarketId?: string) =>
+        resolveMarketId(alphalendClient, coinType, explicitMarketId),
+    },
     logger,
     close,
   };

@@ -20,7 +20,13 @@ import { KeyHolder } from './key-holder.js';
 import { InMemoryTradeWindow } from './trade-window.js';
 import { writePidFile, removePidFile } from './pid-manager.js';
 import { SOCKET_PATH } from './detect.js';
-import type { IpcRequest, IpcResponse, TradePayload, ReloadPayload } from './protocol.js';
+import type {
+  ExecutePayload,
+  IpcRequest,
+  IpcResponse,
+  TradePayload,
+  ReloadPayload,
+} from './protocol.js';
 import type { SecurePassword } from '../security/branded-types.js';
 import {
   securePasswordFromEnv,
@@ -114,15 +120,39 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   // Request handler
   const handleRequest = async (req: IpcRequest): Promise<IpcResponse> => {
     switch (req.type) {
-      case 'trade': {
-        const result = await executor.executeTrade(req.payload as TradePayload);
-        const ok = result.status === 'success' || result.status === 'simulated';
+      case 'execute': {
+        const execResponse = await executor.executeAction(req.payload as ExecutePayload);
+        const ok =
+          execResponse.result.status === 'success' || execResponse.result.status === 'simulated';
         return {
           id: req.id,
           ok,
-          data: { result },
-          ...(!ok && result.error !== undefined ? { error: result.error } : {}),
-          ...(!ok && result.rejectionReason !== undefined ? { error: result.rejectionReason } : {}),
+          data: execResponse,
+          ...(!ok && execResponse.result.error !== undefined
+            ? { error: execResponse.result.error }
+            : {}),
+          ...(!ok && execResponse.result.rejectionReason !== undefined
+            ? { error: execResponse.result.rejectionReason }
+            : {}),
+        };
+      }
+      case 'trade': {
+        // Backwards-compat: delegate to executeAction
+        const tradeResponse = await executor.executeAction({
+          intent: (req.payload as TradePayload).intent,
+        });
+        const ok =
+          tradeResponse.result.status === 'success' || tradeResponse.result.status === 'simulated';
+        return {
+          id: req.id,
+          ok,
+          data: { result: tradeResponse.result },
+          ...(!ok && tradeResponse.result.error !== undefined
+            ? { error: tradeResponse.result.error }
+            : {}),
+          ...(!ok && tradeResponse.result.rejectionReason !== undefined
+            ? { error: tradeResponse.result.rejectionReason }
+            : {}),
         };
       }
       case 'status': {

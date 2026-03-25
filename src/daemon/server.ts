@@ -140,20 +140,10 @@ export class DaemonServer {
 
         void handler(req)
           .then((response) => {
-            if (!socket.destroyed) {
-              socket.write(encodeMessage(response));
-            }
+            safeWrite(socket, encodeMessage(response));
           })
           .catch((err: unknown) => {
-            if (!socket.destroyed) {
-              socket.write(
-                encodeMessage({
-                  id: req.id,
-                  ok: false,
-                  error: toErrorMessage(err),
-                }),
-              );
-            }
+            safeWrite(socket, encodeMessage({ id: req.id, ok: false, error: toErrorMessage(err) }));
           });
       }
     });
@@ -178,4 +168,21 @@ export class DaemonServer {
       });
     });
   }
+}
+
+/**
+ * Write to a socket only if it is still writable. Silently drops the
+ * write if the remote end has disconnected — prevents EPIPE from
+ * propagating as an uncaught exception when a client times out
+ * before the daemon finishes processing.
+ */
+function safeWrite(socket: Socket, data: string): void {
+  if (socket.destroyed || !socket.writable) return;
+  socket.write(data, (err) => {
+    if (err !== undefined && err !== null) {
+      // Client disconnected — nothing to do. The socket's 'error'
+      // handler already released the connection tracker slot.
+      socket.destroy();
+    }
+  });
 }

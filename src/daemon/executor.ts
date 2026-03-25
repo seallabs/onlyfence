@@ -1,22 +1,21 @@
 /**
- * Daemon trade executor: wraps executePipeline() with daemon-held components.
- *
- * The executor reuses the exact same transaction pipeline as the CLI.
- * The difference is that:
+ * Daemon executor: wraps the shared executeWithPipeline() with daemon-held
+ * components. The only differences from the in-process executor:
  * - The signer comes from KeyHolder (in-memory) instead of a session file
  * - The policy context uses InMemoryTradeWindow instead of SQLite
  * - The config comes from ConfigSnapshot (immutable until reload)
+ *
+ * The generic executeAction() method delegates resolution to the shared
+ * IntentResolverRegistry, making it action-type agnostic.
  */
 
 import type { Logger } from 'pino';
-import type { Chain, PipelineResult, SwapIntent } from '../core/action-types.js';
-import { NoOpMevProtector } from '../core/mev-protector.js';
-import { executePipeline } from '../core/transaction-pipeline.js';
-import { resolveTokenInput } from '../cli/resolve.js';
+import type { ActionIntent, PipelineResult } from '../core/action-types.js';
+import { extractCoinTypes } from '../core/action-types.js';
+import { buildResolverDeps, executeWithPipeline } from '../core/action-executor.js';
 import { getPrimaryWallet } from '../wallet/manager.js';
 import type { AppComponents } from '../cli/bootstrap.js';
-import type { PolicyContext } from '../policy/context.js';
-import type { TradePayload } from './protocol.js';
+import type { ExecutePayload, ExecuteResponse, TradePayload } from './protocol.js';
 import type { KeyHolder } from './key-holder.js';
 import type { ConfigSnapshot } from './config-snapshot.js';
 import type { InMemoryTradeWindow } from './trade-window.js';
@@ -31,125 +30,108 @@ export class DaemonExecutor {
   ) {}
 
   /**
-   * Execute a trade intent through the full pipeline.
+   * Execute any action intent through the full pipeline.
    *
-   * The thin client sends raw CLI args (token symbols, human-readable amounts).
-   * This method resolves them to canonical coin types and scaled amounts —
-   * the same resolution the in-process CLI flow performs.
+   * Delegates action-specific resolution to IntentResolverRegistry,
+   * then uses the shared executeWithPipeline() for the common path.
+   * Only the signer source and policy activity log differ from in-process.
    */
-  async executeTrade(payload: TradePayload): Promise<PipelineResult> {
-    const { intent } = payload;
-    const log = this.logger.child({ action: intent.action, chainId: intent.chainId });
-    const chain = intent.chainId.split(':')[0] as Chain | undefined;
-
-    if (chain === undefined) {
-      return { status: 'error', error: `Invalid chainId: ${intent.chainId}` };
-    }
-
-    const config = this.configSnapshot.current;
-    const chainConfig = config.chain[chain];
-    const chainAdapter = this.components.chainAdapterFactory.get(chain);
-    const dataProvider = this.components.dataProviders.get(chain);
+  async executeAction(payload: ExecutePayload): Promise<ExecuteResponse> {
+    const { intent: rawIntent } = payload;
+    const log = this.logger.child({ action: rawIntent.action, chainId: rawIntent.chainId });
 
     // Resolve wallet if not provided
-    const rawParams = intent.params as Record<string, unknown>;
-    let walletAddress = intent.walletAddress;
+    let walletAddress = rawIntent.walletAddress;
     if (walletAddress === '') {
-      const wallet = getPrimaryWallet(this.components.db, intent.chainId);
+      const wallet = getPrimaryWallet(this.components.db, rawIntent.chainId);
       if (wallet === null) {
-        return { status: 'error', error: `No primary wallet for chain "${intent.chainId}"` };
+        return {
+          result: { status: 'error', error: `No primary wallet for chain "${rawIntent.chainId}"` },
+          resolvedIntent: rawIntent,
+          walletAddress: '',
+        };
       }
       walletAddress = wallet.address;
     }
 
-    // Resolve token symbols → coin types, scale amounts
-    const rawFromToken = typeof rawParams['coinTypeIn'] === 'string' ? rawParams['coinTypeIn'] : '';
-    const rawToToken = typeof rawParams['coinTypeOut'] === 'string' ? rawParams['coinTypeOut'] : '';
-    const rawAmount = typeof rawParams['amountIn'] === 'string' ? rawParams['amountIn'] : '0';
-    const slippageBps = Number(rawParams['slippageBps'] ?? 100);
+    // Resolve intent via shared resolver registry
+    const chain = rawIntent.chainId.split(':')[0];
+    const chainAdapter = this.components.chainAdapterFactory.get(chain as 'sui');
+    const dataProvider = this.components.dataProviders.get(chain as 'sui');
+    const deps = buildResolverDeps(chainAdapter, dataProvider, walletAddress, this.components);
+    const resolver = this.components.intentResolverRegistry.get(rawIntent.action);
+    const { intent: resolvedIntent, tradeValueUsd } = await resolver.resolve(rawIntent, deps);
 
-    const resolvedIn = await resolveTokenInput(rawFromToken, rawAmount, chainAdapter, dataProvider);
-    const coinTypeOut = chainAdapter.resolveTokenAddress(rawToToken);
+    // Get signer from daemon's KeyHolder (pre-decrypted keys in memory)
+    const signer = this.keyHolder.getSigner(rawIntent.chainId);
 
-    // Fetch price for policy checks (fail-closed via PriceCache)
-    const price = await dataProvider.getPrice(resolvedIn.coinType);
-    const tradeValueUsd = parseFloat(rawAmount) * price;
-
-    // Build resolved intent
-    const resolvedIntent: SwapIntent = {
-      chainId: intent.chainId,
-      action: 'trade:swap',
-      walletAddress,
-      params: {
-        coinTypeIn: resolvedIn.coinType,
-        coinTypeOut,
-        amountIn: resolvedIn.scaledAmount,
-        slippageBps,
-      },
-      tradeValueUsd,
-    };
-
-    // Build policy context with in-memory trade window
-    const policyCtx: PolicyContext = {
-      config: chainConfig,
-      activityLog: this.tradeWindow,
-      tradeValueUsd,
-    };
-
-    // Get signer from key holder
-    const signer = this.keyHolder.getSigner(intent.chainId);
-
-    // Get builder and chain adapter
-    const builder = this.components.actionBuilderRegistry.getDefault(
-      chain,
-      resolvedIntent.action,
+    // Execute through the shared pipeline, using InMemoryTradeWindow for policy
+    const result = await executeWithPipeline({
       resolvedIntent,
-    );
-    const mevProtector = this.components.mevProtectors.get(chain) ?? new NoOpMevProtector();
-
-    const result = await executePipeline({
-      intent: resolvedIntent,
-      builder,
-      chainAdapter,
-      policyRegistry: this.components.policyRegistry,
-      policyContext: policyCtx,
-      mevProtector,
-      logger: log,
+      components: this.components,
       signer,
       watchOnly: false,
+      tradeValueUsd,
+      logger: log,
+      activityLogOverride: this.tradeWindow,
+      configOverride: this.configSnapshot.current,
     });
 
-    // Record approved trades in the in-memory window
-    if (result.status === 'success') {
-      this.tradeWindow.record(intent.chainId, tradeValueUsd);
+    // Record in in-memory trade window for spending limit tracking
+    if (result.status === 'success' && tradeValueUsd !== undefined) {
+      this.tradeWindow.record(rawIntent.chainId, tradeValueUsd);
     }
 
-    // Also log to SQLite for persistence
+    // Persist to SQLite for activity history
     if (result.status === 'success' || result.status === 'rejected') {
-      try {
-        this.components.activityLog.logActivity({
-          chain_id: resolvedIntent.chainId,
-          wallet_address: walletAddress,
-          action: 'trade:swap',
-          token_a_type: resolvedIn.coinType,
-          token_a_amount: resolvedIn.scaledAmount,
-          token_b_type: coinTypeOut,
-          value_usd: tradeValueUsd,
-          ...(result.txDigest !== undefined ? { tx_digest: result.txDigest } : {}),
-          ...(typeof result.gasUsed === 'string' ? { gas_cost: parseFloat(result.gasUsed) } : {}),
-          policy_decision: result.status === 'rejected' ? 'rejected' : 'approved',
-          ...(result.rejectionReason !== undefined
-            ? { rejection_reason: result.rejectionReason }
-            : {}),
-          ...(result.rejectionCheck !== undefined
-            ? { rejection_check: result.rejectionCheck }
-            : {}),
-        });
-      } catch (err: unknown) {
-        log.warn({ err }, 'Failed to persist trade to SQLite (in-memory window still updated)');
-      }
+      this.logActivity(resolvedIntent, walletAddress, tradeValueUsd, result, log);
     }
 
-    return result;
+    return {
+      result,
+      resolvedIntent,
+      walletAddress,
+      ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
+    };
+  }
+
+  /**
+   * Execute a trade intent (backwards-compatible alias for executeAction).
+   *
+   * @deprecated Use executeAction() for new code.
+   */
+  async executeTrade(payload: TradePayload): Promise<PipelineResult> {
+    const response = await this.executeAction({ intent: payload.intent });
+    return response.result;
+  }
+
+  /** Persist activity to SQLite (best-effort, does not throw). */
+  private logActivity(
+    intent: ActionIntent,
+    walletAddress: string,
+    tradeValueUsd: number | undefined,
+    result: PipelineResult,
+    log: Logger,
+  ): void {
+    try {
+      const coinTypes = extractCoinTypes(intent);
+      this.components.activityLog.logActivity({
+        chain_id: intent.chainId,
+        wallet_address: walletAddress,
+        action: intent.action,
+        ...(coinTypes[0] !== undefined ? { token_a_type: coinTypes[0] } : {}),
+        ...(coinTypes[1] !== undefined ? { token_b_type: coinTypes[1] } : {}),
+        ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
+        ...(result.txDigest !== undefined ? { tx_digest: result.txDigest } : {}),
+        ...(typeof result.gasUsed === 'number' ? { gas_cost: result.gasUsed } : {}),
+        policy_decision: result.status === 'rejected' ? 'rejected' : 'approved',
+        ...(result.rejectionReason !== undefined
+          ? { rejection_reason: result.rejectionReason }
+          : {}),
+        ...(result.rejectionCheck !== undefined ? { rejection_check: result.rejectionCheck } : {}),
+      });
+    } catch (err: unknown) {
+      log.warn({ err }, 'Failed to persist activity to SQLite (in-memory window still updated)');
+    }
   }
 }

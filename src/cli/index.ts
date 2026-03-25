@@ -40,13 +40,28 @@ import { warn as styleWarn } from './style.js';
 /**
  * Log, report, and print a fatal error. Used by all global error handlers.
  */
+/** Guard against re-entrant calls (EPIPE cascade from console.error). */
+let handlingFatalError = false;
+
 function handleFatalError(err: unknown): void {
-  if (hasLogger()) {
-    getLogger().fatal({ err: toErrorMessage(err) }, 'Fatal error');
+  if (handlingFatalError) return;
+  handlingFatalError = true;
+  try {
+    if (hasLogger()) {
+      getLogger().fatal({ err: toErrorMessage(err) }, 'Fatal error');
+    }
+    captureException(err);
+    // console.error can trigger EPIPE if stderr pipe is broken (detached daemon).
+    // Catch and ignore to prevent cascading uncaughtException loops.
+    try {
+      console.error(`Fatal error: ${toErrorMessage(err)}`);
+    } catch {
+      // stderr is broken (e.g., detached daemon after parent disconnects) — ignore
+    }
+    process.exitCode = 1;
+  } finally {
+    handlingFatalError = false;
   }
-  captureException(err);
-  console.error(`Fatal error: ${toErrorMessage(err)}`);
-  process.exitCode = 1;
 }
 
 /**

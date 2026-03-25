@@ -27,7 +27,7 @@ export function isDaemonReadyMessage(msg: unknown): msg is DaemonReadyMessage {
 
 // ─── Request types ────────────────────────────────────────────────────────────
 
-export type IpcRequestType = 'trade' | 'status' | 'reload' | 'stop';
+export type IpcRequestType = 'execute' | 'trade' | 'status' | 'reload' | 'stop';
 
 export interface IpcRequest {
   readonly id: string;
@@ -64,6 +64,20 @@ export interface DaemonStatus {
 
 export interface TradeResponse {
   readonly result: PipelineResult;
+}
+
+// ─── Generic execute types ───────────────────────────────────────────────────
+
+export interface ExecutePayload {
+  readonly intent: ActionIntent;
+}
+
+/** Response for the generic 'execute' IPC request. */
+export interface ExecuteResponse {
+  readonly result: PipelineResult;
+  readonly resolvedIntent: ActionIntent;
+  readonly walletAddress: string;
+  readonly tradeValueUsd?: number | undefined;
 }
 
 // ─── Framing helpers ──────────────────────────────────────────────────────────

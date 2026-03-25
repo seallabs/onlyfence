@@ -114,6 +114,16 @@ export type ActionIntent =
   | RepayIntent
   | ClaimRewardsIntent;
 
+/** Lending actions that take token + amount args. */
+export type LendingAction =
+  | 'lending:supply'
+  | 'lending:borrow'
+  | 'lending:withdraw'
+  | 'lending:repay';
+
+/** Intent type for token-based lending actions (excludes claim_rewards). */
+export type TokenLendingIntent = SupplyIntent | BorrowIntent | WithdrawIntent | RepayIntent;
+
 /**
  * Extract all coin types referenced by an intent.
  * Used by the pipeline to ensure coin metadata is cached for activity display.
