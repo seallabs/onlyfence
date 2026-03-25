@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="#install"><img src="https://img.shields.io/badge/install-one%20command-brightgreen?style=for-the-badge" alt="One command install" /></a>
+  <a href="#deploy-with-docker--kubernetes"><img src="https://img.shields.io/badge/deploy-docker%20%7C%20k8s-2496ED?style=for-the-badge" alt="Docker and Kubernetes" /></a>
   <a href="#"><img src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge" alt="v0.1.0" /></a>
   <a href="#supported-chains"><img src="https://img.shields.io/badge/chain-Sui-4da2ff?style=for-the-badge" alt="Sui blockchain" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GNU%20GPLv3-22c55e?style=for-the-badge" alt="GNU GPLv3" /></a>
@@ -140,6 +141,140 @@ npm install && npm run build
 
 - **macOS** (Intel or Apple Silicon) or **Linux** (x64 or ARM64)
 - No other dependencies — Node.js runtime is bundled
+
+---
+
+## Deploy with Docker / Kubernetes
+
+OnlyFence ships as a Docker image for production deployments. The daemon runs inside the container and exposes a TCP endpoint for your agent — private keys never leave the container.
+
+```
+┌──────────────┐       ┌──────────────────┐
+│ AI Agent     │  TCP  │ OnlyFence        │
+│ (any host)   │──────►│ (container)      │
+│              │:19876 │                  │
+│ No keys     │       │ Keys in memory   │
+│ No password  │       │ Guardrails apply │
+└──────────────┘       └──────────────────┘
+```
+
+### Docker Compose
+
+```sh
+# 1. Create secret files
+echo "your-mnemonic-phrase" > .fence_mnemonic
+echo "your-password" > .fence_password
+chmod 600 .fence_mnemonic .fence_password
+
+# 2. Start
+docker compose up -d
+```
+
+On first run the entrypoint automatically imports the wallet from the mnemonic and starts the daemon. On subsequent runs (restarts, upgrades) the keystore already exists and the mnemonic is ignored.
+
+Your agent connects to `127.0.0.1:19876`:
+
+```sh
+fence swap SUI USDC 100 --addr 127.0.0.1:19876 --output json
+```
+
+See [`docker-compose.yml`](docker-compose.yml) for the full reference configuration, including read-only filesystem, dropped capabilities, and no-new-privileges.
+
+<details>
+<summary><strong>Non-interactive setup (CI / scripts)</strong></summary>
+
+`fence setup` supports fully non-interactive mode for scripted environments:
+
+```sh
+# Import from file
+fence setup --mnemonic-file /run/secrets/mnemonic --password-file /run/secrets/password
+
+# Import from stdin
+echo "word1 word2 ..." | fence setup --password-file /run/secrets/password
+
+# Generate new wallet (outputs JSON with mnemonic to stdout)
+fence setup --generate --password-file /run/secrets/password
+```
+
+</details>
+
+### Kubernetes / Helm
+
+OnlyFence works with any Kubernetes secret management — native Secrets, HashiCorp Vault (via Agent Injector or CSI), AWS Secrets Manager, or sealed-secrets. Mount the password and mnemonic as files and point the container at them.
+
+```yaml
+# Example: K8s Deployment with native Secrets
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: onlyfence
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: onlyfence
+          image: ghcr.io/seallabs/onlyfence:latest
+          ports:
+            - containerPort: 19876
+          env:
+            - name: FENCE_PASSWORD_FILE
+              value: /run/secrets/fence_password
+          volumeMounts:
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+            - name: data
+              mountPath: /data
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+      volumes:
+        - name: secrets
+          secret:
+            secretName: onlyfence-secrets
+        - name: data
+          persistentVolumeClaim:
+            claimName: onlyfence-data
+```
+
+<details>
+<summary><strong>HashiCorp Vault integration</strong></summary>
+
+With the Vault Agent Injector, secrets are written to a shared tmpfs volume. Point `FENCE_PASSWORD_FILE` and `FENCE_MNEMONIC_FILE` at the injected paths:
+
+```yaml
+annotations:
+  vault.hashicorp.com/agent-inject: "true"
+  vault.hashicorp.com/agent-inject-secret-password: "secret/data/onlyfence/password"
+  vault.hashicorp.com/agent-inject-template-password: |
+    {{- with secret "secret/data/onlyfence/password" -}}
+    {{ .Data.data.value }}
+    {{- end -}}
+env:
+  - name: FENCE_PASSWORD_FILE
+    value: /vault/secrets/password
+  - name: FENCE_MNEMONIC_FILE
+    value: /vault/secrets/mnemonic
+```
+
+</details>
+
+### Container security
+
+The Docker image and reference Compose file include production hardening out of the box:
+
+| Feature | Description |
+|---------|-------------|
+| **Non-root user** | Runs as `onlyfence` user, never root |
+| **Read-only filesystem** | Container root is immutable (`read_only: true`) |
+| **No capabilities** | All Linux capabilities dropped (`cap_drop: ALL`) |
+| **No privilege escalation** | `no-new-privileges` enforced |
+| **Password via file** | Secrets injected as files on tmpfs — never as environment variables |
+| **Loopback-only TCP** | Daemon binds to `127.0.0.1` — not exposed to the network |
+| **Process hardening** | `PR_SET_DUMPABLE=0` on Linux, `PT_DENY_ATTACH` on macOS |
 
 ---
 
@@ -354,7 +489,7 @@ Yes. During `fence setup`, choose "Import existing private key or mnemonic" to u
 <details>
 <summary><strong>What happens if the price oracle is down?</strong></summary>
 
-If OnlyFence can't fetch USD prices, it still enforces your token allowlist. USD-based spending limits are skipped (not silently bypassed — this is logged). Your token restrictions always apply.
+OnlyFence uses a **fail-closed** approach. If the oracle is unreachable, it falls back to a cached price for up to 5 minutes. If the cache is stale or absent, the trade is **rejected** — not silently allowed. Token allowlist checks always apply regardless of oracle status.
 
 </details>
 
@@ -366,9 +501,9 @@ No. OnlyFence doesn't take any fees. You only pay the normal blockchain gas fees
 </details>
 
 <details>
-<summary><strong>Can I run this on a server / VPS?</strong></summary>
+<summary><strong>Can I run this on a server / VPS / Kubernetes?</strong></summary>
 
-Yes. OnlyFence is a CLI tool, so it runs anywhere Node.js runs — your laptop, a VPS, a Raspberry Pi, etc.
+Yes. OnlyFence runs standalone on any machine, or as a Docker container on Docker Compose, Kubernetes, ECS, or any container runtime. See [Deploy with Docker / Kubernetes](#deploy-with-docker--kubernetes) for production setup guides.
 
 </details>
 
@@ -425,6 +560,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
   <br />
   <sub>
     <a href="#install">Install</a> &middot;
+    <a href="#deploy-with-docker--kubernetes">Docker / K8s</a> &middot;
     <a href="#getting-started">Getting Started</a> &middot;
     <a href="#all-commands">Commands</a> &middot;
     <a href="#faq">FAQ</a> &middot;

@@ -5,7 +5,6 @@ import { loadConfig } from '../config/loader.js';
 import { initSentry } from '../telemetry/sentry.js';
 import { toErrorMessage } from '../utils/index.js';
 import { createUpdateChecker } from '../update/index.js';
-import { hasLogger, getLogger } from '../logger/index.js';
 import { App } from './App.js';
 import { SetupApp } from './SetupApp.js';
 import { TelemetryPrompt } from './screens/TelemetryPrompt.js';
@@ -101,23 +100,7 @@ async function runSetupThenApp(
     );
   });
 
-  // Phase 2: Telemetry consent (only shown if config.telemetry is absent)
-  try {
-    const freshConfig = loadConfig();
-    if (freshConfig.telemetry === undefined) {
-      await showTelemetryPrompt();
-    }
-  } catch (err: unknown) {
-    // Config may not load cleanly right after setup — skip telemetry prompt
-    if (hasLogger()) {
-      getLogger().warn(
-        { err: toErrorMessage(err) },
-        'Could not load config after setup — skipping telemetry prompt',
-      );
-    }
-  }
-
-  // Phase 3: Clear and launch main app
+  // Phase 2: Clear and launch main app
   process.stdout.write(CLEAR_SCREEN);
 
   const components = bootstrap();

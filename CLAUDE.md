@@ -3,3 +3,5 @@
 - DO NOT silent any error
 - MUST run fmt and clippy before commit
 - Use strict type
+- Code outside src/chain MUST be chain-agnostic for extensibility
+- Maintain backwards compatibility

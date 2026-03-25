@@ -1,9 +1,9 @@
-import { Box, Text, useInput } from 'ink';
+import { Box, useInput } from 'ink';
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { updateConfigFile } from '../../config/loader.js';
 import { toErrorMessage } from '../../utils/index.js';
-import { theme } from '../theme.js';
+import { YesNoPrompt } from '../components/YesNoPrompt.js';
 
 interface TelemetryPromptProps {
   readonly onComplete: (enabled: boolean) => void;
@@ -45,46 +45,17 @@ export function TelemetryPrompt({ onComplete }: TelemetryPromptProps): ReactElem
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Box flexDirection="column" marginBottom={1}>
-        <Text color={theme.highlight} bold>
-          {'Anonymous Error Reporting'}
-        </Text>
-        <Text color={theme.muted}>{'─'.repeat(50)}</Text>
-      </Box>
-
-      <Box flexDirection="column">
-        <Text color={theme.eyes}>
-          {'OnlyFence can report anonymous crash data to help improve the tool.'}
-        </Text>
-        <Text color={theme.eyes}>
-          {'No wallet addresses, keys, balances, or trade data will be sent.'}
-        </Text>
-
-        <Box marginTop={1}>
-          <Text color={theme.body}>{'  Press '}</Text>
-          <Text color={theme.success} bold>
-            {'y'}
-          </Text>
-          <Text color={theme.body}>{' to enable anonymous error reporting'}</Text>
-        </Box>
-        <Box>
-          <Text color={theme.body}>{'  Press '}</Text>
-          <Text color={theme.highlight} bold>
-            {'n'}
-          </Text>
-          <Text color={theme.body}>{' to keep it disabled (default)'}</Text>
-        </Box>
-      </Box>
-
-      {error !== null && (
-        <Box marginTop={1}>
-          <Text color={theme.error}>{`Error: ${error}`}</Text>
-        </Box>
-      )}
-
-      <Box marginTop={1}>
-        <Text color={theme.muted}>{'You can change this later in config.toml [telemetry]'}</Text>
-      </Box>
+      <YesNoPrompt
+        title="Anonymous Error Reporting"
+        descriptions={[
+          'OnlyFence can report anonymous crash data to help improve the tool.',
+          'No wallet addresses, keys, balances, or trade data will be sent.',
+        ]}
+        yesLabel="to enable anonymous error reporting"
+        noLabel="to keep it disabled (default)"
+        hint="You can change this later in config.toml [telemetry]"
+        errorMessage={error ?? undefined}
+      />
     </Box>
   );
 }

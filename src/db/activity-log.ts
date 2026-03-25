@@ -66,13 +66,24 @@ export interface ActivityRow {
 }
 
 /**
+ * Read-only interface for querying rolling trade volume.
+ *
+ * Implemented by both ActivityLog (SQLite-backed) and InMemoryTradeWindow
+ * (daemon in-memory). Policy checks depend on this interface, not the
+ * concrete class, so the daemon can swap in its fast in-memory version.
+ */
+export interface ActivityLogReader {
+  getRolling24hVolume(chainId: ChainId): number;
+}
+
+/**
  * Unified activity log with cached prepared SQL statements.
  *
  * Replaces TradeLog + LendingLog with a single API for all DeFi activity
  * data access. Supports category/action filtering for backward-compatible
  * queries (e.g., 24h swap volume for policy checks).
  */
-export class ActivityLog {
+export class ActivityLog implements ActivityLogReader {
   private readonly insertStmt: Statement;
   private readonly rolling24hStmt: Statement;
   private readonly recentStmt: Statement;

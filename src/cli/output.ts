@@ -11,6 +11,7 @@ import type {
   DefiProtocol,
   PipelineStatus,
 } from '../core/action-types.js';
+import { toErrorMessage } from '../utils/index.js';
 
 /** Map of reward token to amount value */
 type RewardMap = Record<
@@ -115,4 +116,25 @@ export function formatJsonOutput(output: CliOutput): string {
  */
 export function printJsonOutput(output: CliOutput): void {
   console.log(formatJsonOutput(output));
+}
+
+/**
+ * Handle a command-level error by printing a structured JSON error
+ * and setting the process exit code.
+ */
+export function handleCommandError(
+  err: unknown,
+  action: ActivityAction,
+  chainId: ChainId,
+  captureExceptionFn: (e: unknown) => void,
+): void {
+  captureExceptionFn(err);
+  printJsonOutput({
+    status: 'error',
+    action,
+    chainId,
+    address: '',
+    error: toErrorMessage(err),
+  });
+  process.exitCode = 1;
 }

@@ -3,6 +3,7 @@ import type { ChainAdapter } from '../chain/adapter.js';
 import { REJECTED_BY_KEY } from '../policy/check.js';
 import type { PolicyContext } from '../policy/context.js';
 import type { PolicyCheckRegistry } from '../policy/registry.js';
+import { captureException } from '../telemetry/index.js';
 import type { Signer } from '../types/result.js';
 import { toErrorMessage } from '../utils/index.js';
 import type { ActionBuilder } from './action-builder.js';
@@ -181,11 +182,13 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
       metadata: built.metadata,
     };
   } catch (err: unknown) {
-    const errorMessage = toErrorMessage(err);
-    log.error({ error: errorMessage }, 'Pipeline error');
+    // Log the full error object so pino serializes .stack into the log file.
+    // toErrorMessage() is only used for the user-facing output.
+    log.error({ err }, 'Pipeline error');
+    captureException(err);
     return {
       status: 'error',
-      error: errorMessage,
+      error: toErrorMessage(err),
     };
   }
 }

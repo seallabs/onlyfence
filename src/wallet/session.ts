@@ -2,6 +2,7 @@ import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { readFileSync, writeFileSync, unlinkSync, statSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ONLYFENCE_DIR } from '../config/loader.js';
+import { SECURE_DIR_MODE } from '../security/file-permissions.js';
 import { toErrorMessage } from '../utils/index.js';
 import { loadChainKeyBytes } from './signer.js';
 import type { SessionData } from './types.js';
@@ -66,7 +67,7 @@ export function createSession(
     };
 
     // Write session file with restricted permissions (owner read/write only)
-    mkdirSync(dirname(SESSION_PATH), { recursive: true });
+    mkdirSync(dirname(SESSION_PATH), { recursive: true, mode: SECURE_DIR_MODE });
     writeFileSync(SESSION_PATH, JSON.stringify(sessionData, null, 2), {
       encoding: 'utf-8',
       mode: 0o600,

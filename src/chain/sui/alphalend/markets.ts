@@ -12,6 +12,12 @@ interface DecimalLike {
   toNumber(): number;
 }
 
+/** A single reward entry returned inside `supplyApr.rewards` / `borrowApr.rewards`. */
+interface SdkRewardEntry {
+  readonly coinType: string;
+  readonly rewardApr: string;
+}
+
 /** Shape of a single market returned by `getAllMarkets()`. */
 interface SdkMarketData {
   readonly marketId: string;
@@ -20,11 +26,11 @@ interface SdkMarketData {
   readonly supplyApr: {
     readonly interestApr: DecimalLike;
     readonly stakingApr: DecimalLike;
-    readonly rewards: DecimalLike;
+    readonly rewards: readonly SdkRewardEntry[];
   };
   readonly borrowApr: {
     readonly interestApr: DecimalLike;
-    readonly rewards: DecimalLike;
+    readonly rewards: readonly SdkRewardEntry[];
   };
   readonly ltv: DecimalLike;
   readonly totalSupply: DecimalLike;
@@ -142,6 +148,11 @@ export async function resolveMarketId(
   return match.marketId;
 }
 
+/** Sum all reward APRs in a rewards array, returning 0 when the array is empty. */
+function sumRewardAprs(rewards: readonly SdkRewardEntry[]): number {
+  return rewards.reduce((sum, r) => sum + Number(r.rewardApr), 0);
+}
+
 // ---------------------------------------------------------------------------
 // Fetch helpers
 // ---------------------------------------------------------------------------
@@ -228,9 +239,9 @@ export async function fetchMarketDetail(
     active: true,
     supplyInterestApr: m.supplyApr.interestApr.toNumber(),
     supplyStakingApr: m.supplyApr.stakingApr.toNumber(),
-    supplyRewardsApr: m.supplyApr.rewards.toNumber(),
+    supplyRewardsApr: sumRewardAprs(m.supplyApr.rewards),
     borrowInterestApr: m.borrowApr.interestApr.toNumber(),
-    borrowRewardsApr: m.borrowApr.rewards.toNumber(),
+    borrowRewardsApr: sumRewardAprs(m.borrowApr.rewards),
     liquidationThreshold: m.liquidationThreshold.toNumber(),
     borrowWeight: m.borrowWeight.toNumber(),
     allowedDepositAmount: m.allowedDepositAmount.toNumber(),

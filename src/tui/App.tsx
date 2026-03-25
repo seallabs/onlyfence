@@ -8,6 +8,7 @@ import type { UpdateChecker } from '../update/checker.js';
 import { CURRENT_VERSION } from '../update/index.js';
 import { toErrorMessage } from '../utils/index.js';
 import { Header } from './components/Header.js';
+import { SecurityBanner } from './components/SecurityBanner.js';
 import { UpdateBanner } from './components/UpdateBanner.js';
 import type { TuiContextValue } from './context.js';
 import { TuiProvider } from './context.js';
@@ -16,6 +17,7 @@ import { Dashboard } from './screens/Dashboard.js';
 import { PolicyConfig } from './screens/PolicyConfig.js';
 import { TradeHistory } from './screens/TradeHistory.js';
 import { WalletInfo } from './screens/WalletInfo.js';
+import { SecurityStatus } from './screens/SecurityStatus.js';
 import { theme } from './theme.js';
 
 interface AppProps {
@@ -70,6 +72,9 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
         case '4':
           setActiveTab(3);
           break;
+        case '5':
+          setActiveTab(4);
+          break;
         case 'q':
           exit();
           break;
@@ -119,6 +124,7 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
     <TuiProvider value={ctx}>
       <Box flexDirection="column">
         <Header activeTab={activeTab} />
+        <SecurityBanner />
         <UpdateBanner status={updateStatus} />
         {configError !== null && (
           <Box paddingX={1}>
@@ -129,6 +135,7 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
         {activeTab === 1 && <TradeHistory />}
         {activeTab === 2 && <PolicyConfig />}
         {activeTab === 3 && <WalletInfo />}
+        {activeTab === 4 && <SecurityStatus />}
       </Box>
     </TuiProvider>
   );

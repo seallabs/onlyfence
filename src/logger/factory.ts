@@ -1,7 +1,9 @@
 import pino from 'pino';
 import type { Logger } from 'pino';
 import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
 import { ONLYFENCE_DIR } from '../config/loader.js';
+import { SECURE_DIR_MODE } from '../security/file-permissions.js';
 import { REDACT_PATHS } from './sensitive.js';
 
 export type { Logger } from 'pino';
@@ -34,6 +36,10 @@ export function createLogger(options: LoggerOptions): Logger {
 
   const logDir = options.logDir ?? DEFAULT_LOG_DIR;
 
+  // Create the log directory with secure permissions (0o700) before pino-roll
+  // does — pino-roll's mkdir uses default umask, resulting in 0o755.
+  mkdirSync(logDir, { recursive: true, mode: SECURE_DIR_MODE });
+
   const targets: pino.TransportTargetOptions[] = [
     {
       target: 'pino-roll',
@@ -42,7 +48,7 @@ export function createLogger(options: LoggerOptions): Logger {
         frequency: 'daily',
         extension: '.log',
         limit: { count: 30 },
-        mkdir: true,
+        mkdir: false,
       },
       level: 'info',
     },
@@ -58,6 +64,7 @@ export function createLogger(options: LoggerOptions): Logger {
 
   _logger = pino({
     level: options.verbose ? 'debug' : 'info',
+    timestamp: () => `,"time":"${new Date().toISOString()}"`,
     base: { app: 'onlyfence', pid: process.pid },
     redact: {
       paths: [...REDACT_PATHS],

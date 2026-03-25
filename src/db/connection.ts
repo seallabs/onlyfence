@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { ONLYFENCE_DIR } from '../config/loader.js';
 import { runMigrations } from './migrations.js';
+import { enforceFilePermissions, SECURE_DIR_MODE } from '../security/file-permissions.js';
 
 /**
  * Default path to the SQLite database file.
@@ -17,10 +18,11 @@ export const DB_PATH = join(ONLYFENCE_DIR, 'trades.db');
  * @throws Error if the database cannot be opened or migrations fail
  */
 export function openDatabase(dbPath: string = DB_PATH): Database.Database {
-  mkdirSync(dirname(dbPath), { recursive: true });
+  mkdirSync(dirname(dbPath), { recursive: true, mode: SECURE_DIR_MODE });
 
   const db = new Database(dbPath);
   runMigrations(db);
+  enforceFilePermissions(dbPath);
 
   return db;
 }

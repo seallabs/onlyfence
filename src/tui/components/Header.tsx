@@ -5,7 +5,7 @@ import { LogoSmall } from './Logo.js';
 import { CURRENT_VERSION } from '../../update/index.js';
 import { CHANGELOG } from '../../changelog.js';
 
-const TAB_NAMES = ['Dashboard', 'Trades', 'Policy', 'Wallet'] as const;
+const TAB_NAMES = ['Dashboard', 'Trades', 'Policy', 'Wallet', 'Security'] as const;
 
 interface HeaderProps {
   readonly activeTab: number;

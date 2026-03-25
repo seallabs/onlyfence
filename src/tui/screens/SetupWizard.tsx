@@ -14,6 +14,7 @@ import { toErrorMessage } from '../../utils/index.js';
 import { theme } from '../theme.js';
 import { TextInput } from '../components/TextInput.js';
 import { PasswordInput } from '../components/PasswordInput.js';
+import { YesNoPrompt } from '../components/YesNoPrompt.js';
 
 type SetupStep =
   | 'choose'
@@ -22,6 +23,7 @@ type SetupStep =
   | 'password'
   | 'confirm_password'
   | 'update_preference'
+  | 'telemetry'
   | 'done'
   | 'error';
 
@@ -110,37 +112,52 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
     { isActive: step === 'show_wallet' },
   );
 
-  // --- Step: update_preference (y/n) ---
-  useInput(
-    (input) => {
-      if (input === 'y' || input === 'Y') {
-        saveUpdatePreference(true);
-      } else if (input === 'n' || input === 'N') {
-        saveUpdatePreference(false);
-      }
-    },
-    { isActive: step === 'update_preference' },
-  );
-
-  function saveUpdatePreference(autoInstall: boolean): void {
+  /** Save a config preference and advance to the next step. */
+  function saveConfigPreference(
+    key: string,
+    value: Record<string, unknown>,
+    nextStep: SetupStep,
+  ): void {
     try {
-      // Ensure config.toml exists before mutating it.
-      // initConfig is safe to call if the file already exists — it throws
-      // ConfigAlreadyExistsError which we intentionally ignore here.
+      // Ensure config.toml exists before the first write.
       try {
         initConfig();
       } catch {
-        // Config already exists — expected, continue to update.
+        // Config already exists — expected.
       }
       updateConfigFile((raw) => {
-        raw['update'] = { auto_install: autoInstall };
+        raw[key] = value;
       });
-      setStep('done');
+      setStep(nextStep);
     } catch (err: unknown) {
       setErrorMessage(toErrorMessage(err));
       setStep('error');
     }
   }
+
+  // --- Step: update_preference (y/n) ---
+  useInput(
+    (input) => {
+      if (input === 'y' || input === 'Y') {
+        saveConfigPreference('update', { auto_install: true }, 'telemetry');
+      } else if (input === 'n' || input === 'N') {
+        saveConfigPreference('update', { auto_install: false }, 'telemetry');
+      }
+    },
+    { isActive: step === 'update_preference' },
+  );
+
+  // --- Step: telemetry (y/n) ---
+  useInput(
+    (input) => {
+      if (input === 'y' || input === 'Y') {
+        saveConfigPreference('telemetry', { enabled: true }, 'done');
+      } else if (input === 'n' || input === 'N') {
+        saveConfigPreference('telemetry', { enabled: false }, 'done');
+      }
+    },
+    { isActive: step === 'telemetry' },
+  );
 
   // --- Step: done (press Enter to continue) ---
   useInput(
@@ -315,35 +332,29 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
 
       {/* Step: update_preference */}
       {step === 'update_preference' && (
-        <Box flexDirection="column">
-          <Text color={theme.eyes}>{'Enable automatic updates?'}</Text>
-          <Text color={theme.eyes}>
-            {'OnlyFence will check for new versions and install them automatically.'}
-          </Text>
+        <YesNoPrompt
+          title="Enable automatic updates?"
+          descriptions={['OnlyFence will check for new versions and install them automatically.']}
+          yesLabel="to enable auto-update"
+          noLabel="to be asked before each update (default)"
+          hint="You can change this later in config.toml [update]"
+          errorMessage={errorMessage}
+        />
+      )}
 
-          <Box marginTop={1}>
-            <Text color={theme.body}>{'  Press '}</Text>
-            <Text color={theme.success} bold>
-              {'y'}
-            </Text>
-            <Text color={theme.body}>{' to enable auto-update'}</Text>
-          </Box>
-          <Box>
-            <Text color={theme.body}>{'  Press '}</Text>
-            <Text color={theme.highlight} bold>
-              {'n'}
-            </Text>
-            <Text color={theme.body}>{' to be asked before each update (default)'}</Text>
-          </Box>
-          {errorMessage.length > 0 && (
-            <Box marginTop={1}>
-              <Text color={theme.error}>{errorMessage}</Text>
-            </Box>
-          )}
-          <Box marginTop={1}>
-            <Text color={theme.muted}>{'You can change this later in config.toml [update]'}</Text>
-          </Box>
-        </Box>
+      {/* Step: telemetry */}
+      {step === 'telemetry' && (
+        <YesNoPrompt
+          title="Anonymous Error Reporting"
+          descriptions={[
+            'OnlyFence can report anonymous crash data to help improve the tool.',
+            'No wallet addresses, keys, balances, or trade data will be sent.',
+          ]}
+          yesLabel="to enable anonymous error reporting"
+          noLabel="to keep it disabled (default)"
+          hint="You can change this later in config.toml [telemetry]"
+          errorMessage={errorMessage}
+        />
       )}
 
       {/* Step: done */}

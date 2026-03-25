@@ -2,6 +2,9 @@
 
 import { Command } from 'commander';
 import { createLogger, getLogger, hasLogger } from '../logger/index.js';
+import { sanitizeEnvironment, runStartupChecks, ensureSecureDataDir } from '../security/index.js';
+import { ONLYFENCE_DIR } from '../config/loader.js';
+import { assertNoPasswordInArgv } from '../security/runtime-assertions.js';
 import { captureException, closeSentry } from '../telemetry/index.js';
 import {
   CURRENT_VERSION,
@@ -19,25 +22,46 @@ import {
   registerLendCommand,
   registerLockCommand,
   registerQueryCommand,
+  registerReloadCommand,
   registerSetupCommand,
+  registerStartCommand,
   registerStatsCommand,
+  registerStatusCommand,
+  registerStopCommand,
   registerSwapCommand,
+  registerUninstallCommand,
   registerUnlockCommand,
   registerUpdateCommand,
   registerWalletCommand,
 } from './commands/index.js';
 import { withTiming } from './middleware.js';
+import { warn as styleWarn } from './style.js';
 
 /**
  * Log, report, and print a fatal error. Used by all global error handlers.
  */
+/** Guard against re-entrant calls (EPIPE cascade from console.error). */
+let handlingFatalError = false;
+
 function handleFatalError(err: unknown): void {
-  if (hasLogger()) {
-    getLogger().fatal({ err: toErrorMessage(err) }, 'Fatal error');
+  if (handlingFatalError) return;
+  handlingFatalError = true;
+  try {
+    if (hasLogger()) {
+      getLogger().fatal({ err: toErrorMessage(err) }, 'Fatal error');
+    }
+    captureException(err);
+    // console.error can trigger EPIPE if stderr pipe is broken (detached daemon).
+    // Catch and ignore to prevent cascading uncaughtException loops.
+    try {
+      console.error(`Fatal error: ${toErrorMessage(err)}`);
+    } catch {
+      // stderr is broken (e.g., detached daemon after parent disconnects) — ignore
+    }
+    process.exitCode = 1;
+  } finally {
+    handlingFatalError = false;
   }
-  captureException(err);
-  console.error(`Fatal error: ${toErrorMessage(err)}`);
-  process.exitCode = 1;
 }
 
 /**
@@ -80,6 +104,24 @@ export function createProgram(): { program: Command; cleanup: () => void } {
     }
   });
 
+  // Security: log sanitized env vars and run startup checks (once per process)
+  let startupChecksDone = false;
+  program.hook('preAction', () => {
+    if (startupChecksDone) return;
+    startupChecksDone = true;
+
+    ensureSecureDataDir(ONLYFENCE_DIR);
+
+    if (hasLogger() && removedVars.length > 0) {
+      getLogger().warn({ removed: removedVars }, 'Dangerous environment variables stripped');
+    }
+
+    const warnings = runStartupChecks();
+    for (const w of warnings) {
+      styleWarn(`${w.message} ${w.fix}`);
+    }
+  });
+
   // Automatic command timing (Phase 2)
   withTiming(program, () => cachedComponents?.cliEventLog);
 
@@ -100,6 +142,13 @@ export function createProgram(): { program: Command; cleanup: () => void } {
   registerUnlockCommand(program);
   registerLockCommand(program);
 
+  // Daemon commands (Tier 1/2)
+  registerStartCommand(program);
+  registerStopCommand(program);
+  registerStatusCommand(program);
+  registerReloadCommand(program);
+  registerUninstallCommand(program);
+
   // Default action: launch interactive TUI when no subcommand is given.
   // If bootstrap fails (first run), the TUI shows a setup wizard.
   program.action(async () => {
@@ -110,6 +159,32 @@ export function createProgram(): { program: Command; cleanup: () => void } {
 
   return { program, cleanup };
 }
+
+// --- Security: sanitize environment ---
+// NOTE: ES module imports are hoisted, so NODE_OPTIONS injection takes effect
+// before this runs. This is a known limitation — the real defense is:
+// (1) Tier 1 daemon: env is sanitized by the shell entrypoint before Node starts
+// (2) Tier 2 Docker: container namespace isolation
+// This call still strips vars for any *subsequent* child processes.
+const removedVars = sanitizeEnvironment();
+
+// If NODE_OPTIONS was set, injected code (e.g. --require) already ran before
+// sanitizeEnvironment() could strip it. Abort immediately to prevent the CLI
+// from decrypting the keystore where a hook could intercept the plaintext keys.
+if (removedVars.includes('NODE_OPTIONS')) {
+  console.error(
+    'Security error: NODE_OPTIONS was set in the environment.\n' +
+      'This variable can inject code that runs before any security checks,\n' +
+      'allowing an attacker to intercept decrypted keys.\n\n' +
+      'If you set NODE_OPTIONS intentionally, unset it first:\n' +
+      '  unset NODE_OPTIONS && fence <command>\n\n' +
+      'Refusing to continue.',
+  );
+  process.exit(78); // EX_CONFIG
+}
+
+// Fail fast if a password leaked into argv (developer bug)
+assertNoPasswordInArgv();
 
 // --- Global error handlers ---
 

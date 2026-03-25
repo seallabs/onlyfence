@@ -134,10 +134,14 @@ download_to_stdout() {
 # ─── Version resolution ─────────────────────────────────────────────────────
 
 get_latest_version() {
-  download_to_stdout "https://api.github.com/repos/${REPO}/releases/latest" \
+  # List all releases and pick the first stable (non-prerelease) tag.
+  # Stable = vX.Y.Z or X.Y.Z with no suffix like -rc.1, -beta.2, etc.
+  # Pre-releases can still be installed via ONLYFENCE_VERSION.
+  download_to_stdout "https://api.github.com/repos/${REPO}/releases" \
     | grep '"tag_name"' \
-    | head -1 \
-    | cut -d'"' -f4
+    | cut -d'"' -f4 \
+    | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
+    | head -1
 }
 
 # ─── Installation ───────────────────────────────────────────────────────────
@@ -188,10 +192,32 @@ install_from_github_release() {
     return 1
   fi
 
-  # Create bin wrapper that uses the bundled Node.js
+  # Create bin wrapper that uses the bundled Node.js.
+  # The wrapper MUST strip environment variables that Node.js processes
+  # before any application code runs (e.g. NODE_OPTIONS --require).
+  # Without this, an attacker can inject arbitrary code via NODE_OPTIONS
+  # and intercept keystore decryption to steal the mnemonic and private keys.
   cat > "${BIN_DIR}/fence" <<'WRAPPER'
 #!/usr/bin/env sh
 set -eu
+
+# Strip environment variables that inject code or redirect traffic.
+# NODE_OPTIONS is processed by the Node.js runtime BEFORE any JS runs,
+# so the JS-level sanitizeEnvironment() cannot prevent --require injection.
+unset NODE_OPTIONS
+unset NODE_PATH
+unset NODE_EXTRA_CA_CERTS
+unset NODE_REDIRECT_WARNINGS
+unset NODE_REPL_EXTERNAL_MODULE
+unset LD_PRELOAD
+unset DYLD_INSERT_LIBRARIES
+unset DYLD_LIBRARY_PATH
+unset DYLD_FRAMEWORK_PATH
+unset HTTP_PROXY
+unset HTTPS_PROXY
+unset http_proxy
+unset https_proxy
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
 exec "${INSTALL_DIR}/runtime/node" "${INSTALL_DIR}/lib/cli/index.js" "$@"
@@ -365,6 +391,36 @@ main() {
         # Re-attach stdin to the terminal so interactive prompts work
         # even when the installer was piped via curl | sh
         "${BIN_DIR}/fence" setup </dev/tty
+
+        # ── Mode selection ──────────────────────────────────────────────
+        printf "\n"
+        printf "  %bHow would you like to run OnlyFence?%b\n\n" "$BOLD" "$RESET"
+        printf "  %b1) Standalone%b  (default)\n" "$BOLD" "$RESET"
+        printf "     Best for trying things out. No background process.\n"
+        printf "     You unlock the wallet manually before each session.\n"
+        printf "     %b⚠ Agents can see your password and private keys%b\n\n" "$YELLOW" "$RESET"
+        printf "  %b2) Daemon%b  %b(recommended)%b\n" "$BOLD" "$RESET" "$GREEN" "$RESET"
+        printf "     Best for real use. Keys are protected by a background\n"
+        printf "     process — agents can trade but never see your keys.\n\n"
+        printf "  %b⚠ Important:%b Never grant root/sudo access to AI agents.\n" "$YELLOW" "$RESET"
+        printf "     Root bypasses all OnlyFence protections in every mode.\n\n"
+        printf "  Choose mode [1/2]: "
+
+        mode_choice=""
+        read -r mode_choice </dev/tty
+
+        case "$mode_choice" in
+          2)
+            printf "\n"
+            info "Starting daemon in background..."
+            "${BIN_DIR}/fence" start -d </dev/tty
+            ;;
+          *)
+            printf "\n"
+            ok "Running in standalone mode."
+            info "You can start the daemon later with: fence start -d"
+            ;;
+        esac
       else
         info "No interactive terminal detected — skipping setup wizard."
         printf "\n%bGet started:%b\n" "$BOLD" "$RESET"

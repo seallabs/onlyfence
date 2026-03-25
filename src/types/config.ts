@@ -101,6 +101,20 @@ export interface UpdateConfig {
 }
 
 /**
+ * Security configuration for deployment hardening.
+ *
+ * Allows operators to customize upper bounds on config values.
+ * If not set, hardcoded defaults apply.
+ */
+export interface SecurityConfig {
+  /** Maximum allowed value for max_single_trade (default: 10000) */
+  readonly max_single_trade_ceiling?: number;
+
+  /** Maximum allowed value for max_24h_volume (default: 100000) */
+  readonly max_24h_volume_ceiling?: number;
+}
+
+/**
  * Root application configuration parsed from ~/.onlyfence/config.toml.
  */
 export interface AppConfig {
@@ -115,4 +129,7 @@ export interface AppConfig {
 
   /** Automatic update settings */
   readonly update?: UpdateConfig;
+
+  /** Security hardening settings */
+  readonly security?: SecurityConfig;
 }

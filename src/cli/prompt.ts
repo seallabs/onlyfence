@@ -1,6 +1,12 @@
-import { stdin, stdout } from 'node:process';
+import { stdin, stdout, stderr } from 'node:process';
 import { MIN_PASSWORD_LENGTH } from '../wallet/keystore.js';
 import { warn } from './style.js';
+
+/** Options for secret input prompts. */
+export interface PromptSecretOptions {
+  /** Write prompt/mask to stderr instead of stdout (avoids polluting structured output). */
+  readonly stderr?: boolean;
+}
 
 /** Terminal control character constants. */
 const KEY = {
@@ -27,6 +33,21 @@ async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Resume stdin for one event-loop tick so any bytes already queued in
+ * its internal buffer (e.g. a trailing `\n` from a `\r\n` Enter
+ * keystroke) are emitted and discarded before the next prompt.
+ */
+function drainStdin(): Promise<void> {
+  return new Promise((resolve) => {
+    stdin.resume();
+    setImmediate(() => {
+      stdin.pause();
+      resolve();
+    });
+  });
+}
+
+/**
  * Prompt for hidden input from the terminal with echo disabled.
  *
  * Uses raw mode so the input is not visible on screen.
@@ -36,9 +57,11 @@ async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
  * @returns The entered string
  * @throws Error if the user cancels with Ctrl+C
  */
-export function promptSecret(prompt: string): Promise<string> {
-  return withRawMode(() => {
-    stdout.write(prompt);
+export function promptSecret(prompt: string, options?: PromptSecretOptions): Promise<string> {
+  const out = options?.stderr === true ? stderr : stdout;
+  return withRawMode(async () => {
+    await drainStdin();
+    out.write(prompt);
 
     return new Promise<string>((resolve) => {
       let buf = '';
@@ -47,24 +70,27 @@ export function promptSecret(prompt: string): Promise<string> {
 
         if (ch === KEY.ENTER_CR || ch === KEY.ENTER_LF) {
           stdin.removeListener('data', onData);
-          stdout.write('\n');
+          stdin.pause();
+          out.write('\n');
           resolve(buf);
         } else if (ch === KEY.BACKSPACE_DEL || ch === KEY.BACKSPACE_BS) {
           if (buf.length > 0) {
             buf = buf.slice(0, -1);
-            stdout.write('\b \b');
+            out.write('\b \b');
           }
         } else if (ch === KEY.CTRL_C) {
           stdin.removeListener('data', onData);
-          stdout.write('\n');
+          stdin.pause();
+          out.write('\n');
           process.exit(130);
         } else if (!ch.startsWith(KEY.ESCAPE)) {
           buf += ch;
-          stdout.write('•');
+          out.write('•');
         }
       };
 
       stdin.on('data', onData);
+      stdin.resume();
     });
   });
 }
@@ -92,7 +118,9 @@ export async function promptPasswordWithRetry(prompt: string): Promise<string> {
  * Any key other than y/Y defaults to 'n'.
  */
 export async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
-  return withRawMode(() => {
+  return withRawMode(async () => {
+    await drainStdin();
+
     stdout.write(prompt);
 
     return new Promise<'y' | 'n'>((resolve) => {
@@ -101,11 +129,13 @@ export async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
 
         if (ch === KEY.CTRL_C) {
           stdin.removeListener('data', onData);
+          stdin.pause();
           stdout.write('\n');
           process.exit(130);
         }
 
         stdin.removeListener('data', onData);
+        stdin.pause();
 
         if (ch.toLowerCase() === 'y') {
           stdout.write('y\n');
@@ -117,6 +147,7 @@ export async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
       };
 
       stdin.on('data', onData);
+      stdin.resume();
     });
   });
 }
