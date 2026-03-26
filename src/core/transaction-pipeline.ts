@@ -89,20 +89,45 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
       };
     }
 
-    // Step 3: Build transaction (includes quote fetching)
-    log.info('Building transaction');
-    const built = await builder.build(intent);
-
-    // Step 3.5: Cache coin metadata for all intent coin types (best-effort)
+    // Step 2.5: Cache coin metadata for all intent coin types (best-effort)
     if (input.dataProvider !== undefined) {
       const coinTypes = extractCoinTypes(intent);
       if (coinTypes.length > 0) {
-        // Don't await this, just fire and forget
         input.dataProvider.getMetadatas(coinTypes).catch((err: unknown) => {
           log.warn({ error: toErrorMessage(err) }, 'Coin metadata caching failed');
         });
       }
     }
+
+    // Branch: off-chain-signed execution strategy
+    const strategy = builder.executionStrategy ?? 'on-chain';
+
+    if (strategy === 'off-chain-signed') {
+      // Watch-only: return simulated without executing
+      if (watchOnly) {
+        builder.finish?.({ intent, status: 'approved', metadata: {} });
+        return { status: 'simulated', metadata: {} };
+      }
+
+      if (builder.execute === undefined) {
+        return { status: 'error', error: 'Off-chain builder missing execute() method' };
+      }
+
+      log.info('Executing off-chain signed action');
+      const result = await builder.execute(intent);
+
+      builder.finish?.({
+        intent,
+        status: 'approved',
+        metadata: result.metadata,
+      });
+
+      return { status: 'success', metadata: result.metadata };
+    }
+
+    // Step 3: Build transaction (includes quote fetching)
+    log.info('Building transaction');
+    const built = await builder.build(intent);
 
     // Step 4: Serialize to bytes
     log.info('Serializing transaction bytes');

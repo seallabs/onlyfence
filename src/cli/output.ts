@@ -60,8 +60,43 @@ export interface LPOutput {
   readonly rewards?: RewardMap;
 }
 
+export interface PerpOrderOutput {
+  readonly marketSymbol: string;
+  readonly side: string;
+  readonly orderType: string;
+  readonly quantityE9: string;
+  readonly priceE9?: string;
+  readonly leverageE9: string;
+  readonly orderHash?: string;
+}
+
+export interface PerpDepositOutput {
+  readonly token: string;
+  readonly amount: number;
+  readonly valueUsd: number | null;
+}
+
+export interface PerpWithdrawOutput {
+  readonly assetSymbol: string;
+  readonly amountE9: string;
+  readonly valueUsd: number | null;
+}
+
+export interface PerpCancelOutput {
+  readonly marketSymbol: string;
+  readonly cancelledCount: number;
+}
+
 /** Action payload union -- extend when adding new action output types */
-export type ActionPayload = SwapOutput | LendingOutput | LendingRewardsOutput | LPOutput;
+export type ActionPayload =
+  | SwapOutput
+  | LendingOutput
+  | LendingRewardsOutput
+  | LPOutput
+  | PerpOrderOutput
+  | PerpDepositOutput
+  | PerpWithdrawOutput
+  | PerpCancelOutput;
 
 /**
  * Unified CLI output for all pipeline-based commands.

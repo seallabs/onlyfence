@@ -14,9 +14,11 @@ export type ActivityAction =
   | 'lending:claim_rewards'
   | 'lp:deposit'
   | 'lp:withdraw'
-  | 'perp:open_long'
-  | 'perp:open_short'
-  | 'perp:close_position'
+  | 'perp:place_order'
+  | 'perp:cancel_order'
+  | 'perp:filled'
+  | 'perp:deposit'
+  | 'perp:withdraw'
   | 'staking:stake'
   | 'staking:unstake';
 
@@ -27,7 +29,8 @@ export type ChainId = `${Chain}:${string}`;
 export type LendingProtocol = 'alphalend' | 'suilend' | 'navi';
 export type DexProtocol = 'cetus_clmm' | 'bluefin_clmm';
 export type AggregatorProtocol = '7k_meta_ag';
-export type DefiProtocol = LendingProtocol | DexProtocol | AggregatorProtocol;
+export type PerpProtocol = 'bluefin_pro';
+export type DefiProtocol = LendingProtocol | DexProtocol | AggregatorProtocol | PerpProtocol;
 
 /** Base intent -- all actions share these fields */
 export interface ActionIntentBase {
@@ -105,6 +108,65 @@ export interface ClaimRewardsIntent extends ActionIntentBase {
   };
 }
 
+/** Perp order placement intent */
+export interface PerpPlaceOrderIntent extends ActionIntentBase {
+  readonly action: 'perp:place_order';
+  readonly params: {
+    readonly marketSymbol: string;
+    readonly side: 'LONG' | 'SHORT';
+    readonly quantityE9: string;
+    readonly orderType: 'MARKET' | 'LIMIT';
+    readonly leverageE9: string;
+    readonly limitPriceE9?: string;
+    readonly reduceOnly?: boolean;
+    readonly timeInForce?: 'GTT' | 'IOC' | 'FOK';
+    readonly collateralCoinType: string;
+    readonly marketCoinType: string;
+  };
+  readonly valueUsd?: number | undefined;
+}
+
+/** Perp order cancellation intent */
+export interface PerpCancelOrderIntent extends ActionIntentBase {
+  readonly action: 'perp:cancel_order';
+  readonly params: {
+    readonly marketSymbol: string;
+    readonly orderHashes?: readonly string[];
+  };
+}
+
+/** Perp margin deposit intent (on-chain USDC TX) */
+export interface PerpDepositIntent extends ActionIntentBase {
+  readonly action: 'perp:deposit';
+  readonly params: {
+    readonly coinType: string;
+    /** Amount in the token's smallest unit (e.g. 100000 for 0.1 USDC with 6 decimals) */
+    readonly amount: string;
+    /** Token decimals — needed to convert from native scale to Bluefin's e9 format */
+    readonly decimals: number;
+  };
+  readonly valueUsd?: number | undefined;
+}
+
+/** Perp margin withdrawal intent (signed API call) */
+export interface PerpWithdrawIntent extends ActionIntentBase {
+  readonly action: 'perp:withdraw';
+  readonly params: {
+    readonly assetSymbol: string;
+    readonly amountE9: string;
+  };
+  readonly valueUsd?: number | undefined;
+}
+
+/**
+ * NOTE: PerpFilledIntent is NOT added to the ActionIntent union.
+ * Fills are synced directly into the activities table via syncFills(),
+ * never passing through executePipeline. This type exists only as a
+ * data shape for the sync logic — keeping it out of ActionIntent avoids
+ * adding dead branches to every exhaustive switch (extractCoinTypes,
+ * policy checks, etc.).
+ */
+
 /** Discriminated union -- the single intent type used everywhere */
 export type ActionIntent =
   | SwapIntent
@@ -112,7 +174,11 @@ export type ActionIntent =
   | BorrowIntent
   | WithdrawIntent
   | RepayIntent
-  | ClaimRewardsIntent;
+  | ClaimRewardsIntent
+  | PerpPlaceOrderIntent
+  | PerpCancelOrderIntent
+  | PerpDepositIntent
+  | PerpWithdrawIntent;
 
 /** Lending actions that take token + amount args. */
 export type LendingAction =
@@ -133,12 +199,17 @@ export function extractCoinTypes(intent: ActionIntent): string[] {
     case 'trade:swap':
       return [intent.params.coinTypeIn, intent.params.coinTypeOut];
     case 'lending:claim_rewards':
+    case 'perp:cancel_order':
+    case 'perp:withdraw':
       return [];
     case 'lending:supply':
     case 'lending:borrow':
     case 'lending:withdraw':
     case 'lending:repay':
+    case 'perp:deposit':
       return [intent.params.coinType];
+    case 'perp:place_order':
+      return [intent.params.collateralCoinType, intent.params.marketCoinType];
   }
 }
 

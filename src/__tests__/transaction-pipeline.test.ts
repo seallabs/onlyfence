@@ -3,7 +3,7 @@ import type { Logger } from 'pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChainAdapter } from '../chain/adapter.js';
 import type { ActionBuilder, FinishContext } from '../core/action-builder.js';
-import type { SwapIntent } from '../core/action-types.js';
+import type { PerpPlaceOrderIntent, SwapIntent } from '../core/action-types.js';
 import { NoOpMevProtector } from '../core/mev-protector.js';
 import type { PipelineInput } from '../core/transaction-pipeline.js';
 import { executePipeline } from '../core/transaction-pipeline.js';
@@ -60,7 +60,7 @@ function createMockSigner(): Signer {
   return {
     address: '0xabc',
     publicKey: new Uint8Array(32),
-    sign: vi.fn().mockResolvedValue(new Uint8Array(64)),
+    signTransaction: vi.fn().mockResolvedValue({ signature: 'mockSig', bytes: 'mockBytes' }),
   };
 }
 
@@ -486,5 +486,221 @@ describe('executePipeline', () => {
     const result = await executePipeline(input);
 
     expect(result.status).toBe('success');
+  });
+
+  describe('off-chain-signed execution strategy', () => {
+    function createPerpIntent(): PerpPlaceOrderIntent {
+      return {
+        action: 'perp:place_order',
+        chainId: 'sui:mainnet',
+        walletAddress: '0xabc',
+        params: {
+          marketSymbol: 'BTC-PERP',
+          side: 'LONG',
+          quantityE9: '1000000000',
+          orderType: 'MARKET',
+          leverageE9: '5000000000',
+          collateralCoinType: '0xusdc::usdc::USDC',
+          marketCoinType: '0xbf1b::bluefin_pro::BTC',
+        },
+      };
+    }
+
+    function createOffChainBuilder(overrides?: Partial<ActionBuilder>): ActionBuilder {
+      return {
+        builderId: 'bluefin-pro-place-order',
+        chain: 'sui',
+        executionStrategy: 'off-chain-signed',
+        validate: vi.fn(),
+        build: vi.fn().mockResolvedValue({ transaction: null, metadata: {} }),
+        execute: vi.fn().mockResolvedValue({
+          metadata: { orderHash: '0xorder123', marketSymbol: 'BTC-PERP' },
+        }),
+        finish: vi.fn(),
+        ...overrides,
+      };
+    }
+
+    it('skips serialize/simulate/MEV/sign and calls builder.execute() instead', async () => {
+      const intent = createPerpIntent();
+      const builder = createOffChainBuilder();
+      const chainAdapter = createMockChainAdapter();
+      const mevProtector = new NoOpMevProtector();
+
+      const input: PipelineInput = {
+        intent,
+        builder,
+        chainAdapter,
+        policyRegistry,
+        policyContext,
+        mevProtector,
+        logger,
+        watchOnly: false,
+      };
+
+      const result = await executePipeline(input);
+
+      expect(result.status).toBe('success');
+      expect(result.metadata).toEqual({ orderHash: '0xorder123', marketSymbol: 'BTC-PERP' });
+
+      // Should NOT call any on-chain methods
+      expect(chainAdapter.buildTransactionBytes).not.toHaveBeenCalled();
+      expect(chainAdapter.simulate).not.toHaveBeenCalled();
+      expect(chainAdapter.signAndSubmit).not.toHaveBeenCalled();
+
+      // Should NOT call build (off-chain doesn't need TX)
+      // But SHOULD call execute
+      expect(builder.execute).toHaveBeenCalledWith(intent);
+
+      // Should call finish with approved status
+      expect(builder.finish).toHaveBeenCalledOnce();
+      const ctx = (builder.finish as ReturnType<typeof vi.fn>).mock.calls[0]![0] as FinishContext;
+      expect(ctx.intent).toBe(intent);
+      expect(ctx.status).toBe('approved');
+      expect(ctx.metadata).toEqual({ orderHash: '0xorder123', marketSymbol: 'BTC-PERP' });
+    });
+
+    it('calls finish with status rejected when policy rejects', async () => {
+      const intent = createPerpIntent();
+      const builder = createOffChainBuilder();
+      const chainAdapter = createMockChainAdapter();
+      const mevProtector = new NoOpMevProtector();
+
+      policyRegistry.register({
+        name: 'test_reject',
+        description: 'Always rejects',
+        evaluate: async () => ({
+          status: 'reject' as const,
+          reason: 'exceeds_limit',
+          detail: 'Order exceeds daily limit',
+        }),
+      });
+
+      const input: PipelineInput = {
+        intent,
+        builder,
+        chainAdapter,
+        policyRegistry,
+        policyContext,
+        mevProtector,
+        logger,
+        watchOnly: false,
+      };
+
+      const result = await executePipeline(input);
+
+      expect(result.status).toBe('rejected');
+      expect(result.rejectionReason).toBe('Order exceeds daily limit');
+
+      // Should NOT call execute
+      expect(builder.execute).not.toHaveBeenCalled();
+
+      // Should call finish with rejected status
+      expect(builder.finish).toHaveBeenCalledOnce();
+      const ctx = (builder.finish as ReturnType<typeof vi.fn>).mock.calls[0]![0] as FinishContext;
+      expect(ctx.status).toBe('rejected');
+      expect(ctx.rejection).toEqual({
+        check: 'test_reject',
+        reason: 'Order exceeds daily limit',
+      });
+    });
+
+    it('returns simulated status for off-chain builder in watch-only mode', async () => {
+      const intent = createPerpIntent();
+      const builder = createOffChainBuilder();
+      const chainAdapter = createMockChainAdapter();
+      const mevProtector = new NoOpMevProtector();
+
+      const input: PipelineInput = {
+        intent,
+        builder,
+        chainAdapter,
+        policyRegistry,
+        policyContext,
+        mevProtector,
+        logger,
+        watchOnly: true,
+      };
+
+      const result = await executePipeline(input);
+
+      expect(result.status).toBe('simulated');
+      expect(result.metadata).toEqual({});
+
+      // Should NOT call execute or any on-chain methods
+      expect(builder.execute).not.toHaveBeenCalled();
+      expect(chainAdapter.buildTransactionBytes).not.toHaveBeenCalled();
+      expect(chainAdapter.simulate).not.toHaveBeenCalled();
+      expect(chainAdapter.signAndSubmit).not.toHaveBeenCalled();
+
+      // Should call finish with approved status
+      expect(builder.finish).toHaveBeenCalledOnce();
+      const ctx = (builder.finish as ReturnType<typeof vi.fn>).mock.calls[0]![0] as FinishContext;
+      expect(ctx.status).toBe('approved');
+    });
+
+    it('returns error when off-chain builder is missing execute method', async () => {
+      const intent = createPerpIntent();
+      const builder = createOffChainBuilder({
+        builderId: 'bluefin-pro-place-order',
+        chain: 'sui',
+        executionStrategy: 'off-chain-signed',
+        validate: vi.fn(),
+        build: vi.fn().mockResolvedValue({ transaction: null, metadata: {} }),
+        execute: undefined,
+        finish: vi.fn(),
+      });
+      const chainAdapter = createMockChainAdapter();
+      const mevProtector = new NoOpMevProtector();
+
+      const input: PipelineInput = {
+        intent,
+        builder,
+        chainAdapter,
+        policyRegistry,
+        policyContext,
+        mevProtector,
+        logger,
+        watchOnly: false,
+      };
+
+      const result = await executePipeline(input);
+
+      expect(result.status).toBe('error');
+      expect(result.error).toContain('missing execute()');
+      expect(builder.finish).not.toHaveBeenCalled();
+    });
+
+    it('returns error when execute throws', async () => {
+      const intent = createPerpIntent();
+      const builder = createOffChainBuilder({
+        builderId: 'bluefin-pro-place-order',
+        chain: 'sui',
+        executionStrategy: 'off-chain-signed',
+        validate: vi.fn(),
+        build: vi.fn().mockResolvedValue({ transaction: null, metadata: {} }),
+        execute: vi.fn().mockRejectedValue(new Error('API timeout')),
+        finish: vi.fn(),
+      });
+      const chainAdapter = createMockChainAdapter();
+      const mevProtector = new NoOpMevProtector();
+
+      const input: PipelineInput = {
+        intent,
+        builder,
+        chainAdapter,
+        policyRegistry,
+        policyContext,
+        mevProtector,
+        logger,
+        watchOnly: false,
+      };
+
+      const result = await executePipeline(input);
+
+      expect(result.status).toBe('error');
+      expect(result.error).toBe('API timeout');
+      expect(builder.finish).not.toHaveBeenCalled();
+    });
   });
 });

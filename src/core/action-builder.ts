@@ -22,11 +22,18 @@ export interface FinishContext<Response = unknown> {
   };
 }
 
+/** Execution strategy: on-chain TX flow or off-chain signed API call. */
+export type ExecutionStrategy = 'on-chain' | 'off-chain-signed';
+
 export interface ActionBuilder<T extends ActionIntent = ActionIntent, R = unknown> {
   readonly builderId: string;
   readonly chain: string;
+  /** Default: 'on-chain'. Off-chain builders skip TX serialize/simulate/sign. */
+  readonly executionStrategy?: ExecutionStrategy;
   validate(intent: T): void;
   build(intent: T): Promise<BuiltTransaction>;
+  /** Execute off-chain action (only called when executionStrategy = 'off-chain-signed'). */
+  execute?(intent: T): Promise<{ metadata: Record<string, unknown> }>;
   finish?(context: FinishContext<R>): void;
 }
 type BuilderKey = `${string}:${string}:${string}`;

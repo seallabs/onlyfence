@@ -94,7 +94,28 @@ export class TokenAllowlistCheck implements PolicyCheck {
       return Promise.resolve({ status: 'pass' as const });
     }
 
-    // Remaining actions (supply, borrow, withdraw, repay): single coinType check
+    // Perp cancel/withdraw: no token to check
+    if (intent.action === 'perp:cancel_order' || intent.action === 'perp:withdraw') {
+      return Promise.resolve({ status: 'pass' as const });
+    }
+
+    // Perp place order: check collateral coin type
+    if (intent.action === 'perp:place_order') {
+      if (!allowedAddresses.has(intent.params.collateralCoinType)) {
+        return Promise.resolve({
+          status: 'reject' as const,
+          reason: 'token_not_allowed',
+          detail: `Collateral token "${intent.params.collateralCoinType}" is not in the allowlist for chain "${intent.chainId}"`,
+          metadata: {
+            token: intent.params.collateralCoinType,
+            allowedTokens: [...allowlist.tokens],
+          },
+        });
+      }
+      return Promise.resolve({ status: 'pass' as const });
+    }
+
+    // Remaining actions (supply, borrow, withdraw, repay, deposit): single coinType check
     if (!allowedAddresses.has(intent.params.coinType)) {
       return Promise.resolve({
         status: 'reject' as const,

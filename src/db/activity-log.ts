@@ -90,6 +90,7 @@ export class ActivityLog implements ActivityLogReader {
   private readonly recentByCategoryStmt: Statement;
   private readonly countStmt: Statement;
   private readonly countByCategoryStmt: Statement;
+  private readonly lastSyncStmt: Statement;
 
   constructor(db: Database.Database) {
     this.insertStmt = db.prepare(`
@@ -148,6 +149,12 @@ export class ActivityLog implements ActivityLogReader {
 
     this.countByCategoryStmt = db.prepare(`
       SELECT COUNT(*) as count FROM activities WHERE chain_id = ? AND category = ?
+    `);
+
+    this.lastSyncStmt = db.prepare(`
+      SELECT MAX(created_at) as last_sync
+      FROM activities
+      WHERE action = ? AND protocol = ?
     `);
   }
 
@@ -227,5 +234,14 @@ export class ActivityLog implements ActivityLogReader {
   getActivityCountByCategory(chain: string, category: ActivityCategory): number {
     const row = this.countByCategoryStmt.get(chain, category) as { count: number } | undefined;
     return row?.count ?? 0;
+  }
+
+  /**
+   * Get the timestamp of the most recent activity for a given action+protocol.
+   * Used by fill sync to determine the starting point for fetching new data.
+   */
+  getLastSyncTimestamp(action: ActivityAction, protocol: DefiProtocol): string | null {
+    const row = this.lastSyncStmt.get(action, protocol) as { last_sync: string | null } | undefined;
+    return row?.last_sync ?? null;
   }
 }
