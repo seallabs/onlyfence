@@ -17,7 +17,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { join } from 'node:path';
 import { ONLYFENCE_DIR } from '../config/loader.js';
 import { enforceFilePermissions } from '../security/file-permissions.js';
@@ -29,6 +29,11 @@ const SNAPSHOT_PATH = join(ONLYFENCE_DIR, SNAPSHOT_FILENAME);
 /** HMAC purpose string to domain-separate from keystore encryption. */
 const HMAC_PURPOSE = 'onlyfence-config-snapshot-v1';
 
+/** PBKDF2 iterations — high enough to resist GPU brute-force on the snapshot HMAC. */
+const KDF_ITERATIONS = 100_000;
+const KDF_KEY_LENGTH = 32;
+const SALT_LENGTH = 16;
+
 /**
  * Snapshot stores the serialized JSON string (not the parsed object) to
  * guarantee HMAC round-trip stability — JSON key ordering is preserved
@@ -36,6 +41,7 @@ const HMAC_PURPOSE = 'onlyfence-config-snapshot-v1';
  */
 interface SignedSnapshot {
   readonly configJson: string;
+  readonly salt: string;
   readonly hmac: string;
 }
 
@@ -52,9 +58,10 @@ export type SnapshotVerification =
  */
 export function writeSignedSnapshot(config: AppConfig, password: string): void {
   const configJson = JSON.stringify(config);
-  const hmac = computeHmac(configJson, password);
+  const salt = randomBytes(SALT_LENGTH).toString('hex');
+  const hmac = computeHmac(configJson, password, salt);
 
-  const snapshot: SignedSnapshot = { configJson, hmac };
+  const snapshot: SignedSnapshot = { configJson, salt, hmac };
   writeFileSync(SNAPSHOT_PATH, JSON.stringify(snapshot), 'utf-8');
   enforceFilePermissions(SNAPSHOT_PATH);
 }
@@ -83,11 +90,15 @@ export function verifySignedSnapshot(password: string): SnapshotVerification {
     return { status: 'tampered' };
   }
 
-  if (typeof snapshot.hmac !== 'string' || typeof snapshot.configJson !== 'string') {
+  if (
+    typeof snapshot.hmac !== 'string' ||
+    typeof snapshot.configJson !== 'string' ||
+    typeof snapshot.salt !== 'string'
+  ) {
     return { status: 'tampered' };
   }
 
-  const expected = computeHmac(snapshot.configJson, password);
+  const expected = computeHmac(snapshot.configJson, password, snapshot.salt);
 
   const hmacBuf = Buffer.from(snapshot.hmac, 'hex');
   const expectedBuf = Buffer.from(expected, 'hex');
@@ -102,7 +113,8 @@ export function verifySignedSnapshot(password: string): SnapshotVerification {
   }
 }
 
-function computeHmac(data: string, password: string): string {
-  const key = createHmac('sha256', password).update(HMAC_PURPOSE).digest();
+function computeHmac(data: string, password: string, salt: string): string {
+  const saltBuf = Buffer.from(salt + HMAC_PURPOSE, 'utf-8');
+  const key = pbkdf2Sync(password, saltBuf, KDF_ITERATIONS, KDF_KEY_LENGTH, 'sha256');
   return createHmac('sha256', key).update(data).digest('hex');
 }

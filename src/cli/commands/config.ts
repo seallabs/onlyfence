@@ -64,8 +64,14 @@ export function registerConfigCommand(program: Command): void {
         });
 
         console.log(`Set ${key} = ${JSON.stringify(parsedValue)}`);
+      } catch (err: unknown) {
+        console.error(`Error: ${toErrorMessage(err)}`);
+        process.exitCode = 1;
+        return;
+      }
 
-        // Warn if daemon is running: file changes are NOT applied until reload/restart
+      // Best-effort warning if daemon is running: file changes are NOT applied until restart
+      try {
         const { isDaemonRunning } = await import('../../daemon/index.js');
         if (isDaemonRunning()) {
           console.error(
@@ -74,9 +80,8 @@ export function registerConfigCommand(program: Command): void {
               '    fence restart    Review diff and restart with password\n',
           );
         }
-      } catch (err: unknown) {
-        console.error(`Error: ${toErrorMessage(err)}`);
-        process.exitCode = 1;
+      } catch {
+        // Daemon module unavailable — skip warning
       }
     });
 }

@@ -46,6 +46,7 @@ export const SENSITIVE_FILES = [
   'trades.db',
   'session',
   'update-check.json',
+  'last-config.json',
 ] as const;
 
 /** Subdirectories that must be 0o700, with their file contents at 0o600. */

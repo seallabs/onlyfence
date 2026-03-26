@@ -42,6 +42,10 @@ export function registerRestartCommand(program: Command): void {
           return;
         }
 
+        // Authenticate first (consistent with `fence start`)
+        const { resolveCliPassword } = await import('../password.js');
+        const password = await resolveCliPassword({ passwordFile: options.passwordFile });
+
         // Fetch daemon's current config and compare with on-disk config
         const mode = detectExecutionMode();
         const addr = mode.mode === 'daemon-client' ? mode.address : '';
@@ -81,10 +85,6 @@ export function registerRestartCommand(program: Command): void {
         }
 
         await confirmOrExit('Restart daemon with this config? [y/N] ', options.yes);
-
-        // Authenticate
-        const { resolveCliPassword } = await import('../password.js');
-        const password = await resolveCliPassword({ passwordFile: options.passwordFile });
 
         // Stop the running daemon
         const { stopDaemonGracefully } = await import('../../daemon/index.js');

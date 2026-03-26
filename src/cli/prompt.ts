@@ -134,16 +134,20 @@ export async function promptYesNo(prompt: string): Promise<'y' | 'n'> {
           process.exit(130);
         }
 
-        stdin.removeListener('data', onData);
-        stdin.pause();
-
+        // Only accept y/n/Enter — ignore escape sequences (mouse scroll),
+        // arrow keys, and other non-printable input.
         if (ch.toLowerCase() === 'y') {
+          stdin.removeListener('data', onData);
+          stdin.pause();
           stdout.write('y\n');
           resolve('y');
-        } else {
+        } else if (ch.toLowerCase() === 'n' || ch === KEY.ENTER_CR || ch === KEY.ENTER_LF) {
+          stdin.removeListener('data', onData);
+          stdin.pause();
           stdout.write('n\n');
           resolve('n');
         }
+        // All other input (escape sequences, mouse scroll, arrows) is silently ignored
       };
 
       stdin.on('data', onData);

@@ -27,13 +27,34 @@ export function registerStartCommand(program: Command): void {
         passwordFile?: string;
         yes: boolean;
       }) => {
-        const { resolveCliPassword } = await import('../password.js');
-        const password = await resolveCliPassword({ passwordFile: options.passwordFile });
+        // Can we resolve the password from the CLI side?
+        // When forked in detached mode, stdin is a pipe carrying the password —
+        // there's no TTY and no env/file source. In that case, the daemon's
+        // internal resolvePassword() reads the password from stdin directly.
+        const canResolvePassword =
+          process.stdin.isTTY ||
+          options.passwordFile !== undefined ||
+          process.env['FENCE_PASSWORD'] !== undefined ||
+          process.env['FENCE_PASSWORD_FILE'] !== undefined;
 
-        await verifyConfigBeforeStart(password as string, options.yes);
+        if (canResolvePassword) {
+          const { resolveCliPassword } = await import('../password.js');
+          const password = await resolveCliPassword({ passwordFile: options.passwordFile });
 
-        const { launchDaemon } = await import('../daemon-lifecycle.js');
-        await launchDaemon({ password, ...options });
+          await verifyConfigBeforeStart(password as string, options.yes);
+
+          const { launchDaemon } = await import('../daemon-lifecycle.js');
+          await launchDaemon({ password, ...options });
+        } else {
+          // Forked child: password arrives via stdin pipe.
+          // Parent already verified config snapshot — go straight to daemon startup.
+          const { startDaemon } = await import('../../daemon/index.js');
+          await startDaemon({
+            tcpHost: options.tcpHost,
+            tcpPort: parseInt(options.tcpPort, 10),
+            allowRemote: options.allowRemote,
+          });
+        }
       },
     );
 }

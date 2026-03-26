@@ -2,7 +2,7 @@
  * Centralized password resolution for CLI commands.
  *
  * All CLI commands that require a password should use `resolveCliPassword()`
- * to ensure consistent behavior across `start`, `reload`, `restart`, etc.
+ * to ensure consistent behavior across `start`, `restart`, etc.
  *
  * Resolution order:
  * 1. FENCE_PASSWORD env var (deleted immediately after reading)
