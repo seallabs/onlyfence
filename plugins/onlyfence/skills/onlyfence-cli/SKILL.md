@@ -81,7 +81,7 @@ fence start --detach     # background (prompts for password first)
 fence stop               # stop a running daemon
 fence status             # check if daemon is running
 fence status -o json     # machine-readable status
-fence reload             # reload config in running daemon (password-authenticated)
+fence restart            # stop + start — shows config diff, requires confirmation + password
 ```
 
 | Option | Default | Description |
@@ -90,8 +90,15 @@ fence reload             # reload config in running daemon (password-authenticat
 | `--tcp-host <host>` | `127.0.0.1` | TCP bind address |
 | `--tcp-port <port>` | `19876` | TCP port |
 | `--allow-remote` | — | Allow non-loopback connections (disabled by default) |
+| `--password-file <path>` | — | Read password from file (Docker/k8s friendly) |
+| `-y, --yes` | — | Skip confirmation prompt (still requires password) |
 
-The daemon provides brute-force protection on reload: 3 failed password attempts trigger a 30-second lockout with exponential backoff.
+All password-requiring commands (`start`, `restart`) support consistent password resolution:
+1. `FENCE_PASSWORD` env var (deleted immediately after reading)
+2. `--password-file <path>` or `FENCE_PASSWORD_FILE` env var
+3. Interactive terminal prompt (default)
+
+**`fence restart` always shows a config diff** before applying. The user must confirm the changes and authenticate with their password. This protects against unauthorized config modifications.
 
 ## Unified Output Format
 
@@ -346,6 +353,20 @@ fence config set <key> <value>       # update a config value
 fence config init [-f]               # create default config (--force to overwrite)
 ```
 
+**IMPORTANT — Config changes do NOT auto-apply in daemon mode:**
+
+`fence config set` writes to the config file on disk, but the daemon holds its own frozen config snapshot in memory. **If the daemon is running, changes are NOT effective until the user runs `fence restart`.** The command shows a diff of what changed and requires the user to confirm with their password.
+
+**You (the agent) cannot apply config changes by yourself.** After running `fence config set`, you MUST tell the user:
+
+1. The config file has been updated, but is **not yet active** in the daemon.
+2. They need to run `fence restart` to review the diff and restart with their password.
+3. This is a security feature — it prevents unauthorized config changes from taking effect silently.
+
+**Never tell the user the config change is already in effect when the daemon is running.** The CLI will print a reminder, but you should also proactively warn the user.
+
+In **standalone mode** (no daemon), config changes take effect on the next command automatically.
+
 Keys use dot-notation. The important safety settings:
 
 | Key | Type | Default | Ceiling | Description |
@@ -594,7 +615,7 @@ fence lend claim                         # claim rewards
 fence start --detach                     # start daemon in background
 fence status -o json                     # verify it's running
 # ... all commands auto-route through daemon ...
-fence reload                             # reload config after changes
+fence restart                            # restart with new config (shows diff, needs password)
 fence stop                               # shut down daemon
 ```
 
@@ -605,6 +626,9 @@ fence config show chain.sui.limits       # see current limits
 fence config set chain.sui.limits.max_24h_volume 1000
 fence config show chain.sui.allowlist.tokens   # see allowed tokens
 fence config set chain.sui.allowlist.tokens '["SUI","USDC","USDT","DEEP","BLUE","WAL","CETUS"]'
+
+# If daemon is running, changes are NOT active until:
+fence restart                            # review diff and restart with password
 ```
 
 ## Important Notes
@@ -614,5 +638,6 @@ fence config set chain.sui.allowlist.tokens '["SUI","USDC","USDT","DEEP","BLUE",
 - **`fence setup`, `fence unlock`, and `fence wallet import-key` are interactive** — they prompt for passwords or keys. Never try to pipe passwords or automate these (except non-interactive setup with `--password-file`). Tell the user to run them.
 - **All guardrail checks happen automatically** on every swap and lending supply. You do not need to manually check policy before calling `fence swap` or `fence lend supply`.
 - **USD price oracle can fail.** When it does, token allowlist checks still apply but USD-based spending limits are skipped (logged, not silently bypassed).
+- **Config changes require user action in daemon mode** — `fence config set` only writes to the file on disk. The daemon does NOT auto-reload. The user must run `fence restart` to review the diff and apply changes with their password. Never claim a config change is active without this step.
 - **Config ceilings exist** — `max_single_trade` cannot exceed $10,000 and `max_24h_volume` cannot exceed $100,000, regardless of what the user sets.
 - **The `--verbose` global flag** enables debug logging to stderr. Useful for troubleshooting but noisy — only use when diagnosing issues.

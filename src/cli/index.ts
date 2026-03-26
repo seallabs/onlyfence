@@ -22,7 +22,7 @@ import {
   registerLendCommand,
   registerLockCommand,
   registerQueryCommand,
-  registerReloadCommand,
+  registerRestartCommand,
   registerSetupCommand,
   registerStartCommand,
   registerStatsCommand,
@@ -146,7 +146,7 @@ export function createProgram(): { program: Command; cleanup: () => void } {
   registerStartCommand(program);
   registerStopCommand(program);
   registerStatusCommand(program);
-  registerReloadCommand(program);
+  registerRestartCommand(program);
   registerUninstallCommand(program);
 
   // Default action: launch interactive TUI when no subcommand is given.
