@@ -1,11 +1,12 @@
 ---
 sidebar_position: 1
 title: Swap
+description: Swap tokens across multiple Sui DEXes with best-price routing via the 7K Aggregator. OnlyFence enforces spending limits and token allowlists before every swap.
 ---
 
 # Swap
 
-Swap tokens across multiple DEXes with best-price routing, powered by the 7K Aggregator.
+Swap tokens across multiple DEXes with best-price routing, powered by the 7K Aggregator. OnlyFence checks your spending limits and token allowlist before every swap — if the trade violates any safety rule, it is rejected locally before a transaction is signed.
 
 ## Usage
 

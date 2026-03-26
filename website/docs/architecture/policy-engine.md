@@ -1,6 +1,7 @@
 ---
 sidebar_position: 2
 title: Policy Engine
+description: How the OnlyFence policy engine works — a pipeline of independent check functions that evaluate every trade intent before execution.
 ---
 
 # Policy Engine

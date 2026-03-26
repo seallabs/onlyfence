@@ -1,6 +1,7 @@
 ---
 sidebar_position: 5
 title: CLI Reference
+description: Complete reference for all OnlyFence CLI commands — swap, query, lend, wallet, config, daemon, and more.
 ---
 
 # CLI Reference

@@ -1,5 +1,5 @@
-import {themes as prismThemes} from 'prism-react-renderer';
-import type {Config} from '@docusaurus/types';
+import { themes as prismThemes } from 'prism-react-renderer';
+import type { Config } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
@@ -11,7 +11,7 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://onlyfence.dev',
+  url: 'https://onlyfence.xyz',
   baseUrl: '/',
 
   organizationName: 'seallabs',
@@ -31,6 +31,45 @@ const config: Config = {
   themes: ['@docusaurus/theme-mermaid'],
 
   headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'alternate',
+        type: 'text/plain',
+        href: 'https://onlyfence.xyz/llms.txt',
+        title: 'LLM-readable site description',
+      },
+    },
+    {
+      tagName: 'script',
+      attributes: {
+        type: 'application/ld+json',
+      },
+      innerHTML: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@graph': [
+          {
+            '@type': 'Organization',
+            '@id': 'https://onlyfence.xyz/#organization',
+            name: 'Seal Labs',
+            url: 'https://github.com/seallabs',
+            logo: {
+              '@type': 'ImageObject',
+              url: 'https://onlyfence.xyz/img/landing/logo-512.png',
+            },
+            sameAs: ['https://github.com/seallabs'],
+          },
+          {
+            '@type': 'WebSite',
+            '@id': 'https://onlyfence.xyz/#website',
+            url: 'https://onlyfence.xyz',
+            name: 'OnlyFence',
+            description: 'Safe, full-featured DeFi toolkit for AI agents',
+            publisher: {'@id': 'https://onlyfence.xyz/#organization'},
+          },
+        ],
+      }),
+    },
     {
       tagName: 'script',
       attributes: {
@@ -52,10 +91,14 @@ const config: Config = {
         docs: {
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/seallabs/onlyfence/tree/main/website/',
+          showLastUpdateTime: true,
         },
         blog: false,
         theme: {
           customCss: './src/css/custom.css',
+        },
+        sitemap: {
+          lastmod: 'date',
         },
         googleTagManager: false,
       } satisfies Preset.Options,
@@ -64,6 +107,11 @@ const config: Config = {
 
   themeConfig: {
     image: 'img/hero.png',
+    metadata: [
+      { name: 'author', content: 'Seal Labs' },
+      { property: 'og:site_name', content: 'OnlyFence' },
+      { name: 'twitter:card', content: 'summary_large_image' },
+    ],
     colorMode: {
       defaultMode: 'dark',
       respectPrefersColorScheme: true,
@@ -99,24 +147,24 @@ const config: Config = {
         {
           title: 'Documentation',
           items: [
-            {label: 'Getting Started', to: '/docs/getting-started'},
-            {label: 'CLI Reference', to: '/docs/cli-reference'},
-            {label: 'Agent Integration', to: '/docs/agent-integration'},
+            { label: 'Getting Started', to: '/docs/getting-started' },
+            { label: 'CLI Reference', to: '/docs/cli-reference' },
+            { label: 'Agent Integration', to: '/docs/agent-integration' },
           ],
         },
         {
           title: 'Deploy',
           items: [
-            {label: 'Docker', to: '/docs/deployment/docker'},
-            {label: 'Kubernetes', to: '/docs/deployment/kubernetes'},
+            { label: 'Docker', to: '/docs/deployment/docker' },
+            { label: 'Kubernetes', to: '/docs/deployment/kubernetes' },
           ],
         },
         {
           title: 'More',
           items: [
-            {label: 'GitHub', href: 'https://github.com/seallabs/onlyfence'},
-            {label: 'Changelog', to: '/docs/changelog'},
-            {label: 'Contributing', to: '/docs/contributing'},
+            { label: 'GitHub', href: 'https://github.com/seallabs/onlyfence' },
+            { label: 'Changelog', to: '/docs/changelog' },
+            { label: 'Contributing', to: '/docs/contributing' },
           ],
         },
       ],

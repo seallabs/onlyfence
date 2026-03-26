@@ -1,7 +1,27 @@
 ---
 sidebar_position: 11
 title: FAQ
+description: Frequently asked questions about OnlyFence — pricing, wallet safety, supported DEXes, deployment, and AI agent integration.
 ---
+
+import Head from '@docusaurus/Head';
+
+<Head>
+  <script type="application/ld+json">
+    {JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {"@type": "Question", "name": "Is OnlyFence free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, 100% free and open source. No hidden fees, no premium tier, no account needed."}},
+        {"@type": "Question", "name": "Is my wallet safe?", "acceptedAnswer": {"@type": "Answer", "text": "Your private keys are encrypted and stored locally on your computer. They never leave your machine. OnlyFence doesn't have servers — everything runs locally."}},
+        {"@type": "Question", "name": "What happens if the price oracle is down?", "acceptedAnswer": {"@type": "Answer", "text": "OnlyFence uses a fail-closed approach. If the oracle is unreachable, it falls back to a cached price for up to 5 minutes. If the cache is stale or absent, the trade is rejected — not silently allowed."}},
+        {"@type": "Question", "name": "Does OnlyFence charge any fees on trades?", "acceptedAnswer": {"@type": "Answer", "text": "No. OnlyFence doesn't take any fees. You only pay the normal blockchain gas fees and any DEX fees from the swap itself."}},
+        {"@type": "Question", "name": "Which AI agents work with OnlyFence?", "acceptedAnswer": {"@type": "Answer", "text": "Any agent that can execute shell commands works with OnlyFence — OpenClaw, Claude, ChatGPT, custom bots, scripts, or any tool that can call fence commands and parse JSON."}},
+        {"@type": "Question", "name": "Can I run OnlyFence on a server or Kubernetes?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. OnlyFence runs standalone on any machine, or as a Docker container on Docker Compose, Kubernetes, ECS, or any container runtime."}}
+      ]
+    })}
+  </script>
+</Head>
 
 # FAQ
 

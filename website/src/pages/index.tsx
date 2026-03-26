@@ -1,4 +1,4 @@
-import {type ReactNode, useEffect, useRef, useCallback} from 'react';
+import { type ReactNode, useEffect, useRef, useCallback } from 'react';
 import Layout from '@theme/Layout';
 import Head from '@docusaurus/Head';
 import Link from '@docusaurus/Link';
@@ -16,13 +16,13 @@ function useTerminalAnimation(): void {
     ran.current = true;
 
     const STEPS = [
-      {type: 'type', target: 'lp-type-target', text: 'fence swap SUI USDC 500', speed: 55, delay: 600},
-      {type: 'show', target: 'lp-t2', delay: 1500},
-      {type: 'show', target: 'lp-t3', delay: 2300},
-      {type: 'show', target: 'lp-t4', delay: 2900},
-      {type: 'show', target: 'lp-t5', delay: 3400},
-      {type: 'hideCursor', target: 'lp-input-cursor', delay: 3600},
-      {type: 'show', target: 'lp-t6', delay: 4000},
+      { type: 'type', target: 'lp-type-target', text: 'fence swap SUI USDC 500', speed: 55, delay: 600 },
+      { type: 'show', target: 'lp-t2', delay: 1500 },
+      { type: 'show', target: 'lp-t3', delay: 2300 },
+      { type: 'show', target: 'lp-t4', delay: 2900 },
+      { type: 'show', target: 'lp-t5', delay: 3400 },
+      { type: 'hideCursor', target: 'lp-input-cursor', delay: 3600 },
+      { type: 'show', target: 'lp-t6', delay: 4000 },
     ];
 
     function typeText(el: HTMLElement, text: string, speed: number): void {
@@ -76,7 +76,7 @@ function useScrollReveal(): void {
           }
         });
       },
-      {threshold: 0.1, rootMargin: '0px 0px -40px 0px'},
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' },
     );
     els.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
@@ -87,7 +87,7 @@ function useScrollReveal(): void {
 // Copy Button
 // =========================================
 
-function CopyButton({textId, label = 'COPY'}: {textId: string; label?: string}): ReactNode {
+function CopyButton({ textId, label = 'COPY' }: { textId: string; label?: string }): ReactNode {
   const btnLabel = useRef<HTMLSpanElement>(null);
 
   const handleCopy = useCallback(() => {
@@ -210,10 +210,17 @@ function ProblemSection(): ReactNode {
         </p>
       </div>
       <div className="lp-problem-image-wrap lp-reveal">
-        <img
-          src="/img/landing/screenshot-03.jpg"
-          alt="The agent problem: unchecked autonomy leads to drained wallets"
-          className="lp-problem-img"
+        <video
+          src="https://github.com/seallabs/onlyfence/releases/download/assets/demo.mp4"
+          poster="/img/landing/screenshot-03.jpg"
+          preload="metadata"
+          controls
+          muted
+          playsInline
+          width={1280}
+          height={720}
+          aria-label="OnlyFence CLI demo — policy engine rejecting a trade that exceeds the 24h volume cap"
+          style={{ width: '100%', height: 'auto', display: 'block' }}
         />
       </div>
     </section>
@@ -387,6 +394,26 @@ function DeploySection(): ReactNode {
   );
 }
 
+function LandingNav(): ReactNode {
+  return (
+    <nav className="lp-navbar">
+      <div className="lp-navbar-inner">
+        <Link to="/" className="lp-logo">
+          <img src="/img/landing/logo-512.png" alt="OnlyFence" className="lp-logo-img" />
+          <span className="lp-logo-text">OnlyFence_</span>
+        </Link>
+        <div className="lp-nav-links">
+          <a href="#problem" className="lp-nav-link">Problem</a>
+          <a href="#features" className="lp-nav-link">Features</a>
+          <a href="#advantage" className="lp-nav-link">Why</a>
+          <Link to="/docs/intro" className="lp-nav-link">Docs</Link>
+          <a href="https://github.com/seallabs/onlyfence" className="lp-nav-cta">GitHub</a>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
 function LandingFooter(): ReactNode {
   return (
     <footer className="lp-footer">
@@ -429,14 +456,44 @@ export default function Home(): ReactNode {
       description="OnlyFence gives AI agents full DeFi capabilities with safety guardrails. Swap, lend, borrow — without risking your wallet."
       wrapperClassName="landing-page">
       <Head>
+        <meta property="og:type" content="website" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
           href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap"
           rel="stylesheet"
         />
+        <script type="application/ld+json">
+          {JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'SoftwareApplication',
+            name: 'OnlyFence',
+            applicationCategory: 'DeveloperApplication',
+            operatingSystem: 'macOS, Linux',
+            description:
+              'Free, open-source CLI tool that gives AI agents safe access to DeFi with spending limits, token allowlists, and security policies. Supports swaps, lending, and borrowing on Sui.',
+            url: 'https://onlyfence.xyz',
+            downloadUrl: 'https://github.com/seallabs/onlyfence/releases',
+            softwareVersion: '0.2.0',
+            license: 'https://www.gnu.org/licenses/gpl-3.0.html',
+            isAccessibleForFree: true,
+            offers: {
+              '@type': 'Offer',
+              price: '0',
+              priceCurrency: 'USD',
+            },
+            author: {
+              '@type': 'Organization',
+              name: 'Seal Labs',
+              url: 'https://github.com/seallabs',
+            },
+            codeRepository: 'https://github.com/seallabs/onlyfence',
+            programmingLanguage: 'TypeScript',
+          })}
+        </script>
       </Head>
 
+      <LandingNav />
       <div className="lp-grid-bg" aria-hidden="true" />
 
       <main>

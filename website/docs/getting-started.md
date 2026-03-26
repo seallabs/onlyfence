@@ -1,6 +1,7 @@
 ---
 sidebar_position: 3
 title: Getting Started
+description: Set up OnlyFence in minutes — configure safety rules, execute your first swap, and open the terminal dashboard.
 ---
 
 # Getting Started

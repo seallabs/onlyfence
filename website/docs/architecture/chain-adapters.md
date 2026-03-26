@@ -1,6 +1,7 @@
 ---
 sidebar_position: 3
 title: Chain Adapters
+description: OnlyFence chain adapter pattern — a common interface for supporting multiple blockchains while keeping core logic chain-agnostic.
 ---
 
 # Chain Adapters

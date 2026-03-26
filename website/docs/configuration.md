@@ -1,6 +1,7 @@
 ---
 sidebar_position: 4
 title: Configuration
+description: Configure OnlyFence safety rules — spending limits, token allowlists, volume caps, and chain settings in a simple TOML config file.
 ---
 
 # Configuration

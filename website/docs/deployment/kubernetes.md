@@ -1,6 +1,7 @@
 ---
 sidebar_position: 2
 title: Kubernetes
+description: Deploy OnlyFence on Kubernetes with native Secrets, HashiCorp Vault, AWS Secrets Manager, or sealed-secrets for production workloads.
 ---
 
 # Kubernetes Deployment

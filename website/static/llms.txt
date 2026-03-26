@@ -1,0 +1,69 @@
+# OnlyFence
+
+> OnlyFence is a free, open-source CLI tool that gives AI agents safe access to DeFi (decentralized finance). It acts as a guardrail layer between an AI trading agent and the blockchain, enforcing spending limits, token allowlists, and security policies before any transaction is signed.
+
+## Key facts
+
+- Open source, GNU GPLv3 license
+- Runs locally — no servers, no accounts, no API keys needed
+- Private keys never leave the user's machine
+- Supports Sui blockchain (EVM and Solana planned)
+- Swap routing via 7K Aggregator across Cetus, DeepBook, Bluefin, FlowX, Turbos
+- Lending and borrowing via AlphaLend
+- Works with any AI agent: Claude, ChatGPT, custom bots, scripts
+- CLI with --output json for structured agent integration
+- Background daemon mode for persistent agent connections
+- Deploy via Docker or Kubernetes with security-hardened containers
+- Built with TypeScript, Node.js, React/Ink TUI
+
+## How it works
+
+1. AI agent calls `fence swap SUI USDC 100 --output json`
+2. OnlyFence checks the token allowlist (are both tokens approved?)
+3. OnlyFence checks spending limits (under per-trade and 24h caps?)
+4. If approved: finds best route, simulates, signs, submits, logs
+5. If rejected: returns JSON with reason, agent adjusts strategy
+6. Every action is logged to a local SQLite audit trail
+
+## Install
+
+```
+curl -fsSL https://raw.githubusercontent.com/seallabs/onlyfence/main/install.sh | sh
+```
+
+## Full documentation (single file)
+
+- [llms-full.txt](https://onlyfence.xyz/llms-full.txt): Complete documentation in one file for LLM consumption
+
+## Links
+
+- Documentation: https://onlyfence.xyz/docs/intro
+- GitHub: https://github.com/seallabs/onlyfence
+- Getting started: https://onlyfence.xyz/docs/getting-started
+- CLI reference: https://onlyfence.xyz/docs/cli-reference
+- Agent integration: https://onlyfence.xyz/docs/agent-integration
+- Security: https://onlyfence.xyz/docs/security
+- Docker deployment: https://onlyfence.xyz/docs/deployment/docker
+- Kubernetes deployment: https://onlyfence.xyz/docs/deployment/kubernetes
+
+## Detailed documentation
+
+For comprehensive documentation, see the full docs site:
+- [What is OnlyFence?](https://onlyfence.xyz/docs/intro)
+- [Installation](https://onlyfence.xyz/docs/installation)
+- [Getting Started](https://onlyfence.xyz/docs/getting-started)
+- [Configuration](https://onlyfence.xyz/docs/configuration)
+- [CLI Reference](https://onlyfence.xyz/docs/cli-reference)
+- [Agent Integration](https://onlyfence.xyz/docs/agent-integration)
+- [Swap](https://onlyfence.xyz/docs/actions/swap)
+- [Lending & Borrowing](https://onlyfence.xyz/docs/actions/lending)
+- [Daemon Mode](https://onlyfence.xyz/docs/daemon)
+- [Docker Deployment](https://onlyfence.xyz/docs/deployment/docker)
+- [Kubernetes Deployment](https://onlyfence.xyz/docs/deployment/kubernetes)
+- [Architecture Overview](https://onlyfence.xyz/docs/architecture/overview)
+- [Policy Engine](https://onlyfence.xyz/docs/architecture/policy-engine)
+- [Chain Adapters](https://onlyfence.xyz/docs/architecture/chain-adapters)
+- [Security](https://onlyfence.xyz/docs/security)
+- [FAQ](https://onlyfence.xyz/docs/faq)
+- [Contributing](https://onlyfence.xyz/docs/contributing)
+- [Changelog](https://onlyfence.xyz/docs/changelog)

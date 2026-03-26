@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
 title: Docker
+description: Deploy OnlyFence as a security-hardened Docker container. The daemon runs inside the container and exposes a TCP endpoint — private keys never leave.
 ---
 
 # Docker Deployment

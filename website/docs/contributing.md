@@ -1,11 +1,12 @@
 ---
 sidebar_position: 12
 title: Contributing
+description: How to contribute to OnlyFence — prerequisites, development setup, testing, and pull request guidelines.
 ---
 
 # Contributing
 
-Thanks for your interest in contributing to OnlyFence!
+OnlyFence is open source under GPLv3. Contributions are welcome — whether it's bug fixes, new chain adapters, documentation improvements, or feature proposals.
 
 ## Prerequisites
 

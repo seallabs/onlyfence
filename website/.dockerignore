@@ -1,0 +1,9 @@
+node_modules
+build
+.docusaurus
+.git
+*.mp4
+*.mov
+*.avi
+*.webm
+*.gif

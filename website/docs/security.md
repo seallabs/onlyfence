@@ -1,6 +1,7 @@
 ---
 sidebar_position: 10
 title: Security
+description: OnlyFence security architecture — encrypted keystores, fail-closed oracle, dry-run simulation, container hardening, and vulnerability reporting.
 ---
 
 # Security

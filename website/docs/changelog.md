@@ -1,6 +1,7 @@
 ---
 sidebar_position: 13
 title: Changelog
+description: OnlyFence release history — new features, improvements, and bug fixes for every version.
 ---
 
 # Changelog

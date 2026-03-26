@@ -1,6 +1,7 @@
 ---
 sidebar_position: 1
 title: Overview
+description: OnlyFence architecture — how the CLI, policy engine, chain adapters, and wallet vault work together to give AI agents safe DeFi access.
 ---
 
 # Architecture Overview
