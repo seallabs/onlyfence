@@ -2,9 +2,7 @@ name: Docs
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "website/**"
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -37,6 +35,6 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/docs:latest
-            ghcr.io/${{ github.repository }}/docs:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/docs:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
