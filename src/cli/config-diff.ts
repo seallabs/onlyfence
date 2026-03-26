@@ -6,6 +6,7 @@
  */
 
 import type { AppConfig } from '../types/config.js';
+import { red, green, yellow } from './style.js';
 
 export interface ConfigChange {
   readonly path: string;
@@ -40,15 +41,15 @@ export function formatConfigDiff(changes: ConfigChange[]): string {
   for (const change of changes) {
     switch (change.type) {
       case 'added':
-        lines.push(`  + ${change.path} = ${formatValue(change.newValue)}`);
+        lines.push(green(`  + ${change.path} = ${formatValue(change.newValue)}`));
         break;
       case 'removed':
-        lines.push(`  - ${change.path} = ${formatValue(change.oldValue)}`);
+        lines.push(red(`  - ${change.path} = ${formatValue(change.oldValue)}`));
         break;
       case 'changed':
-        lines.push(`  ~ ${change.path}`);
-        lines.push(`      was: ${formatValue(change.oldValue)}`);
-        lines.push(`      now: ${formatValue(change.newValue)}`);
+        lines.push(yellow(`  ~ ${change.path}`));
+        lines.push(red(`      was: ${formatValue(change.oldValue)}`));
+        lines.push(green(`      now: ${formatValue(change.newValue)}`));
         break;
     }
   }
