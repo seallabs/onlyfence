@@ -20,13 +20,7 @@ import { KeyHolder } from './key-holder.js';
 import { InMemoryTradeWindow } from './trade-window.js';
 import { writePidFile, removePidFile } from './pid-manager.js';
 import { SOCKET_PATH } from './detect.js';
-import type {
-  ExecutePayload,
-  IpcRequest,
-  IpcResponse,
-  TradePayload,
-  ReloadPayload,
-} from './protocol.js';
+import type { ExecutePayload, IpcRequest, IpcResponse, TradePayload } from './protocol.js';
 import type { SecurePassword } from '../security/branded-types.js';
 import {
   securePasswordFromEnv,
@@ -94,6 +88,11 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   const configSnapshot = new ConfigSnapshot(components.config);
   logger.info({ configHash: configSnapshot.configHash }, 'Config snapshot created');
 
+  // Write HMAC-signed snapshot so the next `fence start` can detect config tampering.
+  const { writeSignedSnapshot } = await import('./config-snapshot-file.js');
+  writeSignedSnapshot(components.config, password as string);
+  logger.info('Signed config snapshot written');
+
   const tradeWindow = new InMemoryTradeWindow();
   const chainIds = Object.keys(components.config.chain).map((c) => `${c}:mainnet`);
   tradeWindow.preload(components.activityLog, chainIds);
@@ -109,13 +108,6 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   };
 
   const server = new DaemonServer(serverOptions);
-
-  // Reload lockout state: prevents brute-forcing the password via the
-  // reload endpoint, which would otherwise act as a password oracle.
-  let reloadFailures = 0;
-  let reloadLockedUntil = 0;
-  const RELOAD_MAX_FAILURES = 3;
-  const RELOAD_LOCKOUT_BASE_MS = 30_000; // 30s, doubles each lockout
 
   // Request handler
   const handleRequest = async (req: IpcRequest): Promise<IpcResponse> => {
@@ -173,44 +165,14 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
           },
         };
       }
-      case 'reload': {
-        // Lockout check: prevent brute-force password guessing
-        const now = Date.now();
-        if (now < reloadLockedUntil) {
-          const remainingSec = Math.ceil((reloadLockedUntil - now) / 1000);
-          logger.warn({ remainingSec }, 'Reload attempt during lockout');
-          return {
-            id: req.id,
-            ok: false,
-            error: `Reload locked out for ${String(remainingSec)}s after ${String(RELOAD_MAX_FAILURES)} failed attempts.`,
-          };
-        }
-
-        const { password: reloadPwd } = req.payload as ReloadPayload;
-        try {
-          const newHash = configSnapshot.reload(reloadPwd);
-          reloadFailures = 0; // Reset on success
-          logger.info({ configHash: newHash }, 'Config reloaded');
-          return { id: req.id, ok: true, data: { configHash: newHash } };
-        } catch {
-          reloadFailures++;
-          logger.warn({ failures: reloadFailures }, 'Reload failed (wrong password)');
-
-          if (reloadFailures >= RELOAD_MAX_FAILURES) {
-            // Exponential lockout: 30s, 60s, 120s, ...
-            const lockoutMs =
-              RELOAD_LOCKOUT_BASE_MS *
-              Math.pow(2, Math.floor(reloadFailures / RELOAD_MAX_FAILURES) - 1);
-            reloadLockedUntil = Date.now() + lockoutMs;
-            logger.warn({ lockoutMs }, 'Reload locked out due to repeated failures');
-          }
-
-          return {
-            id: req.id,
-            ok: false,
-            error: 'Invalid password.',
-          };
-        }
+      case 'config': {
+        // Return current frozen config for diff display.
+        // Config contents are not secrets — they are limits, allowlists, and settings.
+        return {
+          id: req.id,
+          ok: true,
+          data: { config: configSnapshot.current, configHash: configSnapshot.configHash },
+        };
       }
       case 'stop': {
         logger.info('Stop request received');

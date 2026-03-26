@@ -75,4 +75,6 @@ exec node dist/cli/index.js start \
   --tcp-host "${FENCE_TCP_HOST:-0.0.0.0}" \
   --tcp-port "${FENCE_TCP_PORT:-19876}" \
   --allow-remote \
+  --password-file "$PWFILE" \
+  --yes \
   "$@"

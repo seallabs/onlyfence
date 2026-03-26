@@ -56,7 +56,7 @@ export function registerConfigCommand(program: Command): void {
   configCmd
     .command('set <key> <value>')
     .description('Set a configuration value (dot-notation key path)')
-    .action((key: string, value: string) => {
+    .action(async (key: string, value: string) => {
       try {
         const parsedValue = parseConfigValue(value);
         updateConfigFile((raw) => {
@@ -67,6 +67,21 @@ export function registerConfigCommand(program: Command): void {
       } catch (err: unknown) {
         console.error(`Error: ${toErrorMessage(err)}`);
         process.exitCode = 1;
+        return;
+      }
+
+      // Best-effort warning if daemon is running: file changes are NOT applied until restart
+      try {
+        const { isDaemonRunning } = await import('../../daemon/index.js');
+        if (isDaemonRunning()) {
+          console.error(
+            '\nNote: The daemon is running and uses its own config snapshot.\n' +
+              '  This change will NOT take effect until you run:\n' +
+              '    fence restart    Review diff and restart with password\n',
+          );
+        }
+      } catch {
+        // Daemon module unavailable — skip warning
       }
     });
 }

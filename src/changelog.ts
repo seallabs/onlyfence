@@ -11,7 +11,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     version: 'v0.3.0',
     date: '2026-03-26',
-    changes: 'Documentation site.',
+    changes: 'Documentation site, SEO optimization, and contributor experience improvements.',
   },
   {
     version: 'v0.2.0',

@@ -11,5 +11,5 @@ export { registerLockCommand } from './lock.js';
 export { registerStartCommand } from './start.js';
 export { registerStopCommand } from './stop.js';
 export { registerStatusCommand } from './status.js';
-export { registerReloadCommand } from './reload.js';
+export { registerRestartCommand } from './restart.js';
 export { registerUninstallCommand } from './uninstall.js';
