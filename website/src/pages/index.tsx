@@ -212,7 +212,7 @@ function ProblemSection(): ReactNode {
       <div className="lp-problem-image-wrap lp-reveal">
         <video
           src="https://github.com/seallabs/onlyfence/releases/download/assets/demo.mp4"
-          poster="/img/landing/screenshot-03.jpg"
+          poster="/img/landing/showcase.png"
           preload="metadata"
           controls
           muted
