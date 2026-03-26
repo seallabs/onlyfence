@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-26
+
+Documentation site, SEO optimization, and contributor experience improvements.
+
+### Added
+
+- **Docusaurus Documentation Site** — full Docusaurus site under `website/` replacing standalone landing page, with 16 documentation pages covering installation, CLI reference, agent integration, deployment, architecture, security, FAQ, and contributing (#22)
+- **SEO Optimization** — meta descriptions on all doc pages, Organization/WebSite JSON-LD structured data, Twitter Card meta tags, AI crawler directives in robots.txt, and `llms-full.txt` build-time generation (#22)
+- **Docs CI/CD Workflow** — GitHub Actions workflow with multi-stage Docker build (node + nginx) for automated docs deployment on semver tags
+- **Contributor Guide** — website contributor guide with design system documentation and conventions
+- **Text Scramble Effect** — animated text scramble effect on landing page hero section
+
+### Changed
+
+- **Landing Page Migration** — converted standalone `landing/` directory to a React component within the Docusaurus site, preserving all animations, bento grid, terminal demo, and scroll reveals
+- **Docs Docker Image Tagging** — switched from commit SHA to semver tag for Keel auto-deploy compatibility
 
 ## [0.2.0] - 2026-03-25
 
@@ -98,6 +114,7 @@ Initial release of OnlyFence — agent wallet guardrails for DeFi.
 - Vitest test suite
 - Cross-platform install script (`install.sh`)
 
-[Unreleased]: https://github.com/seallabs/onlyfence/compare/0.2.0...HEAD
+[Unreleased]: https://github.com/seallabs/onlyfence/compare/0.3.0...HEAD
+[0.3.0]: https://github.com/seallabs/onlyfence/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/seallabs/onlyfence/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/seallabs/onlyfence/releases/tag/0.1.0
