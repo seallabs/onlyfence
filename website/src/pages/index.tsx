@@ -61,6 +61,116 @@ function useTerminalAnimation(): void {
 }
 
 // =========================================
+// Scramble Text Effect
+// =========================================
+
+const SCRAMBLE_CHARS = '!<>-_\\/[]{}*^?#0123456789';
+
+function scrambleElement(el: HTMLElement): void {
+  if (el.dataset.scrambling === 'true') return;
+  el.dataset.scrambling = 'true';
+
+  const original = el.dataset.original || el.textContent || '';
+  el.dataset.original = original;
+
+  let iter = 0;
+  if (el.dataset.scrambleTimer) clearInterval(Number(el.dataset.scrambleTimer));
+
+  const timer = setInterval(() => {
+    el.textContent = original
+      .split('')
+      .map((ch, i) => {
+        if (ch === ' ' || ch === '.' || ch === '_' || ch === '[' || ch === ']') return ch;
+        if (i < iter) return original[i];
+        return SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+      })
+      .join('');
+
+    iter += 0.5;
+
+    if (iter >= original.length) {
+      clearInterval(timer);
+      el.textContent = original;
+      el.dataset.scrambling = 'false';
+    }
+  }, 28);
+  el.dataset.scrambleTimer = String(timer);
+}
+
+function useScrambleEffect(): void {
+  const ran = useRef(false);
+  useEffect(() => {
+    if (ran.current) return;
+    ran.current = true;
+
+    // Hover-triggered scramble
+    document.querySelectorAll<HTMLElement>('.lp-scramble-hover').forEach((el) => {
+      el.dataset.original = el.textContent || '';
+      el.addEventListener('mouseenter', () => scrambleElement(el));
+    });
+
+    // Span-based scramble for on-load elements (stable layout, no line-reflow)
+    const SKIP = new Set([' ', '.', '&', '-', ',', "'", '\u2014', '\u2019']);
+
+    document.querySelectorAll<HTMLElement>('.lp-scramble-on-load').forEach((el) => {
+      const original = el.textContent || '';
+
+      // Wrap each character in a span to keep DOM dimensions stable
+      el.innerHTML = original
+        .split('')
+        .map((ch) => `<span class="lp-sc-ch" data-ch="${ch}">${ch}</span>`)
+        .join('');
+
+      const spans = Array.from(el.querySelectorAll<HTMLElement>('.lp-sc-ch'));
+
+      function runSpanScramble(): void {
+        if (el.dataset.scrambling === 'true') return;
+        el.dataset.scrambling = 'true';
+
+        // Lock height to prevent layout shift
+        const lockedH = el.getBoundingClientRect().height;
+        el.style.minHeight = lockedH + 'px';
+        el.style.overflow = 'hidden';
+
+        let iter = 0;
+        if (el.dataset.scrambleTimer) clearInterval(Number(el.dataset.scrambleTimer));
+
+        const timer = setInterval(() => {
+          spans.forEach((span, i) => {
+            const ch = span.dataset.ch || '';
+            if (SKIP.has(ch)) {
+              span.textContent = ch;
+              return;
+            }
+            span.textContent =
+              i < iter ? ch : SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+          });
+
+          iter += 0.35;
+
+          if (iter >= spans.length) {
+            clearInterval(timer);
+            spans.forEach((span) => {
+              span.textContent = span.dataset.ch || '';
+            });
+            el.style.minHeight = '';
+            el.style.overflow = '';
+            el.dataset.scrambling = 'false';
+          }
+        }, 24);
+        el.dataset.scrambleTimer = String(timer);
+      }
+
+      // Fire on page load
+      setTimeout(runSpanScramble, 400);
+
+      // Re-trigger on hover
+      el.addEventListener('mouseenter', runSpanScramble);
+    });
+  }, []);
+}
+
+// =========================================
 // Scroll Reveal
 // =========================================
 
@@ -119,16 +229,16 @@ function HeroSection(): ReactNode {
     <section className="lp-hero" id="hero">
       <div className="lp-hero-content lp-reveal">
         <div className="lp-eyebrow">[ SYSTEM_STATUS: OPERATIONAL // AGENT_FENCE_v0.2.0 ]</div>
-        <h1 className="lp-hero-headline">Let the agent trade within the fence.</h1>
+        <h1 className="lp-hero-headline lp-scramble-on-load">Let the agent trade within the fence.</h1>
         <p className="lp-hero-sub">
           OnlyFence is an open-source CLI, local-first guardrail layer &amp; DeFi tool for AI Agents, enforcing
           security policies in milliseconds — before a single key is signed.
         </p>
         <div className="lp-hero-ctas">
-          <Link className="lp-btn lp-btn-gradient" to="/docs/installation">
+          <Link className="lp-btn lp-btn-gradient lp-scramble-hover" to="/docs/installation">
             INSTALL_CLI
           </Link>
-          <a className="lp-btn lp-btn-ghost" href="https://github.com/seallabs/onlyfence">
+          <a className="lp-btn lp-btn-ghost lp-scramble-hover" href="https://github.com/seallabs/onlyfence">
             VIEW_SOURCE
           </a>
         </div>
@@ -239,7 +349,7 @@ function FeaturesSection(): ReactNode {
         {/* Card 1: The Engine (wide) */}
         <div className="lp-bento-card lp-bento-wide">
           <div className="lp-bento-tag">EDITABLE_POLICIES</div>
-          <h3 className="lp-bento-title">The Engine</h3>
+          <h3 className="lp-bento-title lp-scramble-hover">The Engine</h3>
           <p className="lp-bento-desc">
             Define spending limits, volume caps, and token allowlists in a simple TOML config. Composable safety checks
             that adapt to your strategy in real-time.
@@ -260,7 +370,7 @@ function FeaturesSection(): ReactNode {
         {/* Card 2: The Vault */}
         <div className="lp-bento-card">
           <div className="lp-bento-tag">ENCRYPTED_SIGNING</div>
-          <h3 className="lp-bento-title">The Vault</h3>
+          <h3 className="lp-bento-title lp-scramble-hover">The Vault</h3>
           <p className="lp-bento-desc">
             BIP-39 mnemonic generation and local-only keystores. Your keys never leave your machine.
           </p>
@@ -273,7 +383,7 @@ function FeaturesSection(): ReactNode {
         {/* Card 3: The Oracle */}
         <div className="lp-bento-card">
           <div className="lp-bento-tag">REALTIME_SIMULATION</div>
-          <h3 className="lp-bento-title">The Oracle</h3>
+          <h3 className="lp-bento-title lp-scramble-hover">The Oracle</h3>
           <p className="lp-bento-desc">
             Every trade is simulated via RPC and priced via Oracle before execution. Zero surprises at signing time.
           </p>
@@ -287,7 +397,7 @@ function FeaturesSection(): ReactNode {
         {/* Card 4: The Agent API */}
         <div className="lp-bento-card">
           <div className="lp-bento-tag">MACHINE_READABLE</div>
-          <h3 className="lp-bento-title">The Agent API</h3>
+          <h3 className="lp-bento-title lp-scramble-hover">The Agent API</h3>
           <p className="lp-bento-desc">
             Direct JSON output for seamless integration with Claude, Cursor, and custom agent scripts.
           </p>
@@ -297,7 +407,7 @@ function FeaturesSection(): ReactNode {
         {/* Card 5: Interactive TUI */}
         <div className="lp-bento-card">
           <div className="lp-bento-tag">INTERACTIVE_TUI</div>
-          <h3 className="lp-bento-title">The Dashboard</h3>
+          <h3 className="lp-bento-title lp-scramble-hover">The Dashboard</h3>
           <p className="lp-bento-desc">
             Full-screen terminal interface. Live policy config, trade history, and wallet balances — all in one view.
           </p>
@@ -307,7 +417,7 @@ function FeaturesSection(): ReactNode {
         {/* Card 6: The Network (full-width) */}
         <div className="lp-bento-card lp-bento-full">
           <div className="lp-bento-tag">7K_AGGREGATOR_POWERED</div>
-          <h3 className="lp-bento-title">The Network</h3>
+          <h3 className="lp-bento-title lp-scramble-hover">The Network</h3>
           <p className="lp-bento-desc">
             Optimal routing across all Sui DEXes. Best execution guaranteed by 7K Aggregator intelligence. EVM &amp;
             Solana support coming.
@@ -338,7 +448,7 @@ function AdvantageSection(): ReactNode {
       <div className="lp-advantage-grid lp-reveal">
         <div className="lp-adv-card">
           <div className="lp-adv-icon">[ƛ]</div>
-          <h3 className="lp-adv-title">ZERO LATENCY</h3>
+          <h3 className="lp-adv-title lp-scramble-hover">ZERO LATENCY</h3>
           <p className="lp-adv-desc">
             Policy evaluation happens in-process. No API round-trips to slow down your strategy. Sub-millisecond
             decisions, every trade.
@@ -346,7 +456,7 @@ function AdvantageSection(): ReactNode {
         </div>
         <div className="lp-adv-card">
           <div className="lp-adv-icon">[Ø]</div>
-          <h3 className="lp-adv-title">ZERO INFRASTRUCTURE</h3>
+          <h3 className="lp-adv-title lp-scramble-hover">ZERO INFRASTRUCTURE</h3>
           <p className="lp-adv-desc">
             No servers, no accounts, no tracking. Privacy is the default, not a feature. One install, full
             enterprise-grade guardrail power.
@@ -354,7 +464,7 @@ function AdvantageSection(): ReactNode {
         </div>
         <div className="lp-adv-card">
           <div className="lp-adv-icon">[◉]</div>
-          <h3 className="lp-adv-title">AUDIT-READY</h3>
+          <h3 className="lp-adv-title lp-scramble-hover">AUDIT-READY</h3>
           <p className="lp-adv-desc">
             Every decision—approved or blocked—is logged to a local SQLite database. Complete forensic trail for every
             agent action.
@@ -362,7 +472,7 @@ function AdvantageSection(): ReactNode {
         </div>
         <div className="lp-adv-card">
           <div className="lp-adv-icon">[↯]</div>
-          <h3 className="lp-adv-title">DEVELOPER FIRST</h3>
+          <h3 className="lp-adv-title lp-scramble-hover">DEVELOPER FIRST</h3>
           <p className="lp-adv-desc">
             Built by engineers who write agents. No messy wrappers or bloated SDKs. Direct CLI integration with any
             agent stack or prompt sequence.
@@ -403,11 +513,11 @@ function LandingNav(): ReactNode {
           <span className="lp-logo-text">OnlyFence_</span>
         </Link>
         <div className="lp-nav-links">
-          <a href="#problem" className="lp-nav-link">Problem</a>
-          <a href="#features" className="lp-nav-link">Features</a>
-          <a href="#advantage" className="lp-nav-link">Why</a>
-          <Link to="/docs/intro" className="lp-nav-link">Docs</Link>
-          <a href="https://github.com/seallabs/onlyfence" className="lp-nav-cta">GitHub</a>
+          <a href="#problem" className="lp-nav-link lp-scramble-hover">Problem</a>
+          <a href="#features" className="lp-nav-link lp-scramble-hover">Features</a>
+          <a href="#advantage" className="lp-nav-link lp-scramble-hover">Why</a>
+          <Link to="/docs/intro" className="lp-nav-link lp-scramble-hover">Docs</Link>
+          <a href="https://github.com/seallabs/onlyfence" className="lp-nav-cta lp-scramble-hover">GitHub</a>
         </div>
       </div>
     </nav>
@@ -448,6 +558,7 @@ function LandingFooter(): ReactNode {
 
 export default function Home(): ReactNode {
   useTerminalAnimation();
+  useScrambleEffect();
   useScrollReveal();
 
   return (

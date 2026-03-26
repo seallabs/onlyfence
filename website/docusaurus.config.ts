@@ -100,7 +100,6 @@ const config: Config = {
         sitemap: {
           lastmod: 'date',
         },
-        googleTagManager: false,
       } satisfies Preset.Options,
     ],
   ],
