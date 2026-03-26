@@ -74,17 +74,20 @@ export function registerRestartCommand(program: Command): void {
           return;
         }
 
-        // Show diff if we could fetch daemon config
+        // Show diff if we could fetch daemon config; skip confirmation when unchanged
+        let configChanged = true;
         if (daemonConfig !== undefined) {
           const changes = computeConfigDiff(daemonConfig, diskConfig);
           if (changes.length > 0) {
             process.stderr.write(formatConfigDiff(changes));
           } else {
-            process.stderr.write('Config unchanged (daemon config matches disk).\n\n');
+            configChanged = false;
           }
         }
 
-        await confirmOrExit('Restart daemon with this config? [y/N] ', options.yes);
+        if (configChanged) {
+          await confirmOrExit('Restart daemon with this config? [y/N] ', options.yes);
+        }
 
         // Stop the running daemon
         const { stopDaemonGracefully } = await import('../../daemon/index.js');
