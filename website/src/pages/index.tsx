@@ -585,7 +585,7 @@ export default function Home(): ReactNode {
               'Free, open-source CLI tool that gives AI agents safe access to DeFi with spending limits, token allowlists, and security policies. Supports swaps, lending, and borrowing on Sui.',
             url: 'https://onlyfence.xyz',
             downloadUrl: 'https://github.com/seallabs/onlyfence/releases',
-            softwareVersion: '0.2.0',
+            softwareVersion: '0.4.0',
             license: 'https://www.gnu.org/licenses/gpl-3.0.html',
             isAccessibleForFree: true,
             offers: {

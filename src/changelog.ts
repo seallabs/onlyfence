@@ -9,6 +9,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: 'v0.4.0',
+    date: '2026-03-26',
+    changes:
+      'Config tamper protection and restart command to prevent prompt-injected agents from silently changing guardrails.',
+  },
+  {
     version: 'v0.3.0',
     date: '2026-03-26',
     changes: 'Documentation site, SEO optimization, and contributor experience improvements.',

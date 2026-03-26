@@ -8,6 +8,32 @@ description: OnlyFence release history — new features, improvements, and bug f
 
 All notable changes to OnlyFence are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-03-26
+
+Config tamper protection and restart command to prevent prompt-injected agents from silently changing guardrails.
+
+### Added
+
+- **Config Tamper Protection** — HMAC-signed config snapshot written at daemon startup, verified on next `fence start` to detect tampering (modified, deleted, or forged) with PBKDF2-hardened key derivation
+- **Restart Command** — `fence restart` replaces `fence reload`, performing full stop+start with config diff display and password confirmation
+- **Git-style Config Diff** — colored diff output (red/green/yellow) for config changes, auto-disabling colors when not a TTY
+- **Centralized Password Resolution** — unified password sourcing (env, `--password-file`, prompt) across all commands for Docker/k8s consistency
+
+### Changed
+
+- **Daemon Lifecycle** — extracted shared daemon lifecycle helpers for reuse across start/restart commands
+- **Config Set Warning** — `fence config set` warns when daemon is running that restart is needed
+
+### Removed
+
+- **Reload Command** — removed `fence reload` (hot-reload) and IPC reload handler in favor of safer full restart
+- **IPC Brute-Force Lockout** — removed lockout mechanism (no longer needed with restart model)
+
+### Fixed
+
+- Detach mode password resolution for `fence start --detach`
+- `promptYesNo` accepting mouse scroll escape sequences as input
+
 ## [0.3.0] - 2026-03-26
 
 Documentation site, SEO optimization, and contributor experience improvements.
@@ -80,6 +106,7 @@ Initial release of OnlyFence — agent wallet guardrails for DeFi.
 - **Observability** — structured logging with Pino, Sentry integration
 - **Auto-Update** — version checking and self-update mechanism
 
+[0.4.0]: https://github.com/seallabs/onlyfence/compare/0.3.0...0.4.0
 [0.3.0]: https://github.com/seallabs/onlyfence/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/seallabs/onlyfence/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/seallabs/onlyfence/releases/tag/0.1.0
