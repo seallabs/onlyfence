@@ -36,6 +36,18 @@ export type {
   Trade,
 };
 
+/**
+ * Structural type for the SDK deposit() return value.
+ * The SDK returns `SuiTransactionBlockResponse | DryRunTransactionBlockResponse`
+ * from `@firefly-exchange/library-sui`. We capture only the fields we consume
+ * to avoid depending on transitive SDK types.
+ */
+export interface BluefinDepositResult {
+  readonly effects?: {
+    readonly transactionDigest?: string;
+  };
+}
+
 export interface OrderConfirmation {
   readonly status: 'confirmed' | 'rejected' | 'timeout';
   readonly orderHash?: string;
@@ -157,11 +169,13 @@ export class BluefinClient {
    * Deposit USDC into the Bluefin margin bank (on-chain TX).
    * NOTE: Despite the SDK naming its param "amountE9", it actually expects
    * the token's native unit (e.g. 1e6 for 1 USDC with 6 decimals).
+   *
+   * The SDK returns a union of `SuiTransactionBlockResponse | DryRunTransactionBlockResponse`.
+   * We type this structurally to avoid importing transitive SDK types.
    */
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, @typescript-eslint/explicit-module-boundary-types
-  async deposit(amountNative: string) {
+  async deposit(amountNative: string): Promise<BluefinDepositResult> {
     await this.ensureInitialized();
-    return this.sdk.deposit(amountNative);
+    return this.sdk.deposit(amountNative) as Promise<BluefinDepositResult>;
   }
 
   /** Withdraw from Bluefin margin bank (signed API call). */

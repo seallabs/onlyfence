@@ -89,7 +89,7 @@ describe('BluefinDepositBuilder', () => {
     });
 
     it('omits txDigest when SDK result has no digest', async () => {
-      (mockClient.deposit as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      (mockClient.deposit as ReturnType<typeof vi.fn>).mockResolvedValue({});
       const builder = new BluefinDepositBuilder(mockClient, mockActivityLog);
       const result = await builder.execute(makeDepositIntent());
 

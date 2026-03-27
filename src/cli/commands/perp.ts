@@ -21,6 +21,7 @@ import type { PerpProvider } from '../../core/perp-provider.js';
 import type { PipelineInput } from '../../core/transaction-pipeline.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
 import type { PolicyContext } from '../../policy/context.js';
+import { captureException } from '../../telemetry/index.js';
 import { toE9 } from '../../utils/bigint.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
@@ -35,7 +36,7 @@ import type {
   PerpOrderOutput,
   PerpWithdrawOutput,
 } from '../output.js';
-import { EXIT_CODES, printJsonOutput } from '../output.js';
+import { EXIT_CODES, handleCommandError, printJsonOutput } from '../output.js';
 import { resolveTokenInput } from '../resolve.js';
 import { withComponents } from '../with-components.js';
 
@@ -113,24 +114,17 @@ function preparePipeline(
 }
 
 /**
- * Handle a pipeline error uniformly: log, print JSON error output, set exit code.
+ * Handle a query subcommand error: log, write JSON error to stdout, set exit code.
  */
-function handlePipelineError(
+function handleQueryError(
   log: Logger,
-  action: ActivityAction,
-  chainId: ChainId,
-  err: unknown,
   label: string,
+  err: unknown,
+  enrichFn?: (msg: string) => string,
 ): void {
-  log.error({ err: toErrorMessage(err) }, `${label} failed`);
-  const errorOutput: CliOutput = {
-    status: 'error',
-    action,
-    chainId,
-    address: '',
-    error: toErrorMessage(err),
-  };
-  printJsonOutput(errorOutput);
+  log.error({ err: toErrorMessage(err) }, `Failed to ${label}`);
+  const msg = enrichFn !== undefined ? enrichFn(toErrorMessage(err)) : toErrorMessage(err);
+  process.stdout.write(JSON.stringify({ status: 'error', error: msg }, null, 2) + '\n');
   process.exitCode = 1;
 }
 
@@ -304,7 +298,7 @@ function registerDepositAction(parent: Command, getComponents: () => AppComponen
         printJsonOutput(output.cliOutput);
         process.exitCode = output.exitCode;
       } catch (err: unknown) {
-        handlePipelineError(log, 'perp:deposit', chainId, err, 'Perp deposit');
+        handleCommandError(err, 'perp:deposit', chainId, captureException);
       }
     });
 }
@@ -361,7 +355,7 @@ function registerWithdrawAction(parent: Command, getComponents: () => AppCompone
         printJsonOutput(output.cliOutput);
         process.exitCode = output.exitCode;
       } catch (err: unknown) {
-        handlePipelineError(log, 'perp:withdraw', chainId, err, 'Perp withdraw');
+        handleCommandError(err, 'perp:withdraw', chainId, captureException);
       }
     });
 }
@@ -422,38 +416,25 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
             'Perp order invoked',
           );
 
-          // Resolve market symbol (single API call — getMarkets + find)
-          const markets = await provider.getMarkets();
-          const normalized = market.toUpperCase();
-          const marketInfo = markets.find((m) => m.symbol === normalized);
-          if (marketInfo === undefined) {
-            const available = markets.map((m) => m.symbol).join(', ');
-            throw new Error(`Unknown market "${market}". Available markets: ${available}`);
-          }
-          const marketSymbol = marketInfo.symbol;
+          const marketSymbol = await provider.resolveMarket(market);
 
-          // Resolve side
           const normalizedSide = side.toUpperCase();
           if (normalizedSide !== 'LONG' && normalizedSide !== 'SHORT') {
             throw new Error(`Invalid side "${side}". Must be LONG or SHORT.`);
           }
 
-          // Resolve order type
           const normalizedOrderType = options.type.toUpperCase();
           if (normalizedOrderType !== 'MARKET' && normalizedOrderType !== 'LIMIT') {
             throw new Error(`Invalid order type "${options.type}". Must be MARKET or LIMIT.`);
           }
 
-          // Validate limit price
           if (normalizedOrderType === 'LIMIT' && options.price === undefined) {
             throw new Error('Limit price (--price) is required for limit orders.');
           }
 
-          // Build e9 values
           const quantityE9 = toE9(qty);
           const leverageE9 = options.leverage !== undefined ? toE9(options.leverage) : undefined;
 
-          // Resolve time in force
           const tif = options.tif.toUpperCase();
           if (tif !== 'GTT' && tif !== 'IOC' && tif !== 'FOK') {
             throw new Error(`Invalid time in force "${options.tif}". Must be GTT, IOC, or FOK.`);
@@ -500,7 +481,7 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
           printJsonOutput(output.cliOutput);
           process.exitCode = output.exitCode;
         } catch (err: unknown) {
-          handlePipelineError(log, 'perp:place_order', chainId, err, 'Perp order');
+          handleCommandError(err, 'perp:place_order', chainId, captureException);
         }
       },
     );
@@ -567,7 +548,7 @@ function registerCancelAction(parent: Command, getComponents: () => AppComponent
           printJsonOutput(output.cliOutput);
           process.exitCode = output.exitCode;
         } catch (err: unknown) {
-          handlePipelineError(log, 'perp:cancel_order', chainId, err, 'Perp cancel');
+          handleCommandError(err, 'perp:cancel_order', chainId, captureException);
         }
       },
     );
@@ -671,7 +652,7 @@ function registerCloseAction(parent: Command, getComponents: () => AppComponents
           printJsonOutput(output.cliOutput);
           process.exitCode = output.exitCode;
         } catch (err: unknown) {
-          handlePipelineError(log, 'perp:place_order', chainId, err, 'Perp close');
+          handleCommandError(err, 'perp:place_order', chainId, captureException);
         }
       },
     );
@@ -689,22 +670,17 @@ function registerPositionsQuery(parent: Command, getComponents: () => AppCompone
       if (components === undefined) return;
 
       const log = components.logger.child({ command: 'perp-positions' });
+      let provider: PerpProvider | undefined;
 
       try {
-        const provider = resolveProvider(components, options.protocol);
+        provider = resolveProvider(components, options.protocol);
         const positions = await provider.getPositions();
-        console.log(
-          JSON.stringify({ status: 'success', action: 'positions', data: positions }, null, 2),
+        process.stdout.write(
+          JSON.stringify({ status: 'success', action: 'positions', data: positions }, null, 2) +
+            '\n',
         );
       } catch (err: unknown) {
-        log.error({ err: toErrorMessage(err) }, 'Failed to fetch positions');
-        const provider = components.perpProviders.has(options.protocol)
-          ? components.perpProviders.get(options.protocol)
-          : undefined;
-        const msg =
-          provider !== undefined ? provider.enrichError(toErrorMessage(err)) : toErrorMessage(err);
-        console.log(JSON.stringify({ status: 'error', error: msg }, null, 2));
-        process.exitCode = 1;
+        handleQueryError(log, 'fetch positions', err, provider?.enrichError.bind(provider));
       }
     });
 }
@@ -725,11 +701,11 @@ function registerOrdersQuery(parent: Command, getComponents: () => AppComponents
         const provider = resolveProvider(components, options.protocol);
         const symbol = options.market !== undefined ? options.market.toUpperCase() : undefined;
         const orders = await provider.getOpenOrders(symbol);
-        console.log(JSON.stringify({ status: 'success', action: 'orders', data: orders }, null, 2));
+        process.stdout.write(
+          JSON.stringify({ status: 'success', action: 'orders', data: orders }, null, 2) + '\n',
+        );
       } catch (err: unknown) {
-        log.error({ err: toErrorMessage(err) }, 'Failed to fetch orders');
-        console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
-        process.exitCode = 1;
+        handleQueryError(log, 'fetch orders', err);
       }
     });
 }
@@ -748,25 +724,26 @@ function registerOrderStatusQuery(parent: Command, getComponents: () => AppCompo
       try {
         const provider = resolveProvider(components, options.protocol);
 
-        // Check open orders first
-        const openOrders = await provider.getOpenOrders();
+        const [openOrders, standbyOrders] = await Promise.all([
+          provider.getOpenOrders(),
+          provider.getStandbyOrders(),
+        ]);
+
         const openMatch = openOrders.find((o) => o.orderHash === orderHash);
         if (openMatch !== undefined) {
-          console.log(
+          process.stdout.write(
             JSON.stringify(
               { status: 'success', action: 'order-status', source: 'open', data: openMatch },
               null,
               2,
-            ),
+            ) + '\n',
           );
           return;
         }
 
-        // Then check standby orders
-        const standbyOrders = await provider.getStandbyOrders();
         const standbyMatch = standbyOrders.find((o) => o.orderHash === orderHash);
         if (standbyMatch !== undefined) {
-          console.log(
+          process.stdout.write(
             JSON.stringify(
               {
                 status: 'success',
@@ -776,16 +753,14 @@ function registerOrderStatusQuery(parent: Command, getComponents: () => AppCompo
               },
               null,
               2,
-            ),
+            ) + '\n',
           );
           return;
         }
 
         throw new Error(`Order "${orderHash}" not found in open or standby orders`);
       } catch (err: unknown) {
-        log.error({ err: toErrorMessage(err) }, 'Failed to fetch order status');
-        console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
-        process.exitCode = 1;
+        handleQueryError(log, 'fetch order status', err);
       }
     });
 }
@@ -809,13 +784,11 @@ function registerMarketsQuery(parent: Command, getComponents: () => AppComponent
           makerFeePercent: (Number(m.makerFeeE9) / 1e9) * 100,
           takerFeePercent: (Number(m.takerFeeE9) / 1e9) * 100,
         }));
-        console.log(
-          JSON.stringify({ status: 'success', action: 'markets', data: enriched }, null, 2),
+        process.stdout.write(
+          JSON.stringify({ status: 'success', action: 'markets', data: enriched }, null, 2) + '\n',
         );
       } catch (err: unknown) {
-        log.error({ err: toErrorMessage(err) }, 'Failed to fetch markets');
-        console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
-        process.exitCode = 1;
+        handleQueryError(log, 'fetch markets', err);
       }
     });
 }
@@ -864,17 +837,15 @@ function registerFundingRateQuery(parent: Command, getComponents: () => AppCompo
             fundingRateApr: (Number(e.fundingRateE9) / 1e9) * (8760 / e.fundingIntervalHours) * 100,
           }));
 
-          console.log(
+          process.stdout.write(
             JSON.stringify(
               { status: 'success', action: 'funding-rate', market: marketSymbol, data: enriched },
               null,
               2,
-            ),
+            ) + '\n',
           );
         } catch (err: unknown) {
-          log.error({ err: toErrorMessage(err) }, 'Failed to fetch funding rate history');
-          console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
-          process.exitCode = 1;
+          handleQueryError(log, 'fetch funding rate history', err);
         }
       },
     );
@@ -913,7 +884,7 @@ function registerAccountFundingQuery(parent: Command, getComponents: () => AppCo
             ...(options.page !== undefined ? { page: parseInt(options.page, 10) } : {}),
           });
 
-          console.log(
+          process.stdout.write(
             JSON.stringify(
               {
                 status: 'success',
@@ -922,12 +893,10 @@ function registerAccountFundingQuery(parent: Command, getComponents: () => AppCo
               },
               null,
               2,
-            ),
+            ) + '\n',
           );
         } catch (err: unknown) {
-          log.error({ err: toErrorMessage(err) }, 'Failed to fetch account funding history');
-          console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
-          process.exitCode = 1;
+          handleQueryError(log, 'fetch account funding history', err);
         }
       },
     );
@@ -970,13 +939,12 @@ function registerSyncCommand(parent: Command, getComponents: () => AppComponents
         );
 
         log.info({ synced: result.synced }, 'Fill sync complete');
-        console.log(
-          JSON.stringify({ status: 'success', action: 'sync', synced: result.synced }, null, 2),
+        process.stdout.write(
+          JSON.stringify({ status: 'success', action: 'sync', synced: result.synced }, null, 2) +
+            '\n',
         );
       } catch (err: unknown) {
-        log.error({ err: toErrorMessage(err) }, 'Fill sync failed');
-        console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
-        process.exitCode = 1;
+        handleQueryError(log, 'sync fills', err);
       }
     });
 }
@@ -991,22 +959,16 @@ function registerAccountQuery(parent: Command, getComponents: () => AppComponent
       if (components === undefined) return;
 
       const log = components.logger.child({ command: 'perp-account' });
+      let provider: PerpProvider | undefined;
 
       try {
-        const provider = resolveProvider(components, options.protocol);
+        provider = resolveProvider(components, options.protocol);
         const account = await provider.getAccount();
-        console.log(
-          JSON.stringify({ status: 'success', action: 'account', data: account }, null, 2),
+        process.stdout.write(
+          JSON.stringify({ status: 'success', action: 'account', data: account }, null, 2) + '\n',
         );
       } catch (err: unknown) {
-        log.error({ err: toErrorMessage(err) }, 'Failed to fetch account');
-        const provider = components.perpProviders.has(options.protocol)
-          ? components.perpProviders.get(options.protocol)
-          : undefined;
-        const msg =
-          provider !== undefined ? provider.enrichError(toErrorMessage(err)) : toErrorMessage(err);
-        console.log(JSON.stringify({ status: 'error', error: msg }, null, 2));
-        process.exitCode = 1;
+        handleQueryError(log, 'fetch account', err, provider?.enrichError.bind(provider));
       }
     });
 }

@@ -44,9 +44,7 @@ export class BluefinDepositBuilder implements ActionBuilder<PerpDepositIntent> {
     // the internal parameter being named "amountE9". amountE9 is only used for
     // metadata — the actual SDK call receives native-scaled amount.
     const result = await this.client.deposit(intent.params.amount);
-
-    const effects = (result as { effects?: { transactionDigest?: string } } | undefined)?.effects;
-    const txDigest = effects?.transactionDigest;
+    const txDigest = result.effects?.transactionDigest;
 
     return {
       metadata: {

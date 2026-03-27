@@ -180,39 +180,71 @@ export interface PerpProvider {
 /** Registry of PerpProviders keyed by protocol name. */
 export class PerpProviderRegistry {
   private readonly providers = new Map<PerpProtocol, PerpProvider>();
+  private readonly lazyFactories = new Map<PerpProtocol, () => PerpProvider>();
 
   register(provider: PerpProvider): void {
-    if (this.providers.has(provider.protocol)) {
+    if (this.providers.has(provider.protocol) || this.lazyFactories.has(provider.protocol)) {
       throw new Error(`PerpProviderRegistry: protocol "${provider.protocol}" already registered`);
     }
     this.providers.set(provider.protocol, provider);
   }
 
-  get(protocol: PerpProtocol): PerpProvider {
-    const provider = this.providers.get(protocol);
-    if (provider === undefined) {
-      const available = [...this.providers.keys()].join(', ');
-      throw new Error(
-        `PerpProviderRegistry: no provider for "${protocol}". Available: ${available}`,
-      );
+  /**
+   * Register a lazily-initialized provider. The factory is called on first
+   * access (via `get`, `getDefault`, or `has`) and the result is cached.
+   */
+  registerLazy(protocol: PerpProtocol, factory: () => PerpProvider): void {
+    if (this.providers.has(protocol) || this.lazyFactories.has(protocol)) {
+      throw new Error(`PerpProviderRegistry: protocol "${protocol}" already registered`);
     }
+    this.lazyFactories.set(protocol, factory);
+  }
+
+  private resolveLazy(protocol: PerpProtocol): PerpProvider | undefined {
+    const factory = this.lazyFactories.get(protocol);
+    if (factory === undefined) return undefined;
+    const provider = factory();
+    this.providers.set(protocol, provider);
+    this.lazyFactories.delete(protocol);
     return provider;
+  }
+
+  get(protocol: PerpProtocol): PerpProvider {
+    const existing = this.providers.get(protocol);
+    if (existing !== undefined) return existing;
+
+    const lazy = this.resolveLazy(protocol);
+    if (lazy !== undefined) return lazy;
+
+    const available = [...this.providers.keys(), ...this.lazyFactories.keys()].join(', ');
+    throw new Error(`PerpProviderRegistry: no provider for "${protocol}". Available: ${available}`);
   }
 
   getDefault(): PerpProvider {
     const first = this.providers.values().next();
-    if (first.done === true) {
-      throw new Error('PerpProviderRegistry: no providers registered');
+    if (first.done !== true) return first.value;
+
+    // Try resolving a lazy factory
+    const firstLazy = this.lazyFactories.keys().next();
+    if (firstLazy.done !== true) {
+      return this.get(firstLazy.value);
     }
-    return first.value;
+
+    throw new Error('PerpProviderRegistry: no providers registered');
   }
 
   has(protocol: PerpProtocol): boolean {
+    return this.providers.has(protocol) || this.lazyFactories.has(protocol);
+  }
+
+  /** Whether the provider for the given protocol has been materialized (not just registered lazily). */
+  isInitialized(protocol: PerpProtocol): boolean {
     return this.providers.has(protocol);
   }
 
   /** Dispose all registered providers. Continues on failure so all get a chance to clean up. */
   async disposeAll(): Promise<void> {
+    // Only dispose materialized providers — lazy factories that were never called have nothing to clean up.
     const errors: Error[] = [];
     for (const provider of this.providers.values()) {
       try {

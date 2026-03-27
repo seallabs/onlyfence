@@ -4,6 +4,7 @@ import type { ChainId } from '../../../core/action-types.js';
 import type { ActivityLog } from '../../../db/activity-log.js';
 import type { CoinMetadataRepository } from '../../../db/coin-metadata-repo.js';
 import type { BluefinClient } from './client.js';
+import { toErrorMessage } from '../../../utils/index.js';
 import {
   BLUEFIN_DECIMALS,
   parseBluefinMarketSymbol,
@@ -55,8 +56,10 @@ export async function syncFills(
       ]);
       return coinType;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.warn({ symbol, error: msg }, 'Skipping unparseable symbol in syncFills');
+      logger.warn(
+        { symbol, error: toErrorMessage(err) },
+        'Skipping unparseable symbol in syncFills',
+      );
       seenSymbols.set(symbol, null);
       return null;
     }

@@ -25,15 +25,25 @@ import { toBluefinCoinType } from './types.js';
  */
 export class BluefinPerpProvider implements PerpProvider {
   readonly protocol: PerpProtocol = 'bluefin_pro';
+  private marketsCache: { data: PerpMarketInfo[]; expiresAt: number } | undefined;
+  private static readonly MARKETS_CACHE_TTL_MS = 30_000;
 
   constructor(private readonly client: BluefinClient) {}
 
   async getMarkets(): Promise<PerpMarketInfo[]> {
-    return fetchBluefinMarkets(this.client);
+    if (this.marketsCache !== undefined && Date.now() < this.marketsCache.expiresAt) {
+      return this.marketsCache.data;
+    }
+    const markets = await fetchBluefinMarkets(this.client);
+    this.marketsCache = {
+      data: markets,
+      expiresAt: Date.now() + BluefinPerpProvider.MARKETS_CACHE_TTL_MS,
+    };
+    return markets;
   }
 
   async resolveMarket(rawSymbol: string): Promise<string> {
-    const markets = await fetchBluefinMarkets(this.client);
+    const markets = await this.getMarkets();
     return resolveMarketSymbol(markets, rawSymbol);
   }
 
@@ -118,7 +128,7 @@ export class BluefinPerpProvider implements PerpProvider {
   }
 
   async seedCoinMetadata(repo: CoinMetadataRepository, chainId: ChainId): Promise<void> {
-    const markets = await fetchBluefinMarkets(this.client);
+    const markets = await this.getMarkets();
     seedSyntheticCoinMetadata(markets, repo, chainId);
   }
 

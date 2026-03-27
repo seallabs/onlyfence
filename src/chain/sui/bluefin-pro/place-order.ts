@@ -44,16 +44,13 @@ export class BluefinPlaceOrderBuilder implements ActionBuilder<PerpPlaceOrderInt
   async execute(intent: PerpPlaceOrderIntent): Promise<{ metadata: Record<string, unknown> }> {
     const { params } = intent;
 
-    // Fetch market info for validation.
     const markets = await fetchBluefinMarkets(this.client);
     const market = markets.find((m) => m.symbol === params.marketSymbol);
     if (market === undefined) {
       throw new Error(`Unknown market "${params.marketSymbol}"`);
     }
 
-    // ── Validate against market constraints ──────────────────────────────
     const leverageE9 = await this.validateAndResolveLeverage(params, market);
-    // Market orders use price = 0
     const priceE9 = params.orderType === 'MARKET' ? '0' : (params.limitPriceE9 ?? '0');
 
     this.validateQuantity(params.quantityE9, market);
@@ -148,8 +145,6 @@ export class BluefinPlaceOrderBuilder implements ActionBuilder<PerpPlaceOrderInt
       timeInForce: params.orderType === 'MARKET' ? undefined : (params.timeInForce ?? 'GTT'),
     };
   }
-
-  // ── Market constraint validation helpers ──────────────────────────────
 
   private async validateAndResolveLeverage(
     params: PerpPlaceOrderIntent['params'],
