@@ -11,6 +11,7 @@ function makeWithdrawIntent(overrides?: Partial<PerpWithdrawIntent['params']>): 
     chainId: 'sui:mainnet',
     walletAddress: '0x' + 'a'.repeat(64),
     params: {
+      protocol: 'bluefin_pro',
       assetSymbol: 'USDC',
       amountE9: '5000000000',
       ...overrides,

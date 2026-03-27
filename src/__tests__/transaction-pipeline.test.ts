@@ -495,6 +495,7 @@ describe('executePipeline', () => {
         chainId: 'sui:mainnet',
         walletAddress: '0xabc',
         params: {
+          protocol: 'bluefin_pro',
           marketSymbol: 'BTC-PERP',
           side: 'LONG',
           quantityE9: '1000000000',

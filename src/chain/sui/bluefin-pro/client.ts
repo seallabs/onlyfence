@@ -5,15 +5,18 @@ import {
   makeSigner,
   type Account,
   type AccountFundingRateHistory,
+  type AccountPreference,
   type AccountStreamMessage,
   type ActiveOrderUpdate,
   type CancelOrdersRequest,
+  type CreateOrderResponse,
   type ExchangeInfoResponse,
   type FundingRateEntry,
   type Market,
   type OpenOrderResponse,
   type OrderCancellationUpdate,
   type OrderParams,
+  type Position,
   type Trade,
 } from '@bluefin-exchange/pro-sdk';
 import type { SuiClient } from '@mysten/sui/client';
@@ -22,10 +25,13 @@ import type { Keypair } from '@mysten/sui/cryptography';
 export type {
   Account,
   AccountFundingRateHistory,
+  AccountPreference,
+  CreateOrderResponse,
   ExchangeInfoResponse,
   FundingRateEntry,
   Market,
   OpenOrderResponse,
+  Position,
   Trade,
 };
 
@@ -113,10 +119,17 @@ export class BluefinClient {
     return response.data;
   }
 
-  /** Place an order on Bluefin Pro. */
-  async createOrder(params: OrderParams): Promise<unknown> {
+  /** Place an order on Bluefin Pro. SDK returns `any`, so we cast to the SDK's own response type. */
+  async createOrder(params: OrderParams): Promise<CreateOrderResponse> {
     await this.ensureInitialized();
-    return this.sdk.createOrder(params);
+    return this.sdk.createOrder(params) as Promise<CreateOrderResponse>;
+  }
+
+  /** Get account preferences including leverage settings per market. */
+  async getAccountPreferences(): Promise<AccountPreference> {
+    await this.ensureInitialized();
+    const response = await this.sdk.getAccountPreferences();
+    return response.data;
   }
 
   /** Cancel orders by symbol and optional order hashes. */

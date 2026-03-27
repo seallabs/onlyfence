@@ -18,6 +18,7 @@ import { BluefinCancelOrderBuilder } from '../chain/sui/bluefin-pro/cancel-order
 import { BluefinClient } from '../chain/sui/bluefin-pro/client.js';
 import { BluefinDepositBuilder } from '../chain/sui/bluefin-pro/deposit.js';
 import { BluefinPlaceOrderBuilder } from '../chain/sui/bluefin-pro/place-order.js';
+import { BluefinPerpProvider } from '../chain/sui/bluefin-pro/provider.js';
 import { BluefinWithdrawBuilder } from '../chain/sui/bluefin-pro/withdraw.js';
 import { SuiDataProvider } from '../chain/sui/data-provider.js';
 import { SUI_KNOWN_DECIMALS, tryResolveTokenAddress } from '../chain/sui/tokens.js';
@@ -28,6 +29,7 @@ import { buildIntentResolverRegistry } from '../core/resolvers/index.js';
 import { DataProviderRegistry, DataProviderWithCache } from '../core/data-provider.js';
 import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
 import { PriceCache } from '../core/price-cache.js';
+import { PerpProviderRegistry } from '../core/perp-provider.js';
 import { LPProService } from '../data/lp-pro-service.js';
 import { ActivityLog } from '../db/activity-log.js';
 import { CliEventLog } from '../db/cli-events.js';
@@ -54,6 +56,8 @@ export interface AppComponents {
   readonly coinMetadataRepo: CoinMetadataRepository;
   /** Lazily creates and returns a BluefinClient. Throws if wallet is not unlocked. */
   getBluefinClient(): BluefinClient;
+  /** Protocol-abstract perp provider registry. Prefer this over getBluefinClient(). */
+  readonly perpProviders: PerpProviderRegistry;
   readonly cliEventLog: CliEventLog;
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
@@ -135,14 +139,48 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const intentResolverRegistry = buildIntentResolverRegistry();
   const mevProtectors = buildMevProtectors();
 
+  // Build perp provider registry (lazy — providers are created on first access via getBluefinClient)
+  const perpProviders = new PerpProviderRegistry();
+  // Register Bluefin lazily: the provider wraps getBluefinClient() which is itself lazy.
+  // We defer registration until first use so we don't force wallet unlock at bootstrap.
+  let bluefinProviderRegistered = false;
+  const originalGet = perpProviders.get.bind(perpProviders);
+  const originalGetDefault = perpProviders.getDefault.bind(perpProviders);
+  const originalHas = perpProviders.has.bind(perpProviders);
+
+  perpProviders.get = (protocol) => {
+    ensureBluefinRegistered();
+    return originalGet(protocol);
+  };
+  perpProviders.getDefault = () => {
+    ensureBluefinRegistered();
+    return originalGetDefault();
+  };
+  perpProviders.has = (protocol) => {
+    ensureBluefinRegistered();
+    return originalHas(protocol);
+  };
+
+  function ensureBluefinRegistered(): void {
+    if (bluefinProviderRegistered) return;
+    bluefinProviderRegistered = true;
+    perpProviders.register(new BluefinPerpProvider(getBluefinClient()));
+  }
+
   let closed = false;
 
   async function close(): Promise<void> {
     if (closed) return;
     closed = true;
-    // Dispose Bluefin client to clear SDK token refresh timers.
-    // Without this, the process hangs after query commands complete.
-    if (cachedBluefinClient !== undefined) {
+    // Dispose perp providers (which includes Bluefin client) to clear SDK timers.
+    if (bluefinProviderRegistered) {
+      try {
+        await perpProviders.disposeAll();
+      } catch (err: unknown) {
+        logger.warn({ err }, 'Error disposing perp providers');
+      }
+    } else if (cachedBluefinClient !== undefined) {
+      // If provider was never registered but client was created directly
       try {
         await cachedBluefinClient.dispose();
       } catch (err: unknown) {
@@ -166,6 +204,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     alphalendClient,
     coinMetadataRepo,
     getBluefinClient,
+    perpProviders,
     cliEventLog,
     policyRegistry,
     chainAdapterFactory,

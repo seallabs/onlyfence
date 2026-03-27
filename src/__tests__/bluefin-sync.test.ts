@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Logger } from 'pino';
 import type { BluefinClient } from '../chain/sui/bluefin-pro/client.js';
 import { syncFills } from '../chain/sui/bluefin-pro/sync.js';
 import { toBluefinCoinType } from '../chain/sui/bluefin-pro/types.js';
@@ -18,10 +19,25 @@ function makeMockTrade(overrides?: Record<string, unknown>) {
   };
 }
 
+function createMockLogger(): Logger {
+  const logger = {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+    trace: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+    level: 'info',
+  } as unknown as Logger;
+  return logger;
+}
+
 describe('syncFills', () => {
   let mockClient: BluefinClient;
   let mockActivityLog: ActivityLog;
   let mockCoinMetadataRepo: CoinMetadataRepository;
+  let mockLogger: Logger;
 
   beforeEach(() => {
     mockClient = {
@@ -35,6 +51,7 @@ describe('syncFills', () => {
       upsert: vi.fn(),
       upsertBulk: vi.fn(),
     } as unknown as CoinMetadataRepository;
+    mockLogger = createMockLogger();
   });
 
   it('returns zero synced when no trades', async () => {
@@ -44,12 +61,20 @@ describe('syncFills', () => {
       mockCoinMetadataRepo,
       'sui:mainnet',
       '0xwallet',
+      mockLogger,
     );
     expect(result.synced).toBe(0);
   });
 
   it('fetches trades with limit 1000 on first sync', async () => {
-    await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, 'sui:mainnet', '0xwallet');
+    await syncFills(
+      mockClient,
+      mockActivityLog,
+      mockCoinMetadataRepo,
+      'sui:mainnet',
+      '0xwallet',
+      mockLogger,
+    );
 
     expect(mockClient.getTrades).toHaveBeenCalledWith({ limit: 1000 });
   });
@@ -59,7 +84,14 @@ describe('syncFills', () => {
       '2026-03-20T12:00:00.000Z',
     );
 
-    await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, 'sui:mainnet', '0xwallet');
+    await syncFills(
+      mockClient,
+      mockActivityLog,
+      mockCoinMetadataRepo,
+      'sui:mainnet',
+      '0xwallet',
+      mockLogger,
+    );
 
     expect(mockClient.getTrades).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -78,6 +110,7 @@ describe('syncFills', () => {
       mockCoinMetadataRepo,
       'sui:mainnet',
       '0xwallet',
+      mockLogger,
     );
 
     expect(result.synced).toBe(1);
@@ -102,7 +135,14 @@ describe('syncFills', () => {
       }),
     ]);
 
-    await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, 'sui:mainnet', '0xwallet');
+    await syncFills(
+      mockClient,
+      mockActivityLog,
+      mockCoinMetadataRepo,
+      'sui:mainnet',
+      '0xwallet',
+      mockLogger,
+    );
 
     const call = (mockActivityLog.logActivity as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     // 50000000000000 * 1000000000 / 1e18 = 50000
@@ -114,7 +154,14 @@ describe('syncFills', () => {
       makeMockTrade({ symbol: 'ETH-PERP' }),
     ]);
 
-    await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, 'sui:mainnet', '0xwallet');
+    await syncFills(
+      mockClient,
+      mockActivityLog,
+      mockCoinMetadataRepo,
+      'sui:mainnet',
+      '0xwallet',
+      mockLogger,
+    );
 
     expect(mockCoinMetadataRepo.upsertBulk).toHaveBeenCalledWith([
       expect.objectContaining({
@@ -132,7 +179,14 @@ describe('syncFills', () => {
       makeMockTrade({ side: 'BUY' }),
     ]);
 
-    await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, 'sui:mainnet', '0xwallet');
+    await syncFills(
+      mockClient,
+      mockActivityLog,
+      mockCoinMetadataRepo,
+      'sui:mainnet',
+      '0xwallet',
+      mockLogger,
+    );
 
     const call = (mockActivityLog.logActivity as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(call.metadata.side).toBe('LONG');
@@ -143,7 +197,14 @@ describe('syncFills', () => {
       makeMockTrade({ side: 'SELL' }),
     ]);
 
-    await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, 'sui:mainnet', '0xwallet');
+    await syncFills(
+      mockClient,
+      mockActivityLog,
+      mockCoinMetadataRepo,
+      'sui:mainnet',
+      '0xwallet',
+      mockLogger,
+    );
 
     const call = (mockActivityLog.logActivity as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(call.metadata.side).toBe('SHORT');
@@ -162,6 +223,7 @@ describe('syncFills', () => {
       mockCoinMetadataRepo,
       'sui:mainnet',
       '0xwallet',
+      mockLogger,
     );
 
     expect(result.synced).toBe(3);
@@ -179,6 +241,7 @@ describe('syncFills', () => {
       mockCoinMetadataRepo,
       'sui:mainnet',
       '0xwallet',
+      mockLogger,
     );
 
     expect(result.synced).toBe(0);
@@ -188,7 +251,14 @@ describe('syncFills', () => {
   it('includes metadata with fill details', async () => {
     (mockClient.getTrades as ReturnType<typeof vi.fn>).mockResolvedValue([makeMockTrade()]);
 
-    await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, 'sui:mainnet', '0xwallet');
+    await syncFills(
+      mockClient,
+      mockActivityLog,
+      mockCoinMetadataRepo,
+      'sui:mainnet',
+      '0xwallet',
+      mockLogger,
+    );
 
     const call = (mockActivityLog.logActivity as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(call.metadata).toEqual(

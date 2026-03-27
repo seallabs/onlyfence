@@ -138,6 +138,7 @@ describe('ActionIntent', () => {
       chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
+        protocol: 'bluefin_pro',
         marketSymbol: 'BTC-PERP',
         side: 'LONG',
         quantityE9: '1000000000',
@@ -155,6 +156,7 @@ describe('ActionIntent', () => {
       expect(intent.params.side).toBe('LONG');
       expect(intent.params.orderType).toBe('MARKET');
       expect(intent.params.collateralCoinType).toBe('0xusdc::usdc::USDC');
+      expect(intent.params.protocol).toBe('bluefin_pro');
     }
   });
 
@@ -164,6 +166,7 @@ describe('ActionIntent', () => {
       chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
+        protocol: 'bluefin_pro',
         marketSymbol: 'ETH-PERP',
         orderHashes: ['0xhash1', '0xhash2'],
       },
@@ -182,8 +185,10 @@ describe('ActionIntent', () => {
       chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
+        protocol: 'bluefin_pro',
         coinType: '0xusdc::usdc::USDC',
         amount: '10000000000',
+        decimals: 6,
       },
       valueUsd: 10000,
     };
@@ -201,6 +206,7 @@ describe('ActionIntent', () => {
       chainId: 'sui:mainnet',
       walletAddress: '0x' + 'a'.repeat(64),
       params: {
+        protocol: 'bluefin_pro',
         assetSymbol: 'USDC',
         amountE9: '5000000000',
       },
@@ -263,6 +269,7 @@ describe('extractCoinTypes', () => {
       ...base,
       action: 'perp:place_order',
       params: {
+        protocol: 'bluefin_pro',
         marketSymbol: 'BTC-PERP',
         side: 'LONG',
         quantityE9: '1000000000',
@@ -280,6 +287,7 @@ describe('extractCoinTypes', () => {
       ...base,
       action: 'perp:cancel_order',
       params: {
+        protocol: 'bluefin_pro',
         marketSymbol: 'BTC-PERP',
         orderHashes: ['0xhash1'],
       },
@@ -292,8 +300,10 @@ describe('extractCoinTypes', () => {
       ...base,
       action: 'perp:deposit',
       params: {
+        protocol: 'bluefin_pro',
         coinType: '0xusdc::usdc::USDC',
         amount: '10000000000',
+        decimals: 6,
       },
     };
     expect(extractCoinTypes(intent)).toEqual(['0xusdc::usdc::USDC']);
@@ -304,6 +314,7 @@ describe('extractCoinTypes', () => {
       ...base,
       action: 'perp:withdraw',
       params: {
+        protocol: 'bluefin_pro',
         assetSymbol: 'USDC',
         amountE9: '5000000000',
       },

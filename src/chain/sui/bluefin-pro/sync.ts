@@ -1,4 +1,5 @@
 import BigNumber from 'bignumber.js';
+import type { Logger } from 'pino';
 import type { ChainId } from '../../../core/action-types.js';
 import type { ActivityLog } from '../../../db/activity-log.js';
 import type { CoinMetadataRepository } from '../../../db/coin-metadata-repo.js';
@@ -22,6 +23,7 @@ export async function syncFills(
   coinMetadataRepo: CoinMetadataRepository,
   chainId: ChainId,
   walletAddress: string,
+  logger: Logger,
 ): Promise<{ synced: number }> {
   const lastSync = activityLog.getLastSyncTimestamp('perp:filled', 'bluefin_pro');
 
@@ -54,8 +56,7 @@ export async function syncFills(
       return coinType;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      // eslint-disable-next-line no-console
-      console.warn(`[syncFills] Skipping unparseable symbol "${symbol}": ${msg}`);
+      logger.warn({ symbol, error: msg }, 'Skipping unparseable symbol in syncFills');
       seenSymbols.set(symbol, null);
       return null;
     }

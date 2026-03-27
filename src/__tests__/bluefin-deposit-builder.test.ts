@@ -11,6 +11,7 @@ function makeDepositIntent(overrides?: Partial<PerpDepositIntent['params']>): Pe
     chainId: 'sui:mainnet',
     walletAddress: '0x' + 'a'.repeat(64),
     params: {
+      protocol: 'bluefin_pro',
       coinType: '0xusdc::usdc::USDC',
       amount: '100000', // 0.1 USDC in native scale (6 decimals)
       decimals: 6,

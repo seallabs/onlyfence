@@ -1,12 +1,6 @@
 import type { Logger } from 'pino';
 import type { Command } from 'commander';
-import {
-  fetchBluefinMarkets,
-  resolveMarketSymbol,
-  seedSyntheticCoinMetadata,
-} from '../../chain/sui/bluefin-pro/markets.js';
-import { syncFills } from '../../chain/sui/bluefin-pro/sync.js';
-import { toE9, toBluefinCoinType } from '../../chain/sui/bluefin-pro/types.js';
+import { toE9 } from '../../utils/bigint.js';
 import { buildSuiSigner } from '../../chain/sui/signer.js';
 import { tryResolveTokenAddress } from '../../chain/sui/tokens.js';
 import type { ActionBuilder } from '../../core/action-builder.js';
@@ -19,10 +13,12 @@ import type {
   PerpCancelOrderIntent,
   PerpDepositIntent,
   PerpPlaceOrderIntent,
+  PerpProtocol,
   PerpWithdrawIntent,
   PipelineResult,
 } from '../../core/action-types.js';
 import { NoOpMevProtector } from '../../core/mev-protector.js';
+import type { PerpProvider } from '../../core/perp-provider.js';
 import type { PipelineInput } from '../../core/transaction-pipeline.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
 import type { PolicyContext } from '../../policy/context.js';
@@ -46,9 +42,19 @@ import { withComponents } from '../with-components.js';
 /** Shared fallback MEV protector for chains without a registered protector. */
 const FALLBACK_MEV_PROTECTOR = new NoOpMevProtector();
 
+/** Default perp protocol when --protocol is not specified. */
+const DEFAULT_PROTOCOL: PerpProtocol = 'bluefin_pro';
+
 // ---------------------------------------------------------------------------
 // Shared helpers for transactional subcommands
 // ---------------------------------------------------------------------------
+
+/**
+ * Resolve the PerpProvider from components based on the --protocol option.
+ */
+function resolveProvider(components: AppComponents, protocol: PerpProtocol): PerpProvider {
+  return components.perpProviders.get(protocol);
+}
 
 /**
  * Prepare the common pipeline dependencies shared by all perp transactional
@@ -136,6 +142,7 @@ function buildCliOutputBase(
   result: PipelineResult,
   action: ActivityAction,
   intent: ActionIntentBase,
+  protocol: PerpProtocol,
 ): Omit<CliOutput, 'payload'> {
   return {
     status: result.status,
@@ -144,7 +151,7 @@ function buildCliOutputBase(
     address: intent.walletAddress,
     gasUsed: result.gasUsed,
     txDigest: result.txDigest,
-    protocol: 'bluefin_pro',
+    protocol,
     error: result.error,
     rejectionCheck: result.rejectionCheck,
     rejectionReason: result.rejectionReason,
@@ -158,11 +165,12 @@ function toMappedOutput<T extends ActionPayload>(
   result: PipelineResult,
   action: ActivityAction,
   intent: ActionIntentBase,
+  protocol: PerpProtocol,
   payload: T | undefined,
 ): MappedOutput<T> {
   return {
     cliOutput: {
-      ...buildCliOutputBase(result, action, intent),
+      ...buildCliOutputBase(result, action, intent, protocol),
       ...(payload !== undefined ? { payload } : {}),
     },
     exitCode: EXIT_CODES[result.status],
@@ -173,18 +181,18 @@ function toMappedOutput<T extends ActionPayload>(
  * Register the `fence perp` command group on the given program.
  *
  * Subcommands:
- *   deposit <amount>                    — Deposit USDC to Bluefin margin bank
- *   withdraw <amount>                   — Withdraw USDC from margin bank
- *   order <market> <side> <qty>         — Place a perp order
- *   cancel <market>                     — Cancel orders
- *   positions                           — Query open positions
- *   orders                              — Query open orders
- *   markets                             — List available markets
- *   sync                                — Sync fills from API
- *   account                             — Show account summary
+ *   deposit <amount>                    -- Deposit USDC to perp margin bank
+ *   withdraw <amount>                   -- Withdraw USDC from margin bank
+ *   order <market> <side> <qty>         -- Place a perp order
+ *   cancel <market>                     -- Cancel orders
+ *   positions                           -- Query open positions
+ *   orders                              -- Query open orders
+ *   markets                             -- List available markets
+ *   sync                                -- Sync fills from API
+ *   account                             -- Show account summary
  */
 export function registerPerpCommand(program: Command, getComponents: () => AppComponents): void {
-  const perp = program.command('perp').description('Bluefin Pro perpetual futures operations');
+  const perp = program.command('perp').description('Perpetual futures operations');
 
   // --- Transactional subcommands ---
   registerDepositAction(perp, getComponents);
@@ -207,14 +215,16 @@ export function registerPerpCommand(program: Command, getComponents: () => AppCo
 function registerDepositAction(parent: Command, getComponents: () => AppComponents): void {
   parent
     .command('deposit <amount>')
-    .description('Deposit USDC to Bluefin margin bank')
+    .description('Deposit USDC to perp margin bank')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
-    .action(async (amountStr: string, options: { chain: Chain }) => {
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(async (amountStr: string, options: { chain: Chain; protocol: PerpProtocol }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
       const chain = options.chain;
       const chainId: ChainId = `${chain}:mainnet`;
+      const protocol = options.protocol;
       const log = components.logger.child({ command: 'perp-deposit' });
 
       try {
@@ -245,6 +255,7 @@ function registerDepositAction(parent: Command, getComponents: () => AppComponen
           action: 'perp:deposit',
           walletAddress: wallet.address,
           params: {
+            protocol,
             coinType: resolved.coinType,
             amount: resolved.scaledAmount,
             decimals: resolved.decimals,
@@ -253,7 +264,7 @@ function registerDepositAction(parent: Command, getComponents: () => AppComponen
         };
 
         log.info(
-          { amount: amountStr, chain, watchOnly: wallet.isWatchOnly },
+          { amount: amountStr, chain, protocol, watchOnly: wallet.isWatchOnly },
           'Perp deposit invoked',
         );
 
@@ -287,7 +298,7 @@ function registerDepositAction(parent: Command, getComponents: () => AppComponen
           dataProvider,
         });
 
-        const output = mapDepositResult(result, intent, valueUsd);
+        const output = mapDepositResult(result, intent, protocol, valueUsd);
         printJsonOutput(output.cliOutput);
         process.exitCode = output.exitCode;
       } catch (err: unknown) {
@@ -299,14 +310,16 @@ function registerDepositAction(parent: Command, getComponents: () => AppComponen
 function registerWithdrawAction(parent: Command, getComponents: () => AppComponents): void {
   parent
     .command('withdraw <amount>')
-    .description('Withdraw USDC from Bluefin margin bank')
+    .description('Withdraw USDC from perp margin bank')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
-    .action(async (amountStr: string, options: { chain: Chain }) => {
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(async (amountStr: string, options: { chain: Chain; protocol: PerpProtocol }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
       const chain = options.chain;
       const chainId: ChainId = `${chain}:mainnet`;
+      const protocol = options.protocol;
       const log = components.logger.child({ command: 'perp-withdraw' });
 
       try {
@@ -322,13 +335,14 @@ function registerWithdrawAction(parent: Command, getComponents: () => AppCompone
           action: 'perp:withdraw',
           walletAddress: wallet.address,
           params: {
+            protocol,
             assetSymbol: 'USDC',
             amountE9: toE9(amountStr),
           },
         };
 
         log.info(
-          { amount: amountStr, chain, watchOnly: wallet.isWatchOnly },
+          { amount: amountStr, chain, protocol, watchOnly: wallet.isWatchOnly },
           'Perp withdraw invoked',
         );
 
@@ -341,7 +355,7 @@ function registerWithdrawAction(parent: Command, getComponents: () => AppCompone
         );
         const result = await executePipeline({ ...pipelineInput, logger: log });
 
-        const output = mapWithdrawResult(result, intent);
+        const output = mapWithdrawResult(result, intent, protocol);
         printJsonOutput(output.cliOutput);
         process.exitCode = output.exitCode;
       } catch (err: unknown) {
@@ -360,6 +374,7 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
     .option('-r, --reduce-only', 'Reduce-only flag')
     .option('--tif <tif>', 'Time in force (GTT, IOC, FOK)', 'GTT')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
     .action(
       async (
         market: string,
@@ -372,6 +387,7 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
           reduceOnly?: boolean;
           tif: string;
           chain: Chain;
+          protocol: PerpProtocol;
         },
       ) => {
         const components = withComponents(getComponents);
@@ -379,10 +395,11 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
 
         const chain = options.chain;
         const chainId: ChainId = `${chain}:mainnet`;
+        const protocol = options.protocol;
         const log = components.logger.child({ command: 'perp-order' });
 
         try {
-          const bluefinClient = components.getBluefinClient();
+          const provider = resolveProvider(components, protocol);
           const wallet = getPrimaryWallet(components.db, chainId);
           if (wallet === null) {
             throw new Error(
@@ -391,14 +408,27 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
           }
 
           log.info(
-            { market, side, qty, orderType: options.type, chain, watchOnly: wallet.isWatchOnly },
+            {
+              market,
+              side,
+              qty,
+              orderType: options.type,
+              chain,
+              protocol,
+              watchOnly: wallet.isWatchOnly,
+            },
             'Perp order invoked',
           );
 
-          // Resolve market symbol
-          const markets = await fetchBluefinMarkets(bluefinClient);
-          const marketSymbol = resolveMarketSymbol(markets, market);
-          const marketInfo = markets.find((m) => m.symbol === marketSymbol);
+          // Resolve market symbol (single API call — getMarkets + find)
+          const markets = await provider.getMarkets();
+          const normalized = market.toUpperCase();
+          const marketInfo = markets.find((m) => m.symbol === normalized);
+          if (marketInfo === undefined) {
+            const available = markets.map((m) => m.symbol).join(', ');
+            throw new Error(`Unknown market "${market}". Available markets: ${available}`);
+          }
+          const marketSymbol = marketInfo.symbol;
 
           // Resolve side
           const normalizedSide = side.toUpperCase();
@@ -419,10 +449,7 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
 
           // Build e9 values
           const quantityE9 = toE9(qty);
-          const leverageE9 =
-            options.leverage !== undefined
-              ? toE9(options.leverage)
-              : (marketInfo?.defaultLeverageE9 ?? toE9('1'));
+          const leverageE9 = options.leverage !== undefined ? toE9(options.leverage) : undefined;
 
           // Resolve time in force
           const tif = options.tif.toUpperCase();
@@ -435,18 +462,21 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
           if (usdcCoinType === undefined) {
             throw new Error('Cannot resolve USDC coin type from token registry');
           }
-          const marketCoinType = toBluefinCoinType(marketSymbol.split('-')[0] ?? marketSymbol);
+          const marketCoinType = provider.toMarketCoinType(
+            marketSymbol.split('-')[0] ?? marketSymbol,
+          );
 
           const intent: PerpPlaceOrderIntent = {
             chainId,
             action: 'perp:place_order',
             walletAddress: wallet.address,
             params: {
+              protocol,
               marketSymbol,
               side: normalizedSide,
               quantityE9,
               orderType: normalizedOrderType,
-              leverageE9,
+              ...(leverageE9 !== undefined ? { leverageE9 } : {}),
               ...(options.price !== undefined ? { limitPriceE9: toE9(options.price) } : {}),
               ...(options.reduceOnly === true ? { reduceOnly: true } : {}),
               ...(tif !== 'GTT' ? { timeInForce: tif } : {}),
@@ -464,7 +494,7 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
           );
           const result = await executePipeline({ ...pipelineInput, logger: log });
 
-          const output = mapOrderResult(result, intent);
+          const output = mapOrderResult(result, intent, protocol);
           printJsonOutput(output.cliOutput);
           process.exitCode = output.exitCode;
         } catch (err: unknown) {
@@ -480,58 +510,65 @@ function registerCancelAction(parent: Command, getComponents: () => AppComponent
     .description('Cancel orders for a market')
     .option('-o, --order <hash>', 'Specific order hash (repeatable)', collectValues, [])
     .option('-c, --chain <chain>', 'Target chain', 'sui')
-    .action(async (market: string, options: { order: string[]; chain: Chain }) => {
-      const components = withComponents(getComponents);
-      if (components === undefined) return;
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(
+      async (
+        market: string,
+        options: { order: string[]; chain: Chain; protocol: PerpProtocol },
+      ) => {
+        const components = withComponents(getComponents);
+        if (components === undefined) return;
 
-      const chain = options.chain;
-      const chainId: ChainId = `${chain}:mainnet`;
-      const log = components.logger.child({ command: 'perp-cancel' });
+        const chain = options.chain;
+        const chainId: ChainId = `${chain}:mainnet`;
+        const protocol = options.protocol;
+        const log = components.logger.child({ command: 'perp-cancel' });
 
-      try {
-        const bluefinClient = components.getBluefinClient();
-        const wallet = getPrimaryWallet(components.db, chainId);
-        if (wallet === null) {
-          throw new Error(
-            `No primary wallet found for chain "${chainId}". Run "fence setup" first.`,
+        try {
+          const provider = resolveProvider(components, protocol);
+          const wallet = getPrimaryWallet(components.db, chainId);
+          if (wallet === null) {
+            throw new Error(
+              `No primary wallet found for chain "${chainId}". Run "fence setup" first.`,
+            );
+          }
+
+          log.info(
+            { market, orderHashes: options.order, chain, protocol, watchOnly: wallet.isWatchOnly },
+            'Perp cancel invoked',
           );
+
+          // Resolve market symbol
+          const marketSymbol = await provider.resolveMarket(market);
+
+          const intent: PerpCancelOrderIntent = {
+            chainId,
+            action: 'perp:cancel_order',
+            walletAddress: wallet.address,
+            params: {
+              protocol,
+              marketSymbol,
+              ...(options.order.length > 0 ? { orderHashes: options.order } : {}),
+            },
+          };
+
+          const { pipelineInput } = preparePipeline(
+            components,
+            chain,
+            chainId,
+            'perp:cancel_order',
+            intent,
+          );
+          const result = await executePipeline({ ...pipelineInput, logger: log });
+
+          const output = mapCancelResult(result, intent, protocol);
+          printJsonOutput(output.cliOutput);
+          process.exitCode = output.exitCode;
+        } catch (err: unknown) {
+          handlePipelineError(log, 'perp:cancel_order', chainId, err, 'Perp cancel');
         }
-
-        log.info(
-          { market, orderHashes: options.order, chain, watchOnly: wallet.isWatchOnly },
-          'Perp cancel invoked',
-        );
-
-        // Resolve market symbol
-        const markets = await fetchBluefinMarkets(bluefinClient);
-        const marketSymbol = resolveMarketSymbol(markets, market);
-
-        const intent: PerpCancelOrderIntent = {
-          chainId,
-          action: 'perp:cancel_order',
-          walletAddress: wallet.address,
-          params: {
-            marketSymbol,
-            ...(options.order.length > 0 ? { orderHashes: options.order } : {}),
-          },
-        };
-
-        const { pipelineInput } = preparePipeline(
-          components,
-          chain,
-          chainId,
-          'perp:cancel_order',
-          intent,
-        );
-        const result = await executePipeline({ ...pipelineInput, logger: log });
-
-        const output = mapCancelResult(result, intent);
-        printJsonOutput(output.cliOutput);
-        process.exitCode = output.exitCode;
-      } catch (err: unknown) {
-        handlePipelineError(log, 'perp:cancel_order', chainId, err, 'Perp cancel');
-      }
-    });
+      },
+    );
 }
 
 // --- Query subcommands ---
@@ -540,22 +577,26 @@ function registerPositionsQuery(parent: Command, getComponents: () => AppCompone
   parent
     .command('positions')
     .description('Query open positions (live from API)')
-    .action(async () => {
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(async (options: { protocol: PerpProtocol }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
       const log = components.logger.child({ command: 'perp-positions' });
 
       try {
-        const bluefinClient = components.getBluefinClient();
-        const account = await bluefinClient.getAccountDetails();
-        const positions = (account as unknown as Record<string, unknown>)['positions'] ?? [];
+        const provider = resolveProvider(components, options.protocol);
+        const positions = await provider.getPositions();
         console.log(
           JSON.stringify({ status: 'success', action: 'positions', data: positions }, null, 2),
         );
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Failed to fetch positions');
-        const msg = enrichBluefinError(toErrorMessage(err));
+        const provider = components.perpProviders.has(options.protocol)
+          ? components.perpProviders.get(options.protocol)
+          : undefined;
+        const msg =
+          provider !== undefined ? provider.enrichError(toErrorMessage(err)) : toErrorMessage(err);
         console.log(JSON.stringify({ status: 'error', error: msg }, null, 2));
         process.exitCode = 1;
       }
@@ -567,16 +608,17 @@ function registerOrdersQuery(parent: Command, getComponents: () => AppComponents
     .command('orders')
     .description('Query open orders (live from API)')
     .option('-m, --market <symbol>', 'Filter by market symbol')
-    .action(async (options: { market?: string }) => {
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(async (options: { market?: string; protocol: PerpProtocol }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
       const log = components.logger.child({ command: 'perp-orders' });
 
       try {
-        const bluefinClient = components.getBluefinClient();
+        const provider = resolveProvider(components, options.protocol);
         const symbol = options.market !== undefined ? options.market.toUpperCase() : undefined;
-        const orders = await bluefinClient.getOpenOrders(symbol);
+        const orders = await provider.getOpenOrders(symbol);
         console.log(JSON.stringify({ status: 'success', action: 'orders', data: orders }, null, 2));
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Failed to fetch orders');
@@ -589,16 +631,17 @@ function registerOrdersQuery(parent: Command, getComponents: () => AppComponents
 function registerMarketsQuery(parent: Command, getComponents: () => AppComponents): void {
   parent
     .command('markets')
-    .description('List available Bluefin Pro markets')
-    .action(async () => {
+    .description('List available perp markets')
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(async (options: { protocol: PerpProtocol }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
       const log = components.logger.child({ command: 'perp-markets' });
 
       try {
-        const bluefinClient = components.getBluefinClient();
-        const markets = await fetchBluefinMarkets(bluefinClient);
+        const provider = resolveProvider(components, options.protocol);
+        const markets = await provider.getMarkets();
         console.log(
           JSON.stringify({ status: 'success', action: 'markets', data: markets }, null, 2),
         );
@@ -618,10 +661,17 @@ function registerFundingRateQuery(parent: Command, getComponents: () => AppCompo
     .option('--start <millis>', 'Start time in milliseconds since epoch')
     .option('--end <millis>', 'End time in milliseconds since epoch')
     .option('--page <page>', 'Page number for pagination')
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
     .action(
       async (
         market: string,
-        options: { limit: string; start?: string; end?: string; page?: string },
+        options: {
+          limit: string;
+          start?: string;
+          end?: string;
+          page?: string;
+          protocol: PerpProtocol;
+        },
       ) => {
         const components = withComponents(getComponents);
         if (components === undefined) return;
@@ -629,13 +679,11 @@ function registerFundingRateQuery(parent: Command, getComponents: () => AppCompo
         const log = components.logger.child({ command: 'perp-funding-rate' });
 
         try {
-          const bluefinClient = components.getBluefinClient();
+          const provider = resolveProvider(components, options.protocol);
           // Resolve market symbol
-          const markets = await fetchBluefinMarkets(bluefinClient);
-          const marketSymbol = resolveMarketSymbol(markets, market);
+          const marketSymbol = await provider.resolveMarket(market);
 
-          const entries = await bluefinClient.getFundingRateHistory({
-            symbol: marketSymbol,
+          const entries = await provider.getFundingRateHistory(marketSymbol, {
             limit: parseInt(options.limit, 10),
             ...(options.start !== undefined
               ? { startTimeAtMillis: parseInt(options.start, 10) }
@@ -668,54 +716,69 @@ function registerAccountFundingQuery(parent: Command, getComponents: () => AppCo
     .option('--start <millis>', 'Start time in milliseconds since epoch')
     .option('--end <millis>', 'End time in milliseconds since epoch')
     .option('--page <page>', 'Page number for pagination')
-    .action(async (options: { limit: string; start?: string; end?: string; page?: string }) => {
-      const components = withComponents(getComponents);
-      if (components === undefined) return;
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(
+      async (options: {
+        limit: string;
+        start?: string;
+        end?: string;
+        page?: string;
+        protocol: PerpProtocol;
+      }) => {
+        const components = withComponents(getComponents);
+        if (components === undefined) return;
 
-      const log = components.logger.child({ command: 'perp-funding-history' });
+        const log = components.logger.child({ command: 'perp-funding-history' });
 
-      try {
-        const bluefinClient = components.getBluefinClient();
-        const history = await bluefinClient.getAccountFundingRateHistory({
-          limit: parseInt(options.limit, 10),
-          ...(options.start !== undefined
-            ? { startTimeAtMillis: parseInt(options.start, 10) }
-            : {}),
-          ...(options.end !== undefined ? { endTimeAtMillis: parseInt(options.end, 10) } : {}),
-          ...(options.page !== undefined ? { page: parseInt(options.page, 10) } : {}),
-        });
+        try {
+          const provider = resolveProvider(components, options.protocol);
+          const history = await provider.getAccountFundingHistory({
+            limit: parseInt(options.limit, 10),
+            ...(options.start !== undefined
+              ? { startTimeAtMillis: parseInt(options.start, 10) }
+              : {}),
+            ...(options.end !== undefined ? { endTimeAtMillis: parseInt(options.end, 10) } : {}),
+            ...(options.page !== undefined ? { page: parseInt(options.page, 10) } : {}),
+          });
 
-        console.log(
-          JSON.stringify(
-            { status: 'success', action: 'funding-history', data: history.data },
-            null,
-            2,
-          ),
-        );
-      } catch (err: unknown) {
-        log.error({ err: toErrorMessage(err) }, 'Failed to fetch account funding history');
-        console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
-        process.exitCode = 1;
-      }
-    });
+          console.log(
+            JSON.stringify(
+              {
+                status: 'success',
+                action: 'funding-history',
+                data: history,
+              },
+              null,
+              2,
+            ),
+          );
+        } catch (err: unknown) {
+          log.error({ err: toErrorMessage(err) }, 'Failed to fetch account funding history');
+          console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
+          process.exitCode = 1;
+        }
+      },
+    );
 }
 
 function registerSyncCommand(parent: Command, getComponents: () => AppComponents): void {
   parent
     .command('sync')
-    .description('Sync filled trades from Bluefin API to local DB')
+    .description('Sync filled trades from perp API to local DB')
     .option('-c, --chain <chain>', 'Target chain', 'sui')
-    .action(async (options: { chain: Chain }) => {
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(async (options: { chain: Chain; protocol: PerpProtocol }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
       const { db, activityLog, coinMetadataRepo, logger } = components;
       const chain = options.chain;
       const chainId: ChainId = `${chain}:mainnet`;
+      const protocol = options.protocol;
       const log = logger.child({ command: 'perp-sync' });
 
       try {
-        const bluefinClient = components.getBluefinClient();
+        const provider = resolveProvider(components, protocol);
         const wallet = getPrimaryWallet(db, chainId);
         if (wallet === null) {
           throw new Error(
@@ -724,15 +787,14 @@ function registerSyncCommand(parent: Command, getComponents: () => AppComponents
         }
 
         // Seed synthetic coin metadata before sync
-        const markets = await fetchBluefinMarkets(bluefinClient);
-        seedSyntheticCoinMetadata(markets, coinMetadataRepo, chainId);
+        await provider.seedCoinMetadata(coinMetadataRepo, chainId);
 
-        const result = await syncFills(
-          bluefinClient,
+        const result = await provider.syncFills(
           activityLog,
           coinMetadataRepo,
           chainId,
           wallet.address,
+          log,
         );
 
         log.info({ synced: result.synced }, 'Fill sync complete');
@@ -750,22 +812,27 @@ function registerSyncCommand(parent: Command, getComponents: () => AppComponents
 function registerAccountQuery(parent: Command, getComponents: () => AppComponents): void {
   parent
     .command('account')
-    .description('Show Bluefin Pro account summary')
-    .action(async () => {
+    .description('Show perp account summary')
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(async (options: { protocol: PerpProtocol }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
       const log = components.logger.child({ command: 'perp-account' });
 
       try {
-        const bluefinClient = components.getBluefinClient();
-        const account = await bluefinClient.getAccountDetails();
+        const provider = resolveProvider(components, options.protocol);
+        const account = await provider.getAccount();
         console.log(
           JSON.stringify({ status: 'success', action: 'account', data: account }, null, 2),
         );
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Failed to fetch account');
-        const msg = enrichBluefinError(toErrorMessage(err));
+        const provider = components.perpProviders.has(options.protocol)
+          ? components.perpProviders.get(options.protocol)
+          : undefined;
+        const msg =
+          provider !== undefined ? provider.enrichError(toErrorMessage(err)) : toErrorMessage(err);
         console.log(JSON.stringify({ status: 'error', error: msg }, null, 2));
         process.exitCode = 1;
       }
@@ -782,6 +849,7 @@ function hasPayload(result: PipelineResult): boolean {
 function mapDepositResult(
   result: PipelineResult,
   intent: PerpDepositIntent,
+  protocol: PerpProtocol,
   valueUsd: number | undefined,
 ): MappedOutput<PerpDepositOutput> {
   const payload: PerpDepositOutput | undefined = hasPayload(result)
@@ -792,12 +860,13 @@ function mapDepositResult(
       }
     : undefined;
 
-  return toMappedOutput(result, 'perp:deposit', intent, payload);
+  return toMappedOutput(result, 'perp:deposit', intent, protocol, payload);
 }
 
 function mapWithdrawResult(
   result: PipelineResult,
   intent: PerpWithdrawIntent,
+  protocol: PerpProtocol,
 ): MappedOutput<PerpWithdrawOutput> {
   const payload: PerpWithdrawOutput | undefined = hasPayload(result)
     ? {
@@ -807,12 +876,13 @@ function mapWithdrawResult(
       }
     : undefined;
 
-  return toMappedOutput(result, 'perp:withdraw', intent, payload);
+  return toMappedOutput(result, 'perp:withdraw', intent, protocol, payload);
 }
 
 function mapOrderResult(
   result: PipelineResult,
   intent: PerpPlaceOrderIntent,
+  protocol: PerpProtocol,
 ): MappedOutput<PerpOrderOutput> {
   const metadata = result.metadata;
   const payload: PerpOrderOutput | undefined = hasPayload(result)
@@ -821,7 +891,7 @@ function mapOrderResult(
         side: intent.params.side,
         orderType: intent.params.orderType,
         quantityE9: intent.params.quantityE9,
-        leverageE9: intent.params.leverageE9,
+        ...(intent.params.leverageE9 !== undefined ? { leverageE9: intent.params.leverageE9 } : {}),
         ...(intent.params.limitPriceE9 !== undefined
           ? { priceE9: intent.params.limitPriceE9 }
           : {}),
@@ -831,12 +901,13 @@ function mapOrderResult(
       }
     : undefined;
 
-  return toMappedOutput(result, 'perp:place_order', intent, payload);
+  return toMappedOutput(result, 'perp:place_order', intent, protocol, payload);
 }
 
 function mapCancelResult(
   result: PipelineResult,
   intent: PerpCancelOrderIntent,
+  protocol: PerpProtocol,
 ): MappedOutput<PerpCancelOutput> {
   const cancelledCount =
     typeof result.metadata?.['cancelledCount'] === 'number' ? result.metadata['cancelledCount'] : 0;
@@ -847,20 +918,10 @@ function mapCancelResult(
       }
     : undefined;
 
-  return toMappedOutput(result, 'perp:cancel_order', intent, payload);
+  return toMappedOutput(result, 'perp:cancel_order', intent, protocol, payload);
 }
 
 // --- Utilities ---
-
-/**
- * Enrich generic Bluefin API errors with actionable hints.
- */
-function enrichBluefinError(message: string): string {
-  if (message.includes('status code 400')) {
-    return `${message}. No Bluefin margin account found — deposit first with: fence perp deposit <amount>`;
-  }
-  return message;
-}
 
 /** Commander helper to collect repeatable option values into an array. */
 function collectValues(value: string, prev: string[]): string[] {

@@ -13,6 +13,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Logger } from 'pino';
 import type { FinishContext } from '../core/action-builder.js';
 import type {
   PerpCancelOrderIntent,
@@ -22,7 +23,7 @@ import type {
 } from '../core/action-types.js';
 import type { ActivityLog, ActivityRecord } from '../db/activity-log.js';
 import type { BluefinClient } from '../chain/sui/bluefin-pro/client.js';
-import type { BluefinMarketInfo } from '../chain/sui/bluefin-pro/markets.js';
+import type { PerpMarketInfo } from '../core/perp-provider.js';
 import { BluefinPlaceOrderBuilder } from '../chain/sui/bluefin-pro/place-order.js';
 import { BluefinCancelOrderBuilder } from '../chain/sui/bluefin-pro/cancel-order.js';
 import { BluefinDepositBuilder } from '../chain/sui/bluefin-pro/deposit.js';
@@ -79,7 +80,7 @@ function makeCoinMetadataRepo(): CoinMetadataRepository {
 }
 
 /** Standard SUI-PERP market info matching Bluefin exchange response */
-const SUI_MARKET: BluefinMarketInfo = {
+const SUI_MARKET: PerpMarketInfo = {
   symbol: 'SUI-PERP',
   baseAsset: 'SUI',
   status: 'active',
@@ -93,7 +94,7 @@ const SUI_MARKET: BluefinMarketInfo = {
   takerFeeE9: '500000', // 0.0005 (5bps)
 };
 
-const BTC_MARKET: BluefinMarketInfo = {
+const BTC_MARKET: PerpMarketInfo = {
   symbol: 'BTC-PERP',
   baseAsset: 'BTC',
   status: 'active',
@@ -148,7 +149,6 @@ function makeBluefinClient(overrides?: Partial<BluefinClient>): BluefinClient {
     getTrades: vi.fn().mockResolvedValue([]),
     getFundingRateHistory: vi.fn().mockResolvedValue([]),
     getAccountFundingRateHistory: vi.fn().mockResolvedValue({ data: [] }),
-    updateLeverage: vi.fn().mockResolvedValue(undefined),
     createOrder: vi.fn().mockResolvedValue({ orderHash: '0xorderhash_test' }),
     cancelOrders: vi.fn().mockResolvedValue(undefined),
     deposit: vi.fn().mockResolvedValue({ effects: { transactionDigest: '0xtxdigest' } }),
@@ -173,12 +173,13 @@ function makePlaceOrderIntent(
     chainId: CHAIN_ID,
     walletAddress: WALLET_ADDRESS,
     params: {
+      protocol: 'bluefin_pro',
       marketSymbol: 'SUI-PERP',
       side: 'SHORT',
       quantityE9: toE9('1'), // 1 SUI
       orderType: 'LIMIT',
       leverageE9: toE9('5'), // 5x
-      limitPriceE9: toE9('5'), // $5 — far above market
+      limitPriceE9: toE9('5'), // $5 -- far above market
       collateralCoinType: USDC_COIN_TYPE,
       marketCoinType: SUI_PERP_COIN_TYPE,
       ...overrides,
@@ -196,6 +197,7 @@ function makeCancelIntent(
     chainId: CHAIN_ID,
     walletAddress: WALLET_ADDRESS,
     params: {
+      protocol: 'bluefin_pro',
       marketSymbol: 'SUI-PERP',
       ...overrides,
     },
@@ -208,6 +210,7 @@ function makeDepositIntent(overrides?: Partial<PerpDepositIntent['params']>): Pe
     chainId: CHAIN_ID,
     walletAddress: WALLET_ADDRESS,
     params: {
+      protocol: 'bluefin_pro',
       coinType: USDC_COIN_TYPE,
       amount: '1000000', // 1 USDC in native (6 decimals)
       decimals: 6,
@@ -223,6 +226,7 @@ function makeWithdrawIntent(overrides?: Partial<PerpWithdrawIntent['params']>): 
     chainId: CHAIN_ID,
     walletAddress: WALLET_ADDRESS,
     params: {
+      protocol: 'bluefin_pro',
       assetSymbol: 'USDC',
       amountE9: toE9('0.5'), // 0.5 USDC
       ...overrides,
@@ -233,15 +237,31 @@ function makeWithdrawIntent(overrides?: Partial<PerpWithdrawIntent['params']>): 
 
 // ─── Test Suite ────────────────────────────────────────────────────────────────
 
+function createMockLogger(): Logger {
+  const logger = {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+    trace: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+    level: 'info',
+  } as unknown as Logger;
+  return logger;
+}
+
 describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
   let mockClient: BluefinClient;
   let mockActivityLog: ActivityLog;
   let mockCoinMetadataRepo: CoinMetadataRepository;
+  let mockLogger: Logger;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockActivityLog = makeActivityLog();
     mockCoinMetadataRepo = makeCoinMetadataRepo();
+    mockLogger = createMockLogger();
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -305,7 +325,7 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
       const result = await builder.execute(intent);
 
       // Verify SDK calls
-      expect(mockClient.updateLeverage).toHaveBeenCalledWith('SUI-PERP', toE9('5'));
+      expect(mockClient.getExchangeInfo).toHaveBeenCalled();
       expect(mockClient.createOrder).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'LIMIT',
@@ -387,7 +407,7 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
       expect(result.metadata['orderHash']).toBe('0xlong_order');
 
       // Verify leverage was set
-      expect(mockClient.updateLeverage).toHaveBeenCalledWith('SUI-PERP', toE9('5'));
+      expect(mockClient.getExchangeInfo).toHaveBeenCalled();
     });
 
     it('places BTC-PERP SHORT limit at $200000 with 10x leverage', async () => {
@@ -595,7 +615,7 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
 
       const result = await builder.execute(intent);
       expect(result.metadata['leverageE9']).toBe(toE9('10'));
-      expect(mockClient.updateLeverage).toHaveBeenCalledWith('SUI-PERP', toE9('10'));
+      expect(mockClient.getExchangeInfo).toHaveBeenCalled();
     });
 
     it('leverage=20 at $2 — accepted (margin=$0.10)', async () => {
@@ -1126,7 +1146,7 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
     });
 
     it('seedSyntheticCoinMetadata — upserts coin metadata', () => {
-      const markets: BluefinMarketInfo[] = [SUI_MARKET, BTC_MARKET];
+      const markets: PerpMarketInfo[] = [SUI_MARKET, BTC_MARKET];
       seedSyntheticCoinMetadata(markets, mockCoinMetadataRepo, CHAIN_ID);
 
       expect(mockCoinMetadataRepo.upsertBulk).toHaveBeenCalledWith([
@@ -1182,6 +1202,7 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
         mockCoinMetadataRepo,
         CHAIN_ID,
         WALLET_ADDRESS,
+        mockLogger,
       );
 
       expect(result.synced).toBe(2);
@@ -1233,7 +1254,14 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
       vi.mocked(mockActivityLog.getLastSyncTimestamp).mockReturnValue('2026-03-25T10:00:00.000Z');
       vi.mocked(mockClient.getTrades).mockResolvedValue([]);
 
-      await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, CHAIN_ID, WALLET_ADDRESS);
+      await syncFills(
+        mockClient,
+        mockActivityLog,
+        mockCoinMetadataRepo,
+        CHAIN_ID,
+        WALLET_ADDRESS,
+        mockLogger,
+      );
 
       expect(mockClient.getTrades).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1248,14 +1276,20 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
       vi.mocked(mockActivityLog.getLastSyncTimestamp).mockReturnValue(null);
       vi.mocked(mockClient.getTrades).mockResolvedValue([]);
 
-      await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, CHAIN_ID, WALLET_ADDRESS);
+      await syncFills(
+        mockClient,
+        mockActivityLog,
+        mockCoinMetadataRepo,
+        CHAIN_ID,
+        WALLET_ADDRESS,
+        mockLogger,
+      );
 
       expect(mockClient.getTrades).toHaveBeenCalledWith({ limit: 1000 });
     });
 
     it('syncFills — skips unparseable market symbols', async () => {
       mockClient = makeBluefinClient();
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       vi.mocked(mockClient.getTrades).mockResolvedValue([
         {
@@ -1284,13 +1318,14 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
         mockCoinMetadataRepo,
         CHAIN_ID,
         WALLET_ADDRESS,
+        mockLogger,
       );
 
       expect(result.synced).toBe(1); // Only valid trade synced
-      expect(consoleSpy).toHaveBeenCalledWith(
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ symbol: 'INVALID_SYMBOL' }),
         expect.stringContaining('Skipping unparseable symbol'),
       );
-      consoleSpy.mockRestore();
     });
 
     it('syncFills — maps BUY side to LONG', async () => {
@@ -1307,7 +1342,14 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
         },
       ] as any);
 
-      await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, CHAIN_ID, WALLET_ADDRESS);
+      await syncFills(
+        mockClient,
+        mockActivityLog,
+        mockCoinMetadataRepo,
+        CHAIN_ID,
+        WALLET_ADDRESS,
+        mockLogger,
+      );
 
       expect(activityRecords[0]!.metadata).toEqual(expect.objectContaining({ side: 'LONG' }));
     });
@@ -1326,7 +1368,14 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
         },
       ] as any);
 
-      await syncFills(mockClient, mockActivityLog, mockCoinMetadataRepo, CHAIN_ID, WALLET_ADDRESS);
+      await syncFills(
+        mockClient,
+        mockActivityLog,
+        mockCoinMetadataRepo,
+        CHAIN_ID,
+        WALLET_ADDRESS,
+        mockLogger,
+      );
 
       expect(activityRecords[0]!.metadata).toEqual(expect.objectContaining({ side: 'SHORT' }));
     });

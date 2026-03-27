@@ -15,6 +15,7 @@ const mockWithdraw = vi.fn();
 const mockUpdateLeverage = vi.fn();
 const mockDispose = vi.fn();
 const mockCreateAccountDataStreamListener = vi.fn();
+const mockGetAccountPreferences = vi.fn();
 
 vi.mock('@bluefin-exchange/pro-sdk', () => ({
   BluefinProSdk: class MockBluefinProSdk {
@@ -36,6 +37,7 @@ vi.mock('@bluefin-exchange/pro-sdk', () => ({
     updateLeverage = mockUpdateLeverage;
     dispose = mockDispose;
     createAccountDataStreamListener = mockCreateAccountDataStreamListener;
+    getAccountPreferences = mockGetAccountPreferences;
   },
   BluefinRequestSigner: class MockSigner {},
   AccountDataStream: {
@@ -249,6 +251,20 @@ describe('BluefinClient', () => {
 
       await client.updateLeverage('BTC-PERP', '10000000000');
       expect(mockUpdateLeverage).toHaveBeenCalledWith('BTC-PERP', '10000000000');
+    });
+  });
+
+  describe('getAccountPreferences', () => {
+    it('returns account preferences data', async () => {
+      const fakePrefs = {
+        market: [{ marginType: 'CROSS', setLeverage: 10 }],
+      };
+      mockGetAccountPreferences.mockResolvedValue({ data: fakePrefs });
+      const client = makeClient();
+
+      const result = await client.getAccountPreferences();
+      expect(result).toEqual(fakePrefs);
+      expect(mockGetAccountPreferences).toHaveBeenCalledOnce();
     });
   });
 

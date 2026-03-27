@@ -13,6 +13,7 @@ function makeCancelIntent(
     chainId: 'sui:mainnet',
     walletAddress: '0x' + 'a'.repeat(64),
     params: {
+      protocol: 'bluefin_pro',
       marketSymbol: 'BTC-PERP',
       orderHashes: ['0xhash1', '0xhash2'],
       ...overrides,

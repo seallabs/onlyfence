@@ -66,7 +66,7 @@ export interface PerpOrderOutput {
   readonly orderType: string;
   readonly quantityE9: string;
   readonly priceE9?: string;
-  readonly leverageE9: string;
+  readonly leverageE9?: string;
   readonly orderHash?: string;
 }
 

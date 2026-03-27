@@ -42,21 +42,9 @@ export function parseBluefinMarketSymbol(symbol: string): string {
   return base;
 }
 
-/**
- * Convert a human-readable amount string to Bluefin e9 format string.
- * '1.5' → '1500000000'
- */
-export function toE9(amount: string): string {
-  return new BigNumber(amount).times(1_000_000_000).toFixed(0);
-}
-
-/**
- * Convert a Bluefin e9 format string to a human-readable number.
- * '1500000000' → 1.5
- */
-export function fromE9(e9Amount: string): number {
-  return new BigNumber(e9Amount).div(1_000_000_000).toNumber();
-}
+// Re-export shared e9 utilities for backward compatibility.
+// Canonical definitions live in src/utils/bigint.ts.
+export { toE9, fromE9 } from '../../../utils/bigint.js';
 
 /**
  * Convert a native-scaled amount (in the token's smallest unit) to Bluefin e9 format.

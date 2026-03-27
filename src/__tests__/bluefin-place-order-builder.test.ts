@@ -13,6 +13,7 @@ function makePlaceOrderIntent(
     chainId: 'sui:mainnet',
     walletAddress: '0x' + 'a'.repeat(64),
     params: {
+      protocol: 'bluefin_pro',
       marketSymbol: 'BTC-PERP',
       side: 'LONG',
       quantityE9: '1000000000',
@@ -32,7 +33,6 @@ describe('BluefinPlaceOrderBuilder', () => {
 
   beforeEach(() => {
     mockClient = {
-      updateLeverage: vi.fn().mockResolvedValue(undefined),
       createOrder: vi.fn().mockResolvedValue({ orderHash: '0xorderhash123' }),
       waitForOrderEvent: vi
         .fn()
@@ -45,6 +45,22 @@ describe('BluefinPlaceOrderBuilder', () => {
         .mockResolvedValue([
           { orderHash: '0xorderhash123', clientOrderId: 'mock-will-be-overridden' },
         ]),
+      getExchangeInfo: vi.fn().mockResolvedValue({
+        markets: [
+          {
+            symbol: 'BTC-PERP',
+            status: 'TRADING',
+            minOrderQuantityE9: '1000000',
+            maxLimitOrderQuantityE9: '100000000000',
+            tickSizeE9: '100000000',
+            stepSizeE9: '1000000',
+            defaultLeverageE9: '3000000000',
+            defaultMakerFeeE9: '200000',
+            defaultTakerFeeE9: '500000',
+            maxNotionalAtOpenE9: Array.from({ length: 20 }, () => '1000000000000'),
+          },
+        ],
+      }),
     } as unknown as BluefinClient;
     mockActivityLog = {
       logActivity: vi.fn().mockReturnValue(1),
@@ -122,7 +138,7 @@ describe('BluefinPlaceOrderBuilder', () => {
 
       const result = await builder.execute(intent);
 
-      expect(mockClient.updateLeverage).toHaveBeenCalledWith('BTC-PERP', '5000000000');
+      expect(mockClient.getExchangeInfo).toHaveBeenCalledOnce();
       expect(mockClient.waitForOrderEvent).toHaveBeenCalledOnce();
       expect(mockClient.createOrder).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -183,6 +199,88 @@ describe('BluefinPlaceOrderBuilder', () => {
           timeInForce: 'IOC',
         }),
       );
+    });
+
+    it('uses market default leverage when user omits leverage', async () => {
+      setupOpenOrdersToMatchPlacedOrder();
+      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
+      const intent = makePlaceOrderIntent();
+      // Remove explicit leverage
+      (intent as { params: Record<string, unknown> }).params.leverageE9 = undefined;
+
+      await builder.execute(intent);
+
+      // Mock market has defaultLeverageE9 = '3000000000' (3x)
+      expect(mockClient.createOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          leverageE9: '3000000000',
+        }),
+      );
+    });
+
+    it('throws when leverage exceeds market maximum', async () => {
+      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
+      // Mock market has 20 leverage tiers → max 20x
+      const intent = makePlaceOrderIntent({ leverageE9: '25000000000' }); // 25x
+
+      await expect(builder.execute(intent)).rejects.toThrow(
+        'Leverage 25x exceeds maximum 20x for BTC-PERP',
+      );
+    });
+
+    it('throws when leverage is zero', async () => {
+      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
+      const intent = makePlaceOrderIntent({ leverageE9: '0' });
+
+      await expect(builder.execute(intent)).rejects.toThrow('Leverage must be greater than zero');
+    });
+
+    it('throws when quantity is below market minimum', async () => {
+      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
+      // Mock market minOrderQuantityE9 = '1000000' (0.001)
+      const intent = makePlaceOrderIntent({ quantityE9: '500000' }); // 0.0005
+
+      await expect(builder.execute(intent)).rejects.toThrow(/below minimum/);
+    });
+
+    it('throws when quantity exceeds market maximum', async () => {
+      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
+      // Mock market maxLimitOrderQuantityE9 = '100000000000' (100)
+      const intent = makePlaceOrderIntent({ quantityE9: '200000000000000' }); // 200000
+
+      await expect(builder.execute(intent)).rejects.toThrow(/exceeds maximum/);
+    });
+
+    it('throws when quantity is not a multiple of step size', async () => {
+      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
+      // Mock market stepSizeE9 = '1000000' (0.001)
+      const intent = makePlaceOrderIntent({ quantityE9: '1500500' }); // not a multiple
+
+      await expect(builder.execute(intent)).rejects.toThrow(/not a multiple of step size/);
+    });
+
+    it('throws when limit price is not a multiple of tick size', async () => {
+      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
+      // Mock market tickSizeE9 = '100000000' (0.1)
+      const intent = makePlaceOrderIntent({
+        orderType: 'LIMIT',
+        limitPriceE9: '50050000000', // $50.05 — not a multiple of 0.1
+      });
+
+      await expect(builder.execute(intent)).rejects.toThrow(/not a multiple of tick size/);
+    });
+
+    it('accepts limit price that is a valid multiple of tick size', async () => {
+      setupOpenOrdersToMatchPlacedOrder();
+      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
+      // Mock market tickSizeE9 = '100000000' (0.1)
+      const intent = makePlaceOrderIntent({
+        orderType: 'LIMIT',
+        limitPriceE9: '50100000000', // $50.1 — valid multiple of 0.1
+      });
+
+      const result = await builder.execute(intent);
+      expect(result.metadata['priceE9']).toBe('50100000000');
     });
 
     it('throws when WS reports order rejected by exchange', async () => {

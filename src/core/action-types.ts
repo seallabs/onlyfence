@@ -112,11 +112,13 @@ export interface ClaimRewardsIntent extends ActionIntentBase {
 export interface PerpPlaceOrderIntent extends ActionIntentBase {
   readonly action: 'perp:place_order';
   readonly params: {
+    readonly protocol: PerpProtocol;
     readonly marketSymbol: string;
     readonly side: 'LONG' | 'SHORT';
     readonly quantityE9: string;
     readonly orderType: 'MARKET' | 'LIMIT';
-    readonly leverageE9: string;
+    /** When present, it must be less than or equal to market max leverage. Omit to use default leverage. */
+    readonly leverageE9?: string;
     readonly limitPriceE9?: string;
     readonly reduceOnly?: boolean;
     readonly timeInForce?: 'GTT' | 'IOC' | 'FOK';
@@ -130,6 +132,7 @@ export interface PerpPlaceOrderIntent extends ActionIntentBase {
 export interface PerpCancelOrderIntent extends ActionIntentBase {
   readonly action: 'perp:cancel_order';
   readonly params: {
+    readonly protocol: PerpProtocol;
     readonly marketSymbol: string;
     readonly orderHashes?: readonly string[];
   };
@@ -139,10 +142,11 @@ export interface PerpCancelOrderIntent extends ActionIntentBase {
 export interface PerpDepositIntent extends ActionIntentBase {
   readonly action: 'perp:deposit';
   readonly params: {
+    readonly protocol: PerpProtocol;
     readonly coinType: string;
     /** Amount in the token's smallest unit (e.g. 100000 for 0.1 USDC with 6 decimals) */
     readonly amount: string;
-    /** Token decimals — needed to convert from native scale to Bluefin's e9 format */
+    /** Token decimals -- needed to convert from native scale to Bluefin's e9 format */
     readonly decimals: number;
   };
   readonly valueUsd?: number | undefined;
@@ -152,6 +156,7 @@ export interface PerpDepositIntent extends ActionIntentBase {
 export interface PerpWithdrawIntent extends ActionIntentBase {
   readonly action: 'perp:withdraw';
   readonly params: {
+    readonly protocol: PerpProtocol;
     readonly assetSymbol: string;
     readonly amountE9: string;
   };
