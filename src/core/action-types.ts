@@ -219,7 +219,13 @@ export function extractCoinTypes(intent: ActionIntent): string[] {
 }
 
 /** Pipeline result status */
-export type PipelineStatus = 'success' | 'simulated' | 'rejected' | 'simulation_failed' | 'error';
+export type PipelineStatus =
+  | 'success'
+  | 'acknowledged'
+  | 'simulated'
+  | 'rejected'
+  | 'simulation_failed'
+  | 'error';
 
 /** Result returned by executePipeline */
 export interface PipelineResult {

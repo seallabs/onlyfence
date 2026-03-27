@@ -61,11 +61,13 @@ beforeEach(async () => {
   BluefinClient = mod.BluefinClient;
 });
 
+const MOCK_ACCOUNT_ADDRESS = '0xmockaccount';
+
 function makeClient() {
   return new BluefinClient({
     network: 'testnet',
     suiClient: {} as any,
-    keypair: {} as any,
+    keypair: { toSuiAddress: () => MOCK_ACCOUNT_ADDRESS } as any,
   });
 }
 
@@ -100,13 +102,14 @@ describe('BluefinClient', () => {
   });
 
   describe('getAccountDetails', () => {
-    it('returns account data', async () => {
+    it('returns account data and passes account address', async () => {
       const fakeAccount = { balance: '1000000000' };
       mockGetAccountDetails.mockResolvedValue({ data: fakeAccount });
       const client = makeClient();
 
       const result = await client.getAccountDetails();
       expect(result).toEqual(fakeAccount);
+      expect(mockGetAccountDetails).toHaveBeenCalledWith(MOCK_ACCOUNT_ADDRESS);
     });
   });
 

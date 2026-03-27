@@ -21,6 +21,7 @@ import {
 } from '@bluefin-exchange/pro-sdk';
 import type { SuiClient } from '@mysten/sui/client';
 import type { Keypair } from '@mysten/sui/cryptography';
+import { withSuppressedLogs } from '../../../utils/suppress-logs.js';
 
 export type {
   Account,
@@ -55,6 +56,7 @@ export interface BluefinClientConfig {
  */
 export class BluefinClient {
   private readonly sdk: BluefinProSdk;
+  private readonly accountAddress: string;
   private initialized = false;
 
   constructor(config: BluefinClientConfig) {
@@ -69,6 +71,7 @@ export class BluefinClient {
       config.network,
       config.suiClient as unknown as ConstructorParameters<typeof BluefinProSdk>[2],
     );
+    this.accountAddress = config.keypair.toSuiAddress();
   }
 
   /**
@@ -77,7 +80,9 @@ export class BluefinClient {
    */
   private async ensureInitialized(): Promise<void> {
     if (this.initialized) return;
-    await this.sdk.initialize();
+    await withSuppressedLogs(async () => {
+      await this.sdk.initialize();
+    });
     this.initialized = true;
   }
 
@@ -91,7 +96,10 @@ export class BluefinClient {
   /** Get account details (balances, margin, positions). */
   async getAccountDetails(): Promise<Account> {
     await this.ensureInitialized();
-    const response = await this.sdk.accountDataApi.getAccountDetails();
+    // The /account endpoint does not use bearerAuth — it requires accountAddress
+    // as an explicit query parameter (unlike trade/funding endpoints which infer
+    // the account from the JWT).
+    const response = await this.sdk.accountDataApi.getAccountDetails(this.accountAddress);
     return response.data;
   }
 
@@ -99,6 +107,13 @@ export class BluefinClient {
   async getOpenOrders(symbol?: string): Promise<OpenOrderResponse[]> {
     await this.ensureInitialized();
     const response = await this.sdk.getOpenOrders(symbol);
+    return response.data;
+  }
+
+  /** Get standby orders (e.g. stop-loss, take-profit), optionally filtered by market symbol. */
+  async getStandbyOrders(symbol?: string): Promise<OpenOrderResponse[]> {
+    await this.ensureInitialized();
+    const response = await this.sdk.getStandbyOrders(symbol);
     return response.data;
   }
 
@@ -122,7 +137,7 @@ export class BluefinClient {
   /** Place an order on Bluefin Pro. SDK returns `any`, so we cast to the SDK's own response type. */
   async createOrder(params: OrderParams): Promise<CreateOrderResponse> {
     await this.ensureInitialized();
-    return this.sdk.createOrder(params) as Promise<CreateOrderResponse>;
+    return withSuppressedLogs(() => this.sdk.createOrder(params) as Promise<CreateOrderResponse>);
   }
 
   /** Get account preferences including leverage settings per market. */
@@ -278,11 +293,13 @@ export class BluefinClient {
       };
 
       // Phase 1: Connect WS, subscribe to order events, then call onReady
-      this.sdk
-        // eslint-disable-next-line @typescript-eslint/require-await
-        .createAccountDataStreamListener(async (msg) => {
-          handler(msg);
-        })
+      withSuppressedLogs(() =>
+        this.sdk
+          // eslint-disable-next-line @typescript-eslint/require-await
+          .createAccountDataStreamListener(async (msg) => {
+            handler(msg);
+          }),
+      )
         .then(async (socket) => {
           ws = socket;
           if (settled) {
@@ -299,8 +316,15 @@ export class BluefinClient {
               ],
             }),
           );
-          // Phase 2: WS is connected and subscribed — NOW place the order
-          await onReady();
+          // Phase 2: WS is connected and subscribed — NOW place the order.
+          // Errors from onReady (e.g. createOrder 400) must propagate as
+          // order rejections, not as WS connection failures.
+          try {
+            await onReady();
+          } catch (orderErr: unknown) {
+            const msg = orderErr instanceof Error ? orderErr.message : String(orderErr);
+            settle({ status: 'rejected', reason: msg });
+          }
         })
         .catch((err: unknown) => {
           const errMessage = err instanceof Error ? err.message : String(err);
@@ -311,7 +335,9 @@ export class BluefinClient {
 
   /** Dispose the SDK (cleanup). */
   async dispose(): Promise<void> {
-    await this.sdk.dispose();
+    await withSuppressedLogs(async () => {
+      await this.sdk.dispose();
+    });
     this.initialized = false;
   }
 }

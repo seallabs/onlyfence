@@ -14,6 +14,8 @@ export interface PerpMarketInfo {
   readonly stepSizeE9: string;
   readonly defaultLeverageE9: string;
   readonly maxLeverageE9: string;
+  readonly minOrderPriceE9: string;
+  readonly maxOrderPriceE9: string;
   readonly makerFeeE9: string;
   readonly takerFeeE9: string;
 }
@@ -97,6 +99,8 @@ export interface PerpFundingRateEntry {
   readonly symbol: string;
   readonly fundingRateE9: string;
   readonly fundingTimeAtMillis: number;
+  /** Hours between each funding settlement (e.g., 1 for hourly, 8 for 8h). */
+  readonly fundingIntervalHours: number;
 }
 
 /** Standardized account funding payment. */
@@ -132,6 +136,9 @@ export interface PerpProvider {
 
   /** Get open orders, optionally filtered by market. */
   getOpenOrders(symbol?: string): Promise<readonly PerpOpenOrder[]>;
+
+  /** Get standby orders (stop-loss, take-profit), optionally filtered by market. */
+  getStandbyOrders(symbol?: string): Promise<readonly PerpOpenOrder[]>;
 
   /** Get trade history. */
   getTrades(params?: PerpQueryParams & { symbol?: string }): Promise<readonly PerpTrade[]>;

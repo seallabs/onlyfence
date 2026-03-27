@@ -1,6 +1,5 @@
-import type { Logger } from 'pino';
 import type { Command } from 'commander';
-import { toE9 } from '../../utils/bigint.js';
+import type { Logger } from 'pino';
 import { buildSuiSigner } from '../../chain/sui/signer.js';
 import { tryResolveTokenAddress } from '../../chain/sui/tokens.js';
 import type { ActionBuilder } from '../../core/action-builder.js';
@@ -22,6 +21,7 @@ import type { PerpProvider } from '../../core/perp-provider.js';
 import type { PipelineInput } from '../../core/transaction-pipeline.js';
 import { executePipeline } from '../../core/transaction-pipeline.js';
 import type { PolicyContext } from '../../policy/context.js';
+import { toE9 } from '../../utils/bigint.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { loadSessionKeyBytes } from '../../wallet/session.js';
@@ -199,10 +199,12 @@ export function registerPerpCommand(program: Command, getComponents: () => AppCo
   registerWithdrawAction(perp, getComponents);
   registerOrderAction(perp, getComponents);
   registerCancelAction(perp, getComponents);
+  registerCloseAction(perp, getComponents);
 
   // --- Query subcommands ---
   registerPositionsQuery(perp, getComponents);
   registerOrdersQuery(perp, getComponents);
+  registerOrderStatusQuery(perp, getComponents);
   registerMarketsQuery(perp, getComponents);
   registerFundingRateQuery(perp, getComponents);
   registerAccountFundingQuery(perp, getComponents);
@@ -571,6 +573,110 @@ function registerCancelAction(parent: Command, getComponents: () => AppComponent
     );
 }
 
+function registerCloseAction(parent: Command, getComponents: () => AppComponents): void {
+  parent
+    .command('close <market>')
+    .description('Close an open position (fully or partially)')
+    .option('-s, --size <qty>', 'Quantity to close (default: full position)')
+    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(
+      async (
+        market: string,
+        options: {
+          size?: string;
+          chain: Chain;
+          protocol: PerpProtocol;
+        },
+      ) => {
+        const components = withComponents(getComponents);
+        if (components === undefined) return;
+
+        const chain = options.chain;
+        const chainId: ChainId = `${chain}:mainnet`;
+        const protocol = options.protocol;
+        const log = components.logger.child({ command: 'perp-close' });
+
+        try {
+          const provider = resolveProvider(components, protocol);
+          const wallet = getPrimaryWallet(components.db, chainId);
+          if (wallet === null) {
+            throw new Error(
+              `No primary wallet found for chain "${chainId}". Run "fence setup" first.`,
+            );
+          }
+
+          // Resolve market symbol
+          const marketSymbol = await provider.resolveMarket(market);
+
+          // Fetch positions and find the one for this market
+          const positions = await provider.getPositions();
+          const position = positions.find((p) => p.symbol === marketSymbol);
+          if (position === undefined) {
+            throw new Error(`No open position for market "${marketSymbol}"`);
+          }
+
+          // Determine opposite side and quantity
+          const closeSide: 'LONG' | 'SHORT' = position.side === 'LONG' ? 'SHORT' : 'LONG';
+          const closeQuantityE9 = options.size !== undefined ? toE9(options.size) : position.sizeE9;
+
+          // USDC collateral coin type
+          const usdcCoinType = tryResolveTokenAddress('USDC');
+          if (usdcCoinType === undefined) {
+            throw new Error('Cannot resolve USDC coin type from token registry');
+          }
+          const marketCoinType = provider.toMarketCoinType(
+            marketSymbol.split('-')[0] ?? marketSymbol,
+          );
+
+          const intent: PerpPlaceOrderIntent = {
+            chainId,
+            action: 'perp:place_order',
+            walletAddress: wallet.address,
+            params: {
+              protocol,
+              marketSymbol,
+              side: closeSide,
+              quantityE9: closeQuantityE9,
+              orderType: 'MARKET',
+              leverageE9: position.leverageE9,
+              reduceOnly: true,
+              collateralCoinType: usdcCoinType,
+              marketCoinType,
+            },
+          };
+
+          log.info(
+            {
+              market: marketSymbol,
+              side: closeSide,
+              qty: closeQuantityE9,
+              chain,
+              protocol,
+              watchOnly: wallet.isWatchOnly,
+            },
+            'Perp close invoked',
+          );
+
+          const { pipelineInput } = preparePipeline(
+            components,
+            chain,
+            chainId,
+            'perp:place_order',
+            intent,
+          );
+          const result = await executePipeline({ ...pipelineInput, logger: log });
+
+          const output = mapOrderResult(result, intent, protocol);
+          printJsonOutput(output.cliOutput);
+          process.exitCode = output.exitCode;
+        } catch (err: unknown) {
+          handlePipelineError(log, 'perp:place_order', chainId, err, 'Perp close');
+        }
+      },
+    );
+}
+
 // --- Query subcommands ---
 
 function registerPositionsQuery(parent: Command, getComponents: () => AppComponents): void {
@@ -628,6 +734,62 @@ function registerOrdersQuery(parent: Command, getComponents: () => AppComponents
     });
 }
 
+function registerOrderStatusQuery(parent: Command, getComponents: () => AppComponents): void {
+  parent
+    .command('order-status <orderHash>')
+    .description('Check the status of an order by hash')
+    .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
+    .action(async (orderHash: string, options: { protocol: PerpProtocol }) => {
+      const components = withComponents(getComponents);
+      if (components === undefined) return;
+
+      const log = components.logger.child({ command: 'perp-order-status' });
+
+      try {
+        const provider = resolveProvider(components, options.protocol);
+
+        // Check open orders first
+        const openOrders = await provider.getOpenOrders();
+        const openMatch = openOrders.find((o) => o.orderHash === orderHash);
+        if (openMatch !== undefined) {
+          console.log(
+            JSON.stringify(
+              { status: 'success', action: 'order-status', source: 'open', data: openMatch },
+              null,
+              2,
+            ),
+          );
+          return;
+        }
+
+        // Then check standby orders
+        const standbyOrders = await provider.getStandbyOrders();
+        const standbyMatch = standbyOrders.find((o) => o.orderHash === orderHash);
+        if (standbyMatch !== undefined) {
+          console.log(
+            JSON.stringify(
+              {
+                status: 'success',
+                action: 'order-status',
+                source: 'standby',
+                data: standbyMatch,
+              },
+              null,
+              2,
+            ),
+          );
+          return;
+        }
+
+        throw new Error(`Order "${orderHash}" not found in open or standby orders`);
+      } catch (err: unknown) {
+        log.error({ err: toErrorMessage(err) }, 'Failed to fetch order status');
+        console.log(JSON.stringify({ status: 'error', error: toErrorMessage(err) }, null, 2));
+        process.exitCode = 1;
+      }
+    });
+}
+
 function registerMarketsQuery(parent: Command, getComponents: () => AppComponents): void {
   parent
     .command('markets')
@@ -642,8 +804,13 @@ function registerMarketsQuery(parent: Command, getComponents: () => AppComponent
       try {
         const provider = resolveProvider(components, options.protocol);
         const markets = await provider.getMarkets();
+        const enriched = markets.map((m) => ({
+          ...m,
+          makerFeePercent: (Number(m.makerFeeE9) / 1e9) * 100,
+          takerFeePercent: (Number(m.takerFeeE9) / 1e9) * 100,
+        }));
         console.log(
-          JSON.stringify({ status: 'success', action: 'markets', data: markets }, null, 2),
+          JSON.stringify({ status: 'success', action: 'markets', data: enriched }, null, 2),
         );
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Failed to fetch markets');
@@ -692,9 +859,14 @@ function registerFundingRateQuery(parent: Command, getComponents: () => AppCompo
             ...(options.page !== undefined ? { page: parseInt(options.page, 10) } : {}),
           });
 
+          const enriched = entries.map((e) => ({
+            ...e,
+            fundingRateApr: (Number(e.fundingRateE9) / 1e9) * (8760 / e.fundingIntervalHours) * 100,
+          }));
+
           console.log(
             JSON.stringify(
-              { status: 'success', action: 'funding-rate', market: marketSymbol, data: entries },
+              { status: 'success', action: 'funding-rate', market: marketSymbol, data: enriched },
               null,
               2,
             ),
@@ -843,7 +1015,9 @@ function registerAccountQuery(parent: Command, getComponents: () => AppComponent
 
 /** Whether the pipeline completed with a payload-worthy status. */
 function hasPayload(result: PipelineResult): boolean {
-  return result.status === 'success' || result.status === 'simulated';
+  return (
+    result.status === 'success' || result.status === 'acknowledged' || result.status === 'simulated'
+  );
 }
 
 function mapDepositResult(

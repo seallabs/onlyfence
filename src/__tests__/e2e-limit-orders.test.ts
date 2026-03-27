@@ -271,45 +271,6 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
   describe('Group 1: Basic Limit Order Placement', () => {
     it('places SHORT SUI-PERP limit at $5, 5x leverage — full pipeline', async () => {
       mockClient = makeBluefinClient();
-      // Setup: getOpenOrders returns the placed order after placement
-      vi.mocked(mockClient.getOpenOrders).mockResolvedValue([
-        {
-          orderHash: '0xorderhash_test',
-          clientOrderId: '', // Will be matched by builder
-          symbol: 'SUI-PERP',
-          side: 'SHORT',
-          priceE9: toE9('5'),
-          quantityE9: toE9('1'),
-          leverageE9: toE9('5'),
-          type: 'LIMIT',
-          timeInForce: 'GTT',
-          reduceOnly: false,
-          status: 'OPEN',
-          filledQuantityE9: '0',
-        },
-      ] as any);
-      // Make getOpenOrders match the clientOrderId
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const createCalls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (createCalls.length === 0) return [];
-        const params = createCalls[0]![0];
-        return [
-          {
-            orderHash: '0xorderhash_test',
-            clientOrderId: params.clientOrderId,
-            symbol: 'SUI-PERP',
-            side: 'SHORT',
-            priceE9: toE9('5'),
-            quantityE9: toE9('1'),
-            leverageE9: toE9('5'),
-            type: 'LIMIT',
-            timeInForce: 'GTT',
-            reduceOnly: false,
-            status: 'OPEN',
-            filledQuantityE9: '0',
-          },
-        ] as any;
-      });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const intent = makePlaceOrderIntent();
@@ -377,19 +338,6 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
 
     it('places LONG SUI-PERP limit at $0.5, 5x leverage', async () => {
       mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const createCalls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (createCalls.length === 0) return [];
-        return [
-          {
-            orderHash: '0xlong_order',
-            clientOrderId: createCalls[0]![0].clientOrderId,
-            symbol: 'SUI-PERP',
-            side: 'LONG',
-            status: 'OPEN',
-          },
-        ] as any;
-      });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const intent = makePlaceOrderIntent(
@@ -404,7 +352,7 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
 
       expect(result.metadata['side']).toBe('LONG');
       expect(result.metadata['priceE9']).toBe(toE9('0.5'));
-      expect(result.metadata['orderHash']).toBe('0xlong_order');
+      expect(result.metadata['orderHash']).toBe('0xorderhash_test');
 
       // Verify leverage was set
       expect(mockClient.getExchangeInfo).toHaveBeenCalled();
@@ -412,18 +360,6 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
 
     it('places BTC-PERP SHORT limit at $200000 with 10x leverage', async () => {
       mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const createCalls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (createCalls.length === 0) return [];
-        return [
-          {
-            orderHash: '0xbtc_order',
-            clientOrderId: createCalls[0]![0].clientOrderId,
-            symbol: 'BTC-PERP',
-            status: 'OPEN',
-          },
-        ] as any;
-      });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const intent = makePlaceOrderIntent(
@@ -447,7 +383,7 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
           quantityE9: toE9('0.001'),
         }),
       );
-      expect(result.metadata['orderHash']).toBe('0xbtc_order');
+      expect(result.metadata['orderHash']).toBe('0xorderhash_test');
     });
   });
 
@@ -458,13 +394,6 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
   describe('Group 2: Time-in-Force (GTT, IOC, FOK)', () => {
     it('GTT (default) — order remains open on books', async () => {
       mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const calls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (calls.length === 0) return [];
-        return [
-          { orderHash: '0xgtt', clientOrderId: calls[0]![0].clientOrderId, status: 'OPEN' },
-        ] as any;
-      });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const result = await builder.execute(makePlaceOrderIntent());
@@ -473,22 +402,20 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
         expect.objectContaining({ timeInForce: 'GTT' }),
       );
       expect(result.metadata['timeInForce']).toBe('GTT');
-      expect(result.metadata['orderHash']).toBe('0xgtt');
+      expect(result.metadata['orderHash']).toBe('0xorderhash_test');
+      // No HTTP poll — trust WS confirmation
+      expect(mockClient.getOpenOrders).not.toHaveBeenCalled();
     });
 
-    it('IOC — no match, order acknowledged (not in open orders)', async () => {
+    it('IOC — WS confirmed, returns success', async () => {
       mockClient = makeBluefinClient();
-      // IOC at far price won't match; getOpenOrders returns empty (correctly)
-      vi.mocked(mockClient.getOpenOrders).mockResolvedValue([]);
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const intent = makePlaceOrderIntent({ timeInForce: 'IOC' });
       const result = await builder.execute(intent);
 
-      // IOC path: confirmed by WS, not found in orders → acknowledged
-      expect(result.metadata['note']).toBe(
-        'IOC/FOK order processed. Check trade history for fill status.',
-      );
+      // WS confirmed → success, no HTTP poll
+      expect(mockClient.getOpenOrders).not.toHaveBeenCalled();
       expect(result.metadata['orderHash']).toBe('0xorderhash_test');
       expect(result.metadata['timeInForce']).toBe('IOC');
     });
@@ -515,17 +442,16 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
       expect(result.metadata['orderHash']).toBe('0xioc_rej');
     });
 
-    it('FOK — no full fill, order acknowledged', async () => {
+    it('FOK — WS confirmed, returns success', async () => {
       mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockResolvedValue([]);
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const intent = makePlaceOrderIntent({ timeInForce: 'FOK' });
       const result = await builder.execute(intent);
 
-      expect(result.metadata['note']).toBe(
-        'IOC/FOK order processed. Check trade history for fill status.',
-      );
+      // WS confirmed → success, no HTTP poll
+      expect(mockClient.getOpenOrders).not.toHaveBeenCalled();
+      expect(result.metadata['orderHash']).toBe('0xorderhash_test');
       expect(result.metadata['timeInForce']).toBe('FOK');
     });
 
@@ -582,11 +508,6 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
 
     it('leverage=5 at $2 — accepted (margin=$0.40)', async () => {
       mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const calls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (calls.length === 0) return [];
-        return [{ orderHash: '0xlev5', clientOrderId: calls[0]![0].clientOrderId }] as any;
-      });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const intent = makePlaceOrderIntent({
@@ -601,11 +522,6 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
 
     it('leverage=10 at $2 — accepted (margin=$0.20)', async () => {
       mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const calls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (calls.length === 0) return [];
-        return [{ orderHash: '0xlev10', clientOrderId: calls[0]![0].clientOrderId }] as any;
-      });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const intent = makePlaceOrderIntent({
@@ -620,11 +536,6 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
 
     it('leverage=20 at $2 — accepted (margin=$0.10)', async () => {
       mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const calls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (calls.length === 0) return [];
-        return [{ orderHash: '0xlev20', clientOrderId: calls[0]![0].clientOrderId }] as any;
-      });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const intent = makePlaceOrderIntent({
@@ -667,11 +578,6 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
 
     it('reduce-only is passed correctly in metadata', async () => {
       mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const calls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (calls.length === 0) return [];
-        return [{ orderHash: '0xro', clientOrderId: calls[0]![0].clientOrderId }] as any;
-      });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const intent = makePlaceOrderIntent({ reduceOnly: true });
@@ -760,18 +666,14 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   describe('Group 6: WebSocket Confirmation Paths', () => {
-    it('WS confirmed + HTTP verified → success', async () => {
+    it('WS confirmed → success (no HTTP poll)', async () => {
       mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const calls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (calls.length === 0) return [];
-        return [{ orderHash: '0xws_ok', clientOrderId: calls[0]![0].clientOrderId }] as any;
-      });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const result = await builder.execute(makePlaceOrderIntent());
 
-      expect(result.metadata['orderHash']).toBe('0xws_ok');
+      expect(result.metadata['orderHash']).toBe('0xorderhash_test');
+      expect(mockClient.getOpenOrders).not.toHaveBeenCalled();
     });
 
     it('WS rejected — throws with reason', async () => {
@@ -792,7 +694,7 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
       expect(mockClient.getOpenOrders).not.toHaveBeenCalled();
     });
 
-    it('WS timeout + HTTP finds order → success', async () => {
+    it('WS timeout → success with note (no HTTP poll)', async () => {
       mockClient = makeBluefinClient({
         waitForOrderEvent: vi
           .fn()
@@ -800,66 +702,19 @@ describe('E2E: Bluefin Pro Limit Orders (1 USDC wallet)', () => {
             await onReady();
             return { status: 'timeout' as const };
           }),
-      });
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const calls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (calls.length === 0) return [];
-        return [{ orderHash: '0xtimeout_ok', clientOrderId: calls[0]![0].clientOrderId }] as any;
       });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       const result = await builder.execute(makePlaceOrderIntent());
 
-      expect(result.metadata['orderHash']).toBe('0xtimeout_ok');
-    });
-
-    it('WS timeout + HTTP order missing → throws', async () => {
-      mockClient = makeBluefinClient({
-        waitForOrderEvent: vi
-          .fn()
-          .mockImplementation(async (_id: string, onReady: () => Promise<void>) => {
-            await onReady();
-            return { status: 'timeout' as const };
-          }),
-      });
-      vi.mocked(mockClient.getOpenOrders).mockResolvedValue([]);
-
-      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
-      await expect(builder.execute(makePlaceOrderIntent())).rejects.toThrow(
-        'Order rejected by exchange: order not found after placement',
-      );
-    });
-
-    it('WS confirmed + HTTP order missing (async cancel) → throws for GTT', async () => {
-      mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockResolvedValue([]);
-
-      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
-      await expect(builder.execute(makePlaceOrderIntent())).rejects.toThrow(
-        'Order rejected by exchange: order not found after placement',
-      );
-    });
-
-    it('WS confirmed + HTTP order missing for IOC → acknowledged', async () => {
-      mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockResolvedValue([]);
-
-      const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
-      const intent = makePlaceOrderIntent({ timeInForce: 'IOC' });
-      const result = await builder.execute(intent);
-
       expect(result.metadata['note']).toBe(
-        'IOC/FOK order processed. Check trade history for fill status.',
+        'Order submitted but WS confirmation timed out. Verify with: fence perp orders',
       );
+      expect(mockClient.getOpenOrders).not.toHaveBeenCalled();
     });
 
     it('clientOrderId matches between WS and createOrder', async () => {
       mockClient = makeBluefinClient();
-      vi.mocked(mockClient.getOpenOrders).mockImplementation(async () => {
-        const calls = vi.mocked(mockClient.createOrder).mock.calls;
-        if (calls.length === 0) return [];
-        return [{ orderHash: '0x_', clientOrderId: calls[0]![0].clientOrderId }] as any;
-      });
 
       const builder = new BluefinPlaceOrderBuilder(mockClient, mockActivityLog);
       await builder.execute(makePlaceOrderIntent());

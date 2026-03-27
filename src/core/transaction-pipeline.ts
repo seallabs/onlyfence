@@ -7,7 +7,7 @@ import { captureException } from '../telemetry/index.js';
 import type { Signer } from '../types/result.js';
 import { toErrorMessage } from '../utils/index.js';
 import type { ActionBuilder } from './action-builder.js';
-import type { ActionIntent, PipelineResult } from './action-types.js';
+import type { ActionIntent, PipelineResult, PipelineStatus } from './action-types.js';
 import { extractCoinTypes } from './action-types.js';
 import type { DataProvider } from './data-provider.js';
 import type { MevProtector } from './mev-protector.js';
@@ -122,7 +122,15 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
         metadata: result.metadata,
       });
 
-      return { status: 'success', metadata: result.metadata };
+      // Allow off-chain builders to signal a non-success status (e.g. 'acknowledged'
+      // when a WS confirmation timed out but the order was submitted).
+      const statusOverride = result.metadata['_pipelineStatus'];
+      const resolvedStatus: PipelineStatus =
+        typeof statusOverride === 'string' && isValidPipelineStatus(statusOverride)
+          ? statusOverride
+          : 'success';
+
+      return { status: resolvedStatus, metadata: result.metadata };
     }
 
     // Step 3: Build transaction (includes quote fetching)
@@ -216,4 +224,17 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
       error: toErrorMessage(err),
     };
   }
+}
+
+const VALID_PIPELINE_STATUSES: ReadonlySet<string> = new Set<PipelineStatus>([
+  'success',
+  'acknowledged',
+  'simulated',
+  'rejected',
+  'simulation_failed',
+  'error',
+]);
+
+function isValidPipelineStatus(value: string): value is PipelineStatus {
+  return VALID_PIPELINE_STATUSES.has(value);
 }

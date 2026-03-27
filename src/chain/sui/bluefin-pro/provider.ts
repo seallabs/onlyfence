@@ -14,7 +14,7 @@ import type {
 } from '../../../core/perp-provider.js';
 import type { ActivityLog } from '../../../db/activity-log.js';
 import type { CoinMetadataRepository } from '../../../db/coin-metadata-repo.js';
-import type { BluefinClient, Position } from './client.js';
+import type { BluefinClient, OpenOrderResponse, Position } from './client.js';
 import { fetchBluefinMarkets, resolveMarketSymbol, seedSyntheticCoinMetadata } from './markets.js';
 import { syncFills } from './sync.js';
 import { toBluefinCoinType } from './types.js';
@@ -56,20 +56,12 @@ export class BluefinPerpProvider implements PerpProvider {
 
   async getOpenOrders(symbol?: string): Promise<readonly PerpOpenOrder[]> {
     const orders = await this.client.getOpenOrders(symbol);
-    return orders.map((o) => ({
-      orderHash: o.orderHash,
-      clientOrderId: o.clientOrderId,
-      symbol: o.symbol,
-      side: o.side,
-      priceE9: o.priceE9,
-      quantityE9: o.quantityE9,
-      filledQuantityE9: o.filledQuantityE9,
-      leverageE9: o.leverageE9,
-      type: o.type,
-      timeInForce: o.timeInForce,
-      reduceOnly: o.reduceOnly,
-      status: o.status,
-    }));
+    return orders.map(mapOpenOrder);
+  }
+
+  async getStandbyOrders(symbol?: string): Promise<readonly PerpOpenOrder[]> {
+    const orders = await this.client.getStandbyOrders(symbol);
+    return orders.map(mapOpenOrder);
   }
 
   async getTrades(params?: PerpQueryParams & { symbol?: string }): Promise<readonly PerpTrade[]> {
@@ -96,6 +88,7 @@ export class BluefinPerpProvider implements PerpProvider {
       symbol: e.symbol,
       fundingRateE9: e.fundingRateE9,
       fundingTimeAtMillis: e.fundingTimeAtMillis,
+      fundingIntervalHours: 1, // Bluefin Pro settles funding every 1 hour
     }));
   }
 
@@ -167,5 +160,22 @@ function mapPosition(p: Position): PerpPosition {
     unrealizedPnlE9: p.unrealizedPnlE9,
     leverageE9: p.clientSetLeverageE9,
     marginType: p.isIsolated ? 'ISOLATED' : 'CROSS',
+  };
+}
+
+function mapOpenOrder(o: OpenOrderResponse): PerpOpenOrder {
+  return {
+    orderHash: o.orderHash,
+    clientOrderId: o.clientOrderId,
+    symbol: o.symbol,
+    side: o.side,
+    priceE9: o.priceE9,
+    quantityE9: o.quantityE9,
+    filledQuantityE9: o.filledQuantityE9,
+    leverageE9: o.leverageE9,
+    type: o.type,
+    timeInForce: o.timeInForce,
+    reduceOnly: o.reduceOnly,
+    status: o.status,
   };
 }

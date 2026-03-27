@@ -19,6 +19,8 @@ function marketToInfo(market: Market): PerpMarketInfo {
     stepSizeE9: market.stepSizeE9,
     defaultLeverageE9: market.defaultLeverageE9,
     maxLeverageE9: `${maxLeverage}000000000`,
+    minOrderPriceE9: market.minOrderPriceE9,
+    maxOrderPriceE9: market.maxOrderPriceE9,
     makerFeeE9: market.defaultMakerFeeE9,
     takerFeeE9: market.defaultTakerFeeE9,
   };

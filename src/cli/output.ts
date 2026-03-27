@@ -120,6 +120,7 @@ export interface CliOutput<T extends ActionPayload = ActionPayload> {
 /** Exit codes by pipeline status */
 export const EXIT_CODES: Record<PipelineStatus, number> = {
   success: 0,
+  acknowledged: 0,
   simulated: 0,
   rejected: 3,
   simulation_failed: 4,
@@ -147,10 +148,13 @@ export function formatJsonOutput(output: CliOutput): string {
 /**
  * Print a CLI output object to stdout as JSON.
  *
+ * Uses process.stdout.write directly to ensure output always goes to stdout,
+ * even when console.log is temporarily redirected (e.g. during SDK noise suppression).
+ *
  * @param output - The output object to print
  */
 export function printJsonOutput(output: CliOutput): void {
-  console.log(formatJsonOutput(output));
+  process.stdout.write(formatJsonOutput(output) + '\n');
 }
 
 /**

@@ -10,7 +10,7 @@ import type { PerpMarketInfo } from '../../../core/perp-provider.js';
 import type { ActivityLog } from '../../../db/activity-log.js';
 import type { BluefinClient } from './client.js';
 import { fetchBluefinMarkets } from './markets.js';
-import { fromE9, bluefinActivityBase } from './types.js';
+import { bluefinActivityBase, fromE9 } from './types.js';
 
 /** Default order expiry: 30 days in milliseconds. */
 const ORDER_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
@@ -52,7 +52,8 @@ export class BluefinPlaceOrderBuilder implements ActionBuilder<PerpPlaceOrderInt
     }
 
     // ── Validate against market constraints ──────────────────────────────
-    const leverageE9 = this.validateAndResolveLeverage(params, market);
+    const leverageE9 = await this.validateAndResolveLeverage(params, market);
+    // Market orders use price = 0
     const priceE9 = params.orderType === 'MARKET' ? '0' : (params.limitPriceE9 ?? '0');
 
     this.validateQuantity(params.quantityE9, market);
@@ -61,8 +62,21 @@ export class BluefinPlaceOrderBuilder implements ActionBuilder<PerpPlaceOrderInt
     }
     const clientOrderId = uuid();
 
-    // WS connects first, then onReady places the order — ensures we never miss
-    // fast rejection events.
+    return this.executeWithConfirmation(clientOrderId, params, priceE9, leverageE9);
+  }
+
+  /**
+   * Unified execution with WS confirmation for all order types.
+   */
+  private async executeWithConfirmation(
+    clientOrderId: string,
+    params: PerpPlaceOrderIntent['params'],
+    priceE9: string,
+    leverageE9: string,
+  ): Promise<{ metadata: Record<string, unknown> }> {
+    // TIF only apply for LIMIT orders
+    const wireTif = params.orderType === 'MARKET' ? undefined : (params.timeInForce ?? 'GTT');
+
     const confirmation = await this.client.waitForOrderEvent(
       clientOrderId,
       async () => {
@@ -77,16 +91,53 @@ export class BluefinPlaceOrderBuilder implements ActionBuilder<PerpPlaceOrderInt
           isIsolated: false,
           expiresAtMillis: Date.now() + ORDER_EXPIRY_MS,
           reduceOnly: params.reduceOnly ?? false,
-          timeInForce: params.timeInForce ?? 'GTT',
+          timeInForce: wireTif,
         });
       },
       10_000,
     );
 
-    const timeInForce = params.timeInForce ?? 'GTT';
-    const isIocFok = timeInForce === 'IOC' || timeInForce === 'FOK';
+    const baseMetadata = this.buildBaseMetadata(params, priceE9, leverageE9);
 
-    const baseMetadata = {
+    // Rejected: throw with the exchange reason.
+    // IOC/FOK with INSUFFICIENT_LIQUIDITY is expected (no counterparty match).
+    if (confirmation.status === 'rejected') {
+      const isIocFok = wireTif === 'IOC' || wireTif === 'FOK';
+      if (isIocFok && confirmation.reason === 'INSUFFICIENT_LIQUIDITY') {
+        return {
+          metadata: {
+            ...baseMetadata,
+            ...(confirmation.orderHash !== undefined ? { orderHash: confirmation.orderHash } : {}),
+            note: 'IOC/FOK order processed. No counterparty match.',
+          },
+        };
+      }
+      throw new Error(`Order rejected by exchange: ${confirmation.reason ?? 'unknown reason'}`);
+    }
+
+    // Confirmed or timeout: trust the WS result.
+    // No HTTP poll needed — the WS already told us the outcome.
+    // Orders may be OPEN, FILLED, or any confirmed state.
+    return {
+      metadata: {
+        ...baseMetadata,
+        ...(confirmation.orderHash !== undefined ? { orderHash: confirmation.orderHash } : {}),
+        ...(confirmation.status === 'timeout'
+          ? {
+              _pipelineStatus: 'acknowledged' as const,
+              note: 'Order submitted but WS confirmation timed out. Verify with: fence perp orders',
+            }
+          : {}),
+      },
+    };
+  }
+
+  private buildBaseMetadata(
+    params: PerpPlaceOrderIntent['params'],
+    priceE9: string,
+    leverageE9: string,
+  ): Record<string, unknown> {
+    return {
       marketSymbol: params.marketSymbol,
       side: params.side,
       orderType: params.orderType,
@@ -94,62 +145,16 @@ export class BluefinPlaceOrderBuilder implements ActionBuilder<PerpPlaceOrderInt
       priceE9,
       leverageE9,
       reduceOnly: params.reduceOnly ?? false,
-      timeInForce,
+      timeInForce: params.orderType === 'MARKET' ? undefined : (params.timeInForce ?? 'GTT'),
     };
-
-    function iocFokResult(
-      note: string,
-      orderHash: string | undefined,
-    ): { metadata: Record<string, unknown> } {
-      return {
-        metadata: {
-          ...baseMetadata,
-          ...(orderHash !== undefined ? { orderHash } : {}),
-          note,
-        },
-      };
-    }
-
-    // IOC/FOK orders with no counterparty match get INSUFFICIENT_LIQUIDITY
-    // from the exchange — this is expected behavior, not a real rejection.
-    if (confirmation.status === 'rejected') {
-      if (isIocFok && confirmation.reason === 'INSUFFICIENT_LIQUIDITY') {
-        return iocFokResult(
-          'IOC/FOK order processed. No counterparty match.',
-          confirmation.orderHash,
-        );
-      }
-      throw new Error(`Order rejected by exchange: ${confirmation.reason ?? 'unknown reason'}`);
-    }
-
-    // The WS may report OPEN before the exchange async-cancels (e.g.
-    // insufficient margin). Verify via HTTP that the order actually exists.
-    const orders = await this.client.getOpenOrders(params.marketSymbol);
-    const found = orders.find((o) => o.clientOrderId === clientOrderId);
-
-    if (found !== undefined) {
-      return { metadata: { ...baseMetadata, orderHash: found.orderHash } };
-    }
-
-    // IOC/FOK orders are expected to not appear in open orders — they
-    // execute immediately or cancel. If the WS confirmed it, treat as
-    // acknowledged (the fill will show up in trade history).
-    if (isIocFok) {
-      return iocFokResult(
-        'IOC/FOK order processed. Check trade history for fill status.',
-        confirmation.orderHash,
-      );
-    }
-
-    throw new Error('Order rejected by exchange: order not found after placement');
   }
 
   // ── Market constraint validation helpers ──────────────────────────────
 
-  private validateAndResolveLeverage(
+  private async validateAndResolveLeverage(
     params: PerpPlaceOrderIntent['params'],
     market: PerpMarketInfo,
-  ): string {
+  ): Promise<string> {
     if (params.leverageE9 !== undefined) {
       const requested = fromE9(params.leverageE9);
       const max = fromE9(market.maxLeverageE9);
@@ -163,6 +168,14 @@ export class BluefinPlaceOrderBuilder implements ActionBuilder<PerpPlaceOrderInt
       }
       return params.leverageE9;
     }
+
+    // Auto-resolve from existing position if available
+    const account = await this.client.getAccountDetails();
+    const position = account.positions.find((p) => p.symbol === params.marketSymbol);
+    if (position !== undefined) {
+      return position.clientSetLeverageE9;
+    }
+
     return market.defaultLeverageE9;
   }
 
