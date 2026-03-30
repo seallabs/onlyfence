@@ -2,6 +2,7 @@
 sidebar_position: 12
 title: Contributing
 description: How to contribute to OnlyFence — prerequisites, development setup, testing, and pull request guidelines.
+keywords: [contributing, open source, development setup, pull request, OnlyFence development]
 ---
 
 # Contributing

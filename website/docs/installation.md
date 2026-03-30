@@ -2,6 +2,7 @@
 sidebar_position: 2
 title: Installation
 description: Install OnlyFence with one command on macOS or Linux. No account needed — Node.js runtime is bundled.
+keywords: [install OnlyFence, setup, macOS, Linux, CLI install, one-command install, DeFi CLI]
 ---
 
 # Installation

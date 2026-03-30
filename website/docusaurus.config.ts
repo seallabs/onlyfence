@@ -19,6 +19,13 @@ const config: Config = {
 
   onBrokenLinks: 'throw',
 
+  scripts: [
+    {
+      src: '/js/scramble.js',
+      defer: true,
+    },
+  ],
+
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
@@ -26,6 +33,9 @@ const config: Config = {
 
   markdown: {
     mermaid: true,
+    hooks: {
+      onBrokenMarkdownLinks: 'warn',
+    },
   },
 
   themes: ['@docusaurus/theme-mermaid'],
@@ -65,7 +75,24 @@ const config: Config = {
             url: 'https://onlyfence.xyz',
             name: 'OnlyFence',
             description: 'Safe, full-featured DeFi toolkit for AI agents',
-            publisher: {'@id': 'https://onlyfence.xyz/#organization'},
+            publisher: { '@id': 'https://onlyfence.xyz/#organization' },
+          },
+          {
+            '@type': 'SoftwareApplication',
+            '@id': 'https://onlyfence.xyz/#software',
+            name: 'OnlyFence',
+            description: 'Free, open-source DeFi toolkit that gives AI agents safe onchain capabilities with spending limits, token allowlists, and security guardrails.',
+            applicationCategory: 'DeveloperApplication',
+            operatingSystem: 'macOS, Linux',
+            offers: {
+              '@type': 'Offer',
+              price: '0',
+              priceCurrency: 'USD',
+            },
+            license: 'https://www.gnu.org/licenses/gpl-3.0.html',
+            url: 'https://onlyfence.xyz',
+            downloadUrl: 'https://github.com/seallabs/onlyfence',
+            author: { '@id': 'https://onlyfence.xyz/#organization' },
           },
         ],
       }),
@@ -93,12 +120,37 @@ const config: Config = {
           editUrl: 'https://github.com/seallabs/onlyfence/tree/main/website/',
           showLastUpdateTime: true,
         },
-        blog: false,
+        blog: {
+          showReadingTime: true,
+          routeBasePath: 'blog',
+          path: 'blog',
+          blogTitle: 'OnlyFence Blog',
+          blogDescription: 'DeFi security, AI agent trading, and blockchain guardrails — from the OnlyFence team',
+          postsPerPage: 'ALL',
+        },
         theme: {
           customCss: './src/css/custom.css',
         },
         sitemap: {
           lastmod: 'date',
+          changefreq: null,
+          priority: null,
+          createSitemapItems: async (params) => {
+            const { defaultCreateSitemapItems, ...rest } = params;
+            const items = await defaultCreateSitemapItems(rest);
+            return items.map((item) => {
+              if (item.url.match(/\/$/) || item.url.includes('/intro')) {
+                return { ...item, priority: 1.0, changefreq: 'weekly' };
+              }
+              if (item.url.match(/\/(installation|getting-started|cli-reference|agent-integration|actions\/)/)) {
+                return { ...item, priority: 0.8, changefreq: 'weekly' };
+              }
+              if (item.url.match(/\/(changelog|contributing)/)) {
+                return { ...item, priority: 0.3, changefreq: 'monthly' };
+              }
+              return { ...item, priority: 0.5, changefreq: 'weekly' };
+            });
+          },
         },
       } satisfies Preset.Options,
     ],
@@ -109,7 +161,9 @@ const config: Config = {
     metadata: [
       { name: 'author', content: 'Seal Labs' },
       { property: 'og:site_name', content: 'OnlyFence' },
+      { property: 'og:locale', content: 'en_US' },
       { name: 'twitter:card', content: 'summary_large_image' },
+      { name: 'twitter:site', content: '@seallabs' },
     ],
     colorMode: {
       defaultMode: 'dark',
@@ -127,6 +181,11 @@ const config: Config = {
           sidebarId: 'docsSidebar',
           position: 'left',
           label: 'Docs',
+        },
+        {
+          to: '/blog',
+          label: 'Blog',
+          position: 'left',
         },
         {
           to: '/docs/installation',

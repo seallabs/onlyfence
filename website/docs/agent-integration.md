@@ -2,6 +2,7 @@
 sidebar_position: 6
 title: Agent Integration
 description: Connect any AI agent to OnlyFence — Claude, ChatGPT, custom bots, or scripts. Structured JSON output for seamless integration.
+keywords: [AI agent integration, Claude, ChatGPT, JSON output, bot integration, MCP, agent trading]
 ---
 
 # Agent Integration

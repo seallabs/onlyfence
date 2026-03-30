@@ -2,6 +2,7 @@
 sidebar_position: 2
 title: Lending & Borrowing
 description: Supply, withdraw, borrow, and repay tokens on Sui via AlphaLend integration. All lending actions go through OnlyFence safety guardrails.
+keywords: [lending, borrowing, AlphaLend, supply tokens, DeFi lending, Sui lending, yield farming, collateral]
 ---
 
 # Lending & Borrowing
