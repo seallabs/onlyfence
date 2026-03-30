@@ -3,7 +3,12 @@ import type { Logger } from 'pino';
 import { vi } from 'vitest';
 import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import { resolveTokenAddress } from '../chain/sui/tokens.js';
-import type { BorrowIntent, SupplyIntent, SwapIntent } from '../core/action-types.js';
+import type {
+  BorrowIntent,
+  PerpPlaceOrderIntent,
+  SupplyIntent,
+  SwapIntent,
+} from '../core/action-types.js';
 import type { DataProvider, TokenMetadata } from '../core/data-provider.js';
 import type { ActivityRecord } from '../db/activity-log.js';
 import { ActivityLog } from '../db/activity-log.js';
@@ -86,11 +91,16 @@ export function createContext(
   config: ChainConfig,
   db: Database.Database,
   tradeValueUsd?: number,
+  perpFields?: {
+    perpMarketPrice?: number;
+    perpMarketMaxLeverage?: number;
+  },
 ): PolicyContext {
   return {
     config,
     activityLog: new ActivityLog(db),
     ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
+    ...perpFields,
   };
 }
 
@@ -191,5 +201,30 @@ export function createLendingActivityRecord(overrides?: Partial<ActivityRecord>)
     policy_decision: 'approved',
     metadata: { market_id: '1' },
     ...overrides,
+  };
+}
+
+/**
+ * Create a PerpPlaceOrderIntent with sensible defaults, overridable via partial.
+ */
+export function createPerpPlaceOrderIntent(
+  overrides?: Partial<PerpPlaceOrderIntent['params']>,
+): PerpPlaceOrderIntent {
+  return {
+    action: 'perp:place_order',
+    chainId: SUI_CHAIN_ID,
+    walletAddress: '0x' + 'a'.repeat(64),
+    params: {
+      protocol: 'bluefin_pro',
+      marketSymbol: 'SUI-PERP',
+      side: 'LONG',
+      quantityE9: '1000000000',
+      orderType: 'LIMIT',
+      limitPriceE9: '5000000000',
+      leverageE9: '5000000000',
+      collateralCoinType: '0xusdc::usdc::USDC',
+      marketCoinType: '0xbf1bef::bluefin_pro::SUI',
+      ...overrides,
+    },
   };
 }

@@ -74,6 +74,8 @@ export interface ActivityRow {
  */
 export interface ActivityLogReader {
   getRolling24hVolume(chainId: ChainId): number;
+  getRolling24hPerpVolume(chainId: ChainId): number;
+  getRolling24hPerpWithdrawals(chainId: ChainId): number;
 }
 
 /**
@@ -86,6 +88,8 @@ export interface ActivityLogReader {
 export class ActivityLog implements ActivityLogReader {
   private readonly insertStmt: Statement;
   private readonly rolling24hStmt: Statement;
+  private readonly rolling24hPerpVolumeStmt: Statement;
+  private readonly rolling24hPerpWithdrawStmt: Statement;
   private readonly recentStmt: Statement;
   private readonly recentByCategoryStmt: Statement;
   private readonly countStmt: Statement;
@@ -119,6 +123,20 @@ export class ActivityLog implements ActivityLogReader {
         AND created_at > datetime('now', '-24 hours')
         AND policy_decision = 'approved'
         AND action = 'trade:swap'
+    `);
+
+    this.rolling24hPerpVolumeStmt = db.prepare(`
+      SELECT COALESCE(SUM(value_usd), 0) as total FROM activities
+      WHERE chain_id = ? AND action = 'perp:place_order'
+      AND policy_decision = 'approved'
+      AND created_at > datetime('now', '-24 hours')
+    `);
+
+    this.rolling24hPerpWithdrawStmt = db.prepare(`
+      SELECT COALESCE(SUM(value_usd), 0) as total FROM activities
+      WHERE chain_id = ? AND action = 'perp:withdraw'
+      AND policy_decision = 'approved'
+      AND created_at > datetime('now', '-24 hours')
     `);
 
     const selectWithJoin = `
@@ -197,6 +215,22 @@ export class ActivityLog implements ActivityLogReader {
    */
   getRolling24hVolume(chainId: ChainId): number {
     const row = this.rolling24hStmt.get(chainId) as { total: number } | undefined;
+    return row?.total ?? 0;
+  }
+
+  /**
+   * Get the rolling 24-hour approved perp order volume in USD for a given chain.
+   */
+  getRolling24hPerpVolume(chainId: ChainId): number {
+    const row = this.rolling24hPerpVolumeStmt.get(chainId) as { total: number } | undefined;
+    return row?.total ?? 0;
+  }
+
+  /**
+   * Get the rolling 24-hour approved perp withdrawal volume in USD for a given chain.
+   */
+  getRolling24hPerpWithdrawals(chainId: ChainId): number {
+    const row = this.rolling24hPerpWithdrawStmt.get(chainId) as { total: number } | undefined;
     return row?.total ?? 0;
   }
 

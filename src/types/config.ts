@@ -36,6 +36,18 @@ export interface ProtocolAllowlistConfig {
 }
 
 /**
+ * Perpetual futures guardrail configuration for a chain.
+ * All numeric limits are in USD unless noted.
+ */
+export interface PerpConfig {
+  readonly allowlist_markets?: readonly string[];
+  readonly max_leverage?: number;
+  readonly max_single_order?: number;
+  readonly max_24h_volume?: number;
+  readonly max_24h_withdraw?: number;
+}
+
+/**
  * Circuit breaker configuration (post-MVP).
  */
 export interface CircuitBreakerConfig {
@@ -75,6 +87,9 @@ export interface ChainConfig {
 
   /** Frequency limit settings (post-MVP) */
   readonly frequency_limit?: FrequencyLimitConfig;
+
+  /** Perpetual futures guardrails */
+  readonly perp?: PerpConfig;
 }
 
 /**
@@ -112,6 +127,18 @@ export interface SecurityConfig {
 
   /** Maximum allowed value for max_24h_volume (default: 100000) */
   readonly max_24h_volume_ceiling?: number;
+
+  /** Maximum allowed value for perp max_leverage (default: 100) */
+  readonly max_perp_leverage_ceiling?: number;
+
+  /** Maximum allowed value for perp max_single_order (default: 100000) */
+  readonly max_perp_single_order_ceiling?: number;
+
+  /** Maximum allowed value for perp max_24h_volume (default: 1000000) */
+  readonly max_perp_24h_volume_ceiling?: number;
+
+  /** Maximum allowed value for perp max_24h_withdraw (default: 100000) */
+  readonly max_perp_24h_withdraw_ceiling?: number;
 }
 
 /**

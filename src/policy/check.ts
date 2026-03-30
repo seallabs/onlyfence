@@ -7,6 +7,14 @@ import type { PolicyContext } from './context.js';
  */
 export const REJECTED_BY_KEY = 'rejectedBy' as const;
 
+/** Pre-built pass result to avoid repeated object creation. */
+export const POLICY_PASS: CheckResult = { status: 'pass' };
+
+/** Pass result indicating the check was skipped (e.g., price unavailable). */
+export function policyPassSkipped(reason: string): CheckResult {
+  return { status: 'pass', metadata: { skipped: true, reason } };
+}
+
 /**
  * Interface for a single policy check in the evaluation pipeline.
  *

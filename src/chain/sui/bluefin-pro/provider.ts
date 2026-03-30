@@ -17,7 +17,7 @@ import type { CoinMetadataRepository } from '../../../db/coin-metadata-repo.js';
 import type { BluefinClient, OpenOrderResponse, Position } from './client.js';
 import { fetchBluefinMarkets, resolveMarketSymbol, seedSyntheticCoinMetadata } from './markets.js';
 import { syncFills } from './sync.js';
-import { toBluefinCoinType } from './types.js';
+import { fromE9, toBluefinCoinType } from './types.js';
 
 /**
  * Bluefin Pro implementation of the PerpProvider interface.
@@ -29,6 +29,11 @@ export class BluefinPerpProvider implements PerpProvider {
   private static readonly MARKETS_CACHE_TTL_MS = 30_000;
 
   constructor(private readonly client: BluefinClient) {}
+
+  async getTickerPrice(marketSymbol: string): Promise<number> {
+    const ticker = await this.client.getMarketTicker(marketSymbol);
+    return fromE9(ticker.lastPriceE9);
+  }
 
   async getMarkets(): Promise<PerpMarketInfo[]> {
     if (this.marketsCache !== undefined && Date.now() < this.marketsCache.expiresAt) {

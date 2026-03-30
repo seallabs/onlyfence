@@ -60,38 +60,42 @@ export class DaemonExecutor {
     const dataProvider = this.components.dataProviders.get(chain as 'sui');
     const deps = buildResolverDeps(chainAdapter, dataProvider, walletAddress, this.components);
     const resolver = this.components.intentResolverRegistry.get(rawIntent.action);
-    const { intent: resolvedIntent, tradeValueUsd } = await resolver.resolve(rawIntent, deps);
+    const resolved = await resolver.resolve(rawIntent, deps);
 
     // Get signer from daemon's KeyHolder (pre-decrypted keys in memory)
     const signer = this.keyHolder.getSigner(rawIntent.chainId);
 
-    // Execute through the shared pipeline, using InMemoryTradeWindow for policy
+    // Execute through the shared pipeline, using InMemoryTradeWindow for policy.
+    // Perp resolvers return perpMarketPrice/perpMarketMaxLeverage alongside the intent,
+    // so we don't need a separate API call to resolve perp policy context.
     const result = await executeWithPipeline({
-      resolvedIntent,
+      resolvedIntent: resolved.intent,
       components: this.components,
       signer,
       watchOnly: false,
-      tradeValueUsd,
+      tradeValueUsd: resolved.tradeValueUsd,
       logger: log,
       activityLogOverride: this.tradeWindow,
       configOverride: this.configSnapshot.current,
+      perpMarketPrice: resolved.perpMarketPrice,
+      perpMarketMaxLeverage: resolved.perpMarketMaxLeverage,
     });
 
     // Record in in-memory trade window for spending limit tracking
-    if (result.status === 'success' && tradeValueUsd !== undefined) {
-      this.tradeWindow.record(rawIntent.chainId, tradeValueUsd);
+    if (result.status === 'success' && resolved.tradeValueUsd !== undefined) {
+      this.tradeWindow.record(rawIntent.chainId, resolved.tradeValueUsd, rawIntent.action);
     }
 
     // Persist to SQLite for activity history
     if (result.status === 'success' || result.status === 'rejected') {
-      this.logActivity(resolvedIntent, walletAddress, tradeValueUsd, result, log);
+      this.logActivity(resolved.intent, walletAddress, resolved.tradeValueUsd, result, log);
     }
 
     return {
       result,
-      resolvedIntent,
+      resolvedIntent: resolved.intent,
       walletAddress,
-      ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
+      ...(resolved.tradeValueUsd !== undefined ? { tradeValueUsd: resolved.tradeValueUsd } : {}),
     };
   }
 

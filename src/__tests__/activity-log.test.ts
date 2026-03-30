@@ -583,6 +583,48 @@ describe('ActivityLog', () => {
     });
   });
 
+  describe('perp volume queries', () => {
+    it('getRolling24hPerpVolume returns sum of approved perp:place_order value_usd', () => {
+      log.logActivity({
+        chain_id: 'sui:mainnet',
+        wallet_address: '0xabc',
+        action: 'perp:place_order',
+        policy_decision: 'approved',
+        value_usd: 100,
+      });
+      log.logActivity({
+        chain_id: 'sui:mainnet',
+        wallet_address: '0xabc',
+        action: 'perp:place_order',
+        policy_decision: 'approved',
+        value_usd: 200,
+      });
+      expect(log.getRolling24hPerpVolume('sui:mainnet' as any)).toBe(300);
+    });
+
+    it('getRolling24hPerpVolume excludes rejected orders', () => {
+      log.logActivity({
+        chain_id: 'sui:mainnet',
+        wallet_address: '0xabc',
+        action: 'perp:place_order',
+        policy_decision: 'rejected',
+        value_usd: 500,
+      });
+      expect(log.getRolling24hPerpVolume('sui:mainnet' as any)).toBe(0);
+    });
+
+    it('getRolling24hPerpWithdrawals returns sum of approved perp:withdraw value_usd', () => {
+      log.logActivity({
+        chain_id: 'sui:mainnet',
+        wallet_address: '0xabc',
+        action: 'perp:withdraw',
+        policy_decision: 'approved',
+        value_usd: 50,
+      });
+      expect(log.getRolling24hPerpWithdrawals('sui:mainnet' as any)).toBe(50);
+    });
+  });
+
   describe('data migration', () => {
     it('migrates trades to activities with correct field mapping', () => {
       createLegacyTables(db);

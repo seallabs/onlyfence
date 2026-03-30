@@ -122,6 +122,9 @@ export interface PerpFundingPayment {
 export interface PerpProvider {
   readonly protocol: PerpProtocol;
 
+  /** Get the last traded price for a market from the exchange ticker. */
+  getTickerPrice(marketSymbol: string): Promise<number>;
+
   /** Get all available markets. */
   getMarkets(): Promise<PerpMarketInfo[]>;
 

@@ -432,7 +432,26 @@ describe('Order status lookup', () => {
 });
 
 // ===================================================================
-// 5. Auto-resolve leverage from existing position
+// 5. getTickerPrice
+// ===================================================================
+
+describe('BluefinPerpProvider.getTickerPrice', () => {
+  it('getTickerPrice returns last price from exchange ticker', async () => {
+    const { BluefinPerpProvider } = await import('../chain/sui/bluefin-pro/provider.js');
+    const mockClient = createMockBluefinClient({
+      getMarketTicker: vi.fn().mockResolvedValue({
+        lastPriceE9: '3800000000',
+        markPriceE9: '3800000000',
+      }),
+    });
+    const provider = new BluefinPerpProvider(mockClient);
+    const price = await provider.getTickerPrice('SUI-PERP');
+    expect(price).toBe(3.8);
+  });
+});
+
+// ===================================================================
+// 6. Auto-resolve leverage from existing position
 // ===================================================================
 
 describe('Auto-resolve leverage from existing position', () => {

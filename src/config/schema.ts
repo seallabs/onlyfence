@@ -4,6 +4,7 @@ import type {
   ChainConfig,
   GlobalConfig,
   LimitsConfig,
+  PerpConfig,
   SecurityConfig,
   TelemetryConfig,
   UpdateConfig,
@@ -46,10 +47,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export const DEFAULT_MAX_SINGLE_TRADE_CEILING = 10_000;
 export const DEFAULT_MAX_24H_VOLUME_CEILING = 100_000;
 
+export const DEFAULT_MAX_PERP_LEVERAGE_CEILING = 100;
+export const DEFAULT_MAX_PERP_SINGLE_ORDER_CEILING = 100_000;
+export const DEFAULT_MAX_PERP_24H_VOLUME_CEILING = 1_000_000;
+export const DEFAULT_MAX_PERP_24H_WITHDRAW_CEILING = 100_000;
+
 /** Upper bounds passed through validation to cap per-chain limits. */
 interface LimitCeilings {
   readonly tradeCeiling: number;
   readonly volumeCeiling: number;
+  readonly perpLeverageCeiling: number;
+  readonly perpSingleOrderCeiling: number;
+  readonly perp24hVolumeCeiling: number;
+  readonly perp24hWithdrawCeiling: number;
 }
 
 /**
@@ -109,6 +119,14 @@ export function validateConfig(raw: unknown): AppConfig {
   const ceilings: LimitCeilings = {
     tradeCeiling: validatedSecurity?.max_single_trade_ceiling ?? DEFAULT_MAX_SINGLE_TRADE_CEILING,
     volumeCeiling: validatedSecurity?.max_24h_volume_ceiling ?? DEFAULT_MAX_24H_VOLUME_CEILING,
+    perpLeverageCeiling:
+      validatedSecurity?.max_perp_leverage_ceiling ?? DEFAULT_MAX_PERP_LEVERAGE_CEILING,
+    perpSingleOrderCeiling:
+      validatedSecurity?.max_perp_single_order_ceiling ?? DEFAULT_MAX_PERP_SINGLE_ORDER_CEILING,
+    perp24hVolumeCeiling:
+      validatedSecurity?.max_perp_24h_volume_ceiling ?? DEFAULT_MAX_PERP_24H_VOLUME_CEILING,
+    perp24hWithdrawCeiling:
+      validatedSecurity?.max_perp_24h_withdraw_ceiling ?? DEFAULT_MAX_PERP_24H_WITHDRAW_CEILING,
   };
 
   if (!isRecord(raw['chain'])) {
@@ -162,6 +180,9 @@ function validateChainConfig(raw: unknown, path: string, ceilings: LimitCeilings
       : {}),
     ...(raw['limits'] !== undefined
       ? { limits: validateLimits(raw['limits'], `${path}.limits`, ceilings) }
+      : {}),
+    ...(raw['perp'] !== undefined
+      ? { perp: validatePerpConfig(raw['perp'], `${path}.perp`, ceilings) }
       : {}),
   };
 }
@@ -263,25 +284,159 @@ function validateLimits(
   };
 }
 
-function validateSecurityConfig(raw: Record<string, unknown>): SecurityConfig {
-  const tradeCeiling = raw['max_single_trade_ceiling'];
-  if (tradeCeiling !== undefined && (typeof tradeCeiling !== 'number' || tradeCeiling <= 0)) {
-    throw new ConfigValidationError(
-      '"max_single_trade_ceiling" must be a positive number if present',
-      'security.max_single_trade_ceiling',
-    );
+function validatePerpConfig(raw: unknown, path: string, ceilings: LimitCeilings): PerpConfig {
+  if (!isRecord(raw)) {
+    throw new ConfigValidationError('Perp config must be an object', path);
   }
 
-  const volumeCeiling = raw['max_24h_volume_ceiling'];
-  if (volumeCeiling !== undefined && (typeof volumeCeiling !== 'number' || volumeCeiling <= 0)) {
+  // allowlist_markets
+  let allowlistMarkets: readonly string[] | undefined;
+  if (raw['allowlist_markets'] !== undefined) {
+    if (!Array.isArray(raw['allowlist_markets'])) {
+      throw new ConfigValidationError(
+        '"allowlist_markets" must be an array',
+        `${path}.allowlist_markets`,
+      );
+    }
+    const seen = new Set<string>();
+    for (const m of raw['allowlist_markets']) {
+      if (typeof m !== 'string' || m.length === 0) {
+        throw new ConfigValidationError(
+          'Each entry in "allowlist_markets" must be a non-empty string',
+          `${path}.allowlist_markets`,
+        );
+      }
+      if (seen.has(m)) {
+        throw new ConfigValidationError(
+          `Duplicate entry "${m}" in "allowlist_markets"`,
+          `${path}.allowlist_markets`,
+        );
+      }
+      seen.add(m);
+    }
+    allowlistMarkets = raw['allowlist_markets'] as readonly string[];
+  }
+
+  // max_leverage has a special minimum of 1 instead of > 0
+  let maxLeverage: number | undefined;
+  if (raw['max_leverage'] !== undefined) {
+    if (typeof raw['max_leverage'] !== 'number' || raw['max_leverage'] < 1) {
+      throw new ConfigValidationError(
+        '"max_leverage" must be a number >= 1',
+        `${path}.max_leverage`,
+      );
+    }
+    if (raw['max_leverage'] > ceilings.perpLeverageCeiling) {
+      throw new ConfigValidationError(
+        `"max_leverage" (${String(raw['max_leverage'])}) exceeds the safety ceiling of ${String(ceilings.perpLeverageCeiling)}. ` +
+          `To raise the ceiling, set security.max_perp_leverage_ceiling in config.toml.`,
+        `${path}.max_leverage`,
+      );
+    }
+    maxLeverage = raw['max_leverage'];
+  }
+
+  const maxSingleOrder = validateOptionalPositiveCeilingField(
+    raw,
+    'max_single_order',
+    path,
+    ceilings.perpSingleOrderCeiling,
+    'security.max_perp_single_order_ceiling',
+  );
+  const max24hVolume = validateOptionalPositiveCeilingField(
+    raw,
+    'max_24h_volume',
+    path,
+    ceilings.perp24hVolumeCeiling,
+    'security.max_perp_24h_volume_ceiling',
+  );
+  const max24hWithdraw = validateOptionalPositiveCeilingField(
+    raw,
+    'max_24h_withdraw',
+    path,
+    ceilings.perp24hWithdrawCeiling,
+    'security.max_perp_24h_withdraw_ceiling',
+  );
+
+  return {
+    ...(allowlistMarkets !== undefined ? { allowlist_markets: allowlistMarkets } : {}),
+    ...(maxLeverage !== undefined ? { max_leverage: maxLeverage } : {}),
+    ...(maxSingleOrder !== undefined ? { max_single_order: maxSingleOrder } : {}),
+    ...(max24hVolume !== undefined ? { max_24h_volume: max24hVolume } : {}),
+    ...(max24hWithdraw !== undefined ? { max_24h_withdraw: max24hWithdraw } : {}),
+  };
+}
+
+function validateOptionalPositiveCeilingField(
+  raw: Record<string, unknown>,
+  field: string,
+  path: string,
+  ceiling: number,
+  ceilingConfigKey: string,
+): number | undefined {
+  const value = raw[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || value <= 0) {
+    throw new ConfigValidationError(`"${field}" must be a positive number`, `${path}.${field}`);
+  }
+  if (value > ceiling) {
     throw new ConfigValidationError(
-      '"max_24h_volume_ceiling" must be a positive number if present',
-      'security.max_24h_volume_ceiling',
+      `"${field}" (${String(value)}) exceeds the safety ceiling of ${String(ceiling)}. ` +
+        `To raise the ceiling, set ${ceilingConfigKey} in config.toml.`,
+      `${path}.${field}`,
     );
   }
+  return value;
+}
+
+function validateOptionalPositiveNumber(
+  raw: Record<string, unknown>,
+  field: string,
+  path: string,
+): number | undefined {
+  const value = raw[field];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || value <= 0) {
+    throw new ConfigValidationError(
+      `"${field}" must be a positive number if present`,
+      `${path}.${field}`,
+    );
+  }
+  return value;
+}
+
+function validateSecurityConfig(raw: Record<string, unknown>): SecurityConfig {
+  const tradeCeiling = validateOptionalPositiveNumber(raw, 'max_single_trade_ceiling', 'security');
+  const volumeCeiling = validateOptionalPositiveNumber(raw, 'max_24h_volume_ceiling', 'security');
+  const perpLevCeiling = validateOptionalPositiveNumber(
+    raw,
+    'max_perp_leverage_ceiling',
+    'security',
+  );
+  const perpOrderCeiling = validateOptionalPositiveNumber(
+    raw,
+    'max_perp_single_order_ceiling',
+    'security',
+  );
+  const perpVolCeiling = validateOptionalPositiveNumber(
+    raw,
+    'max_perp_24h_volume_ceiling',
+    'security',
+  );
+  const perpWithdrawCeiling = validateOptionalPositiveNumber(
+    raw,
+    'max_perp_24h_withdraw_ceiling',
+    'security',
+  );
 
   return {
     ...(tradeCeiling !== undefined ? { max_single_trade_ceiling: tradeCeiling } : {}),
     ...(volumeCeiling !== undefined ? { max_24h_volume_ceiling: volumeCeiling } : {}),
+    ...(perpLevCeiling !== undefined ? { max_perp_leverage_ceiling: perpLevCeiling } : {}),
+    ...(perpOrderCeiling !== undefined ? { max_perp_single_order_ceiling: perpOrderCeiling } : {}),
+    ...(perpVolCeiling !== undefined ? { max_perp_24h_volume_ceiling: perpVolCeiling } : {}),
+    ...(perpWithdrawCeiling !== undefined
+      ? { max_perp_24h_withdraw_ceiling: perpWithdrawCeiling }
+      : {}),
   };
 }

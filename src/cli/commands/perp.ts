@@ -1,11 +1,5 @@
 import type { Command } from 'commander';
-import type { Logger } from 'pino';
-import { buildSuiSigner } from '../../chain/sui/signer.js';
-import { tryResolveTokenAddress } from '../../chain/sui/tokens.js';
-import type { ActionBuilder } from '../../core/action-builder.js';
 import type {
-  ActionIntent,
-  ActionIntentBase,
   ActivityAction,
   Chain,
   ChainId,
@@ -14,18 +8,13 @@ import type {
   PerpPlaceOrderIntent,
   PerpProtocol,
   PerpWithdrawIntent,
-  PipelineResult,
 } from '../../core/action-types.js';
-import { NoOpMevProtector } from '../../core/mev-protector.js';
+import { createActionExecutor, type ExecutionResult } from '../../core/action-executor.js';
 import type { PerpProvider } from '../../core/perp-provider.js';
-import type { PipelineInput } from '../../core/transaction-pipeline.js';
-import { executePipeline } from '../../core/transaction-pipeline.js';
-import type { PolicyContext } from '../../policy/context.js';
 import { captureException } from '../../telemetry/index.js';
 import { toE9 } from '../../utils/bigint.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
-import { loadSessionKeyBytes } from '../../wallet/session.js';
 import type { AppComponents } from '../bootstrap.js';
 import type {
   ActionPayload,
@@ -37,17 +26,13 @@ import type {
   PerpWithdrawOutput,
 } from '../output.js';
 import { EXIT_CODES, handleCommandError, printJsonOutput } from '../output.js';
-import { resolveTokenInput } from '../resolve.js';
 import { withComponents } from '../with-components.js';
-
-/** Shared fallback MEV protector for chains without a registered protector. */
-const FALLBACK_MEV_PROTECTOR = new NoOpMevProtector();
 
 /** Default perp protocol when --protocol is not specified. */
 const DEFAULT_PROTOCOL: PerpProtocol = 'bluefin_pro';
 
 // ---------------------------------------------------------------------------
-// Shared helpers for transactional subcommands
+// Shared helpers
 // ---------------------------------------------------------------------------
 
 /**
@@ -58,66 +43,19 @@ function resolveProvider(components: AppComponents, protocol: PerpProtocol): Per
 }
 
 /**
- * Prepare the common pipeline dependencies shared by all perp transactional
- * commands: wallet lookup, signer, builder, MEV protector.
+ * Write a successful query result to stdout.
  */
-function preparePipeline(
-  components: AppComponents,
-  chain: Chain,
-  chainId: ChainId,
-  action: ActivityAction,
-  intent: ActionIntent,
-): {
-  watchOnly: boolean;
-  pipelineInput: Omit<PipelineInput, 'logger'>;
-} {
-  const {
-    db,
-    config,
-    policyRegistry,
-    activityLog,
-    chainAdapterFactory,
-    actionBuilderRegistry,
-    mevProtectors,
-  } = components;
-
-  const wallet = getPrimaryWallet(db, chainId);
-  if (wallet === null) {
-    throw new Error(`No primary wallet found for chain "${chainId}". Run "fence setup" first.`);
-  }
-
-  const watchOnly = wallet.isWatchOnly;
-  const signer = watchOnly ? undefined : buildSuiSigner(loadSessionKeyBytes(chainId));
-  const chainAdapter = chainAdapterFactory.get(chain);
-  const builder = actionBuilderRegistry.getDefault(chain, action, intent);
-  const mevProtector = mevProtectors.get(chain) ?? FALLBACK_MEV_PROTECTOR;
-
-  const chainConfig = config.chain[chain];
-  const policyCtx: PolicyContext = {
-    config: chainConfig,
-    activityLog,
-  };
-
-  return {
-    watchOnly,
-    pipelineInput: {
-      intent,
-      builder,
-      chainAdapter,
-      policyRegistry,
-      policyContext: policyCtx,
-      mevProtector,
-      ...(signer !== undefined ? { signer } : {}),
-      watchOnly,
-    },
-  };
+function writeQueryResult(action: string, data: unknown, extra?: Record<string, unknown>): void {
+  process.stdout.write(
+    JSON.stringify({ status: 'success', action, data, ...extra }, null, 2) + '\n',
+  );
 }
 
 /**
  * Handle a query subcommand error: log, write JSON error to stdout, set exit code.
  */
 function handleQueryError(
-  log: Logger,
+  log: { error: (obj: Record<string, unknown>, msg: string) => void },
   label: string,
   err: unknown,
   enrichFn?: (msg: string) => string,
@@ -129,20 +67,21 @@ function handleQueryError(
 }
 
 /**
- * Build the common CliOutput base from a PipelineResult and intent,
+ * Build the common CliOutput base from an ExecutionResult,
  * reducing repetition across the per-action result mappers.
  */
 function buildCliOutputBase(
-  result: PipelineResult,
+  execResult: ExecutionResult,
   action: ActivityAction,
-  intent: ActionIntentBase,
   protocol: PerpProtocol,
 ): Omit<CliOutput, 'payload'> {
+  const { pipelineResult: result, walletAddress } = execResult;
+  const intent = execResult.resolvedIntent;
   return {
     status: result.status,
     action,
     chainId: intent.chainId,
-    address: intent.walletAddress,
+    address: walletAddress,
     gasUsed: result.gasUsed,
     txDigest: result.txDigest,
     protocol,
@@ -153,37 +92,41 @@ function buildCliOutputBase(
 }
 
 /**
- * Map a PipelineResult to a MappedOutput with an optional payload.
+ * Map an ExecutionResult to a MappedOutput with an optional payload.
  */
 function toMappedOutput<T extends ActionPayload>(
-  result: PipelineResult,
+  execResult: ExecutionResult,
   action: ActivityAction,
-  intent: ActionIntentBase,
   protocol: PerpProtocol,
   payload: T | undefined,
 ): MappedOutput<T> {
   return {
     cliOutput: {
-      ...buildCliOutputBase(result, action, intent, protocol),
+      ...buildCliOutputBase(execResult, action, protocol),
       ...(payload !== undefined ? { payload } : {}),
     },
-    exitCode: EXIT_CODES[result.status],
+    exitCode: EXIT_CODES[execResult.pipelineResult.status],
   };
 }
+
+/** Whether the pipeline completed with a payload-worthy status. */
+function hasPayload(execResult: ExecutionResult): boolean {
+  const s = execResult.pipelineResult.status;
+  return s === 'success' || s === 'acknowledged' || s === 'simulated';
+}
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
 
 /**
  * Register the `fence perp` command group on the given program.
  *
- * Subcommands:
- *   deposit <amount>                    -- Deposit USDC to perp margin bank
- *   withdraw <amount>                   -- Withdraw USDC from margin bank
- *   order <market> <side> <qty>         -- Place a perp order
- *   cancel <market>                     -- Cancel orders
- *   positions                           -- Query open positions
- *   orders                              -- Query open orders
- *   markets                             -- List available markets
- *   sync                                -- Sync fills from API
- *   account                             -- Show account summary
+ * Transactional subcommands are thin shells: parse args → build raw intent →
+ * delegate to ActionExecutor → map result to CLI output.
+ *
+ * Execution mode (in-process vs daemon) is handled transparently
+ * by the executor — commands have zero awareness of it.
  */
 export function registerPerpCommand(program: Command, getComponents: () => AppComponents): void {
   const perp = program.command('perp').description('Perpetual futures operations');
@@ -206,7 +149,9 @@ export function registerPerpCommand(program: Command, getComponents: () => AppCo
   registerAccountQuery(perp, getComponents);
 }
 
-// --- Transactional subcommands ---
+// ---------------------------------------------------------------------------
+// Transactional subcommands
+// ---------------------------------------------------------------------------
 
 function registerDepositAction(parent: Command, getComponents: () => AppComponents): void {
   parent
@@ -215,86 +160,28 @@ function registerDepositAction(parent: Command, getComponents: () => AppComponen
     .option('-c, --chain <chain>', 'Target chain', 'sui')
     .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
     .action(async (amountStr: string, options: { chain: Chain; protocol: PerpProtocol }) => {
-      const components = withComponents(getComponents);
-      if (components === undefined) return;
-
       const chain = options.chain;
       const chainId: ChainId = `${chain}:mainnet`;
       const protocol = options.protocol;
-      const log = components.logger.child({ command: 'perp-deposit' });
 
       try {
-        const chainAdapter = components.chainAdapterFactory.get(chain);
-        const dataProvider = components.dataProviders.get(chain);
+        const executor = createActionExecutor(getComponents);
 
-        // Resolve USDC token input
-        const resolved = await resolveTokenInput('USDC', amountStr, chainAdapter, dataProvider);
-
-        // Get USD value
-        const valueUsd = await dataProvider
-          .getPrice(resolved.coinType)
-          .then((price) => parseFloat(amountStr) * price)
-          .catch((err: unknown) => {
-            log.warn({ error: toErrorMessage(err) }, 'Price unavailable for deposit');
-            return undefined;
-          });
-
-        const wallet = getPrimaryWallet(components.db, chainId);
-        if (wallet === null) {
-          throw new Error(
-            `No primary wallet found for chain "${chainId}". Run "fence setup" first.`,
-          );
-        }
-
-        const intent: PerpDepositIntent = {
+        // Raw intent: amount is human-readable, resolver handles scaling + coin type
+        const rawIntent: PerpDepositIntent = {
           chainId,
           action: 'perp:deposit',
-          walletAddress: wallet.address,
+          walletAddress: '',
           params: {
             protocol,
-            coinType: resolved.coinType,
-            amount: resolved.scaledAmount,
-            decimals: resolved.decimals,
+            coinType: 'USDC', // resolver resolves to full coin type
+            amount: amountStr, // resolver scales to smallest unit
+            decimals: 0, // resolver fills from metadata
           },
-          ...(valueUsd !== undefined ? { valueUsd } : {}),
         };
 
-        log.info(
-          { amount: amountStr, chain, protocol, watchOnly: wallet.isWatchOnly },
-          'Perp deposit invoked',
-        );
-
-        // Deposit needs custom policyContext (tradeValueUsd) and dataProvider,
-        // so we inline pipeline setup rather than using preparePipeline.
-        const watchOnly = wallet.isWatchOnly;
-        const signer = watchOnly ? undefined : buildSuiSigner(loadSessionKeyBytes(chainId));
-        const builder = components.actionBuilderRegistry.getDefault(
-          chain,
-          'perp:deposit',
-          intent,
-        ) as ActionBuilder<PerpDepositIntent>;
-        const mevProtector = components.mevProtectors.get(chain) ?? FALLBACK_MEV_PROTECTOR;
-
-        const policyCtx: PolicyContext = {
-          config: components.config.chain[chain],
-          activityLog: components.activityLog,
-          ...(valueUsd !== undefined ? { tradeValueUsd: valueUsd } : {}),
-        };
-
-        const result = await executePipeline({
-          intent,
-          builder,
-          chainAdapter,
-          policyRegistry: components.policyRegistry,
-          policyContext: policyCtx,
-          mevProtector,
-          logger: log,
-          ...(signer !== undefined ? { signer } : {}),
-          watchOnly,
-          dataProvider,
-        });
-
-        const output = mapDepositResult(result, intent, protocol, valueUsd);
+        const result = await executor.execute(rawIntent);
+        const output = mapDepositResult(result, protocol);
         printJsonOutput(output.cliOutput);
         process.exitCode = output.exitCode;
       } catch (err: unknown) {
@@ -310,26 +197,17 @@ function registerWithdrawAction(parent: Command, getComponents: () => AppCompone
     .option('-c, --chain <chain>', 'Target chain', 'sui')
     .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
     .action(async (amountStr: string, options: { chain: Chain; protocol: PerpProtocol }) => {
-      const components = withComponents(getComponents);
-      if (components === undefined) return;
-
       const chain = options.chain;
       const chainId: ChainId = `${chain}:mainnet`;
       const protocol = options.protocol;
-      const log = components.logger.child({ command: 'perp-withdraw' });
 
       try {
-        const wallet = getPrimaryWallet(components.db, chainId);
-        if (wallet === null) {
-          throw new Error(
-            `No primary wallet found for chain "${chainId}". Run "fence setup" first.`,
-          );
-        }
+        const executor = createActionExecutor(getComponents);
 
-        const intent: PerpWithdrawIntent = {
+        const rawIntent: PerpWithdrawIntent = {
           chainId,
           action: 'perp:withdraw',
-          walletAddress: wallet.address,
+          walletAddress: '',
           params: {
             protocol,
             assetSymbol: 'USDC',
@@ -337,21 +215,8 @@ function registerWithdrawAction(parent: Command, getComponents: () => AppCompone
           },
         };
 
-        log.info(
-          { amount: amountStr, chain, protocol, watchOnly: wallet.isWatchOnly },
-          'Perp withdraw invoked',
-        );
-
-        const { pipelineInput } = preparePipeline(
-          components,
-          chain,
-          chainId,
-          'perp:withdraw',
-          intent,
-        );
-        const result = await executePipeline({ ...pipelineInput, logger: log });
-
-        const output = mapWithdrawResult(result, intent, protocol);
+        const result = await executor.execute(rawIntent);
+        const output = mapWithdrawResult(result, protocol);
         printJsonOutput(output.cliOutput);
         process.exitCode = output.exitCode;
       } catch (err: unknown) {
@@ -386,38 +251,12 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
           protocol: PerpProtocol;
         },
       ) => {
-        const components = withComponents(getComponents);
-        if (components === undefined) return;
-
         const chain = options.chain;
         const chainId: ChainId = `${chain}:mainnet`;
         const protocol = options.protocol;
-        const log = components.logger.child({ command: 'perp-order' });
 
         try {
-          const provider = resolveProvider(components, protocol);
-          const wallet = getPrimaryWallet(components.db, chainId);
-          if (wallet === null) {
-            throw new Error(
-              `No primary wallet found for chain "${chainId}". Run "fence setup" first.`,
-            );
-          }
-
-          log.info(
-            {
-              market,
-              side,
-              qty,
-              orderType: options.type,
-              chain,
-              protocol,
-              watchOnly: wallet.isWatchOnly,
-            },
-            'Perp order invoked',
-          );
-
-          const marketSymbol = await provider.resolveMarket(market);
-
+          // Validate CLI inputs before building intent
           const normalizedSide = side.toUpperCase();
           if (normalizedSide !== 'LONG' && normalizedSide !== 'SHORT') {
             throw new Error(`Invalid side "${side}". Must be LONG or SHORT.`);
@@ -432,52 +271,35 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
             throw new Error('Limit price (--price) is required for limit orders.');
           }
 
-          const quantityE9 = toE9(qty);
-          const leverageE9 = options.leverage !== undefined ? toE9(options.leverage) : undefined;
-
           const tif = options.tif.toUpperCase();
           if (tif !== 'GTT' && tif !== 'IOC' && tif !== 'FOK') {
             throw new Error(`Invalid time in force "${options.tif}". Must be GTT, IOC, or FOK.`);
           }
 
-          // USDC collateral coin type for policy checks
-          const usdcCoinType = tryResolveTokenAddress('USDC');
-          if (usdcCoinType === undefined) {
-            throw new Error('Cannot resolve USDC coin type from token registry');
-          }
-          const marketCoinType = provider.toMarketCoinType(
-            marketSymbol.split('-')[0] ?? marketSymbol,
-          );
+          const executor = createActionExecutor(getComponents);
 
-          const intent: PerpPlaceOrderIntent = {
+          // Raw intent: market is user input, resolver handles resolution + coin types
+          const rawIntent: PerpPlaceOrderIntent = {
             chainId,
             action: 'perp:place_order',
-            walletAddress: wallet.address,
+            walletAddress: '',
             params: {
               protocol,
-              marketSymbol,
+              marketSymbol: market, // resolver resolves against exchange
               side: normalizedSide,
-              quantityE9,
+              quantityE9: toE9(qty),
               orderType: normalizedOrderType,
-              ...(leverageE9 !== undefined ? { leverageE9 } : {}),
+              ...(options.leverage !== undefined ? { leverageE9: toE9(options.leverage) } : {}),
               ...(options.price !== undefined ? { limitPriceE9: toE9(options.price) } : {}),
               ...(options.reduceOnly === true ? { reduceOnly: true } : {}),
               ...(tif !== 'GTT' ? { timeInForce: tif } : {}),
-              collateralCoinType: usdcCoinType,
-              marketCoinType,
+              collateralCoinType: '', // resolver fills
+              marketCoinType: '', // resolver fills
             },
           };
 
-          const { pipelineInput } = preparePipeline(
-            components,
-            chain,
-            chainId,
-            'perp:place_order',
-            intent,
-          );
-          const result = await executePipeline({ ...pipelineInput, logger: log });
-
-          const output = mapOrderResult(result, intent, protocol);
+          const result = await executor.execute(rawIntent);
+          const output = mapOrderResult(result, protocol);
           printJsonOutput(output.cliOutput);
           process.exitCode = output.exitCode;
         } catch (err: unknown) {
@@ -499,52 +321,27 @@ function registerCancelAction(parent: Command, getComponents: () => AppComponent
         market: string,
         options: { order: string[]; chain: Chain; protocol: PerpProtocol },
       ) => {
-        const components = withComponents(getComponents);
-        if (components === undefined) return;
-
         const chain = options.chain;
         const chainId: ChainId = `${chain}:mainnet`;
         const protocol = options.protocol;
-        const log = components.logger.child({ command: 'perp-cancel' });
 
         try {
-          const provider = resolveProvider(components, protocol);
-          const wallet = getPrimaryWallet(components.db, chainId);
-          if (wallet === null) {
-            throw new Error(
-              `No primary wallet found for chain "${chainId}". Run "fence setup" first.`,
-            );
-          }
+          const executor = createActionExecutor(getComponents);
 
-          log.info(
-            { market, orderHashes: options.order, chain, protocol, watchOnly: wallet.isWatchOnly },
-            'Perp cancel invoked',
-          );
-
-          // Resolve market symbol
-          const marketSymbol = await provider.resolveMarket(market);
-
-          const intent: PerpCancelOrderIntent = {
+          // Raw intent: market is user input, resolver resolves the symbol
+          const rawIntent: PerpCancelOrderIntent = {
             chainId,
             action: 'perp:cancel_order',
-            walletAddress: wallet.address,
+            walletAddress: '',
             params: {
               protocol,
-              marketSymbol,
+              marketSymbol: market, // resolver resolves against exchange
               ...(options.order.length > 0 ? { orderHashes: options.order } : {}),
             },
           };
 
-          const { pipelineInput } = preparePipeline(
-            components,
-            chain,
-            chainId,
-            'perp:cancel_order',
-            intent,
-          );
-          const result = await executePipeline({ ...pipelineInput, logger: log });
-
-          const output = mapCancelResult(result, intent, protocol);
+          const result = await executor.execute(rawIntent);
+          const output = mapCancelResult(result, protocol);
           printJsonOutput(output.cliOutput);
           process.exitCode = output.exitCode;
         } catch (err: unknown) {
@@ -576,22 +373,16 @@ function registerCloseAction(parent: Command, getComponents: () => AppComponents
         const chain = options.chain;
         const chainId: ChainId = `${chain}:mainnet`;
         const protocol = options.protocol;
-        const log = components.logger.child({ command: 'perp-close' });
 
         try {
           const provider = resolveProvider(components, protocol);
-          const wallet = getPrimaryWallet(components.db, chainId);
-          if (wallet === null) {
-            throw new Error(
-              `No primary wallet found for chain "${chainId}". Run "fence setup" first.`,
-            );
-          }
 
-          // Resolve market symbol
-          const marketSymbol = await provider.resolveMarket(market);
+          // Parallelize market resolution and position fetch — they are independent
+          const [marketSymbol, positions] = await Promise.all([
+            provider.resolveMarket(market),
+            provider.getPositions(),
+          ]);
 
-          // Fetch positions and find the one for this market
-          const positions = await provider.getPositions();
           const position = positions.find((p) => p.symbol === marketSymbol);
           if (position === undefined) {
             throw new Error(`No open position for market "${marketSymbol}"`);
@@ -601,54 +392,29 @@ function registerCloseAction(parent: Command, getComponents: () => AppComponents
           const closeSide: 'LONG' | 'SHORT' = position.side === 'LONG' ? 'SHORT' : 'LONG';
           const closeQuantityE9 = options.size !== undefined ? toE9(options.size) : position.sizeE9;
 
-          // USDC collateral coin type
-          const usdcCoinType = tryResolveTokenAddress('USDC');
-          if (usdcCoinType === undefined) {
-            throw new Error('Cannot resolve USDC coin type from token registry');
-          }
-          const marketCoinType = provider.toMarketCoinType(
-            marketSymbol.split('-')[0] ?? marketSymbol,
-          );
+          const executor = createActionExecutor(getComponents);
 
-          const intent: PerpPlaceOrderIntent = {
+          // Build as a place_order with reduceOnly — the executor handles
+          // market resolution, coin types, and perp policy context.
+          const rawIntent: PerpPlaceOrderIntent = {
             chainId,
             action: 'perp:place_order',
-            walletAddress: wallet.address,
+            walletAddress: '',
             params: {
               protocol,
-              marketSymbol,
+              marketSymbol, // already resolved above (needed for position lookup)
               side: closeSide,
               quantityE9: closeQuantityE9,
               orderType: 'MARKET',
               leverageE9: position.leverageE9,
               reduceOnly: true,
-              collateralCoinType: usdcCoinType,
-              marketCoinType,
+              collateralCoinType: '', // resolver fills
+              marketCoinType: '', // resolver fills
             },
           };
 
-          log.info(
-            {
-              market: marketSymbol,
-              side: closeSide,
-              qty: closeQuantityE9,
-              chain,
-              protocol,
-              watchOnly: wallet.isWatchOnly,
-            },
-            'Perp close invoked',
-          );
-
-          const { pipelineInput } = preparePipeline(
-            components,
-            chain,
-            chainId,
-            'perp:place_order',
-            intent,
-          );
-          const result = await executePipeline({ ...pipelineInput, logger: log });
-
-          const output = mapOrderResult(result, intent, protocol);
+          const result = await executor.execute(rawIntent);
+          const output = mapOrderResult(result, protocol);
           printJsonOutput(output.cliOutput);
           process.exitCode = output.exitCode;
         } catch (err: unknown) {
@@ -658,7 +424,9 @@ function registerCloseAction(parent: Command, getComponents: () => AppComponents
     );
 }
 
-// --- Query subcommands ---
+// ---------------------------------------------------------------------------
+// Query subcommands
+// ---------------------------------------------------------------------------
 
 function registerPositionsQuery(parent: Command, getComponents: () => AppComponents): void {
   parent
@@ -675,10 +443,7 @@ function registerPositionsQuery(parent: Command, getComponents: () => AppCompone
       try {
         provider = resolveProvider(components, options.protocol);
         const positions = await provider.getPositions();
-        process.stdout.write(
-          JSON.stringify({ status: 'success', action: 'positions', data: positions }, null, 2) +
-            '\n',
-        );
+        writeQueryResult('positions', positions);
       } catch (err: unknown) {
         handleQueryError(log, 'fetch positions', err, provider?.enrichError.bind(provider));
       }
@@ -701,9 +466,7 @@ function registerOrdersQuery(parent: Command, getComponents: () => AppComponents
         const provider = resolveProvider(components, options.protocol);
         const symbol = options.market !== undefined ? options.market.toUpperCase() : undefined;
         const orders = await provider.getOpenOrders(symbol);
-        process.stdout.write(
-          JSON.stringify({ status: 'success', action: 'orders', data: orders }, null, 2) + '\n',
-        );
+        writeQueryResult('orders', orders);
       } catch (err: unknown) {
         handleQueryError(log, 'fetch orders', err);
       }
@@ -784,9 +547,7 @@ function registerMarketsQuery(parent: Command, getComponents: () => AppComponent
           makerFeePercent: (Number(m.makerFeeE9) / 1e9) * 100,
           takerFeePercent: (Number(m.takerFeeE9) / 1e9) * 100,
         }));
-        process.stdout.write(
-          JSON.stringify({ status: 'success', action: 'markets', data: enriched }, null, 2) + '\n',
-        );
+        writeQueryResult('markets', enriched);
       } catch (err: unknown) {
         handleQueryError(log, 'fetch markets', err);
       }
@@ -820,7 +581,6 @@ function registerFundingRateQuery(parent: Command, getComponents: () => AppCompo
 
         try {
           const provider = resolveProvider(components, options.protocol);
-          // Resolve market symbol
           const marketSymbol = await provider.resolveMarket(market);
 
           const entries = await provider.getFundingRateHistory(marketSymbol, {
@@ -837,13 +597,7 @@ function registerFundingRateQuery(parent: Command, getComponents: () => AppCompo
             fundingRateApr: (Number(e.fundingRateE9) / 1e9) * (8760 / e.fundingIntervalHours) * 100,
           }));
 
-          process.stdout.write(
-            JSON.stringify(
-              { status: 'success', action: 'funding-rate', market: marketSymbol, data: enriched },
-              null,
-              2,
-            ) + '\n',
-          );
+          writeQueryResult('funding-rate', enriched, { market: marketSymbol });
         } catch (err: unknown) {
           handleQueryError(log, 'fetch funding rate history', err);
         }
@@ -884,17 +638,7 @@ function registerAccountFundingQuery(parent: Command, getComponents: () => AppCo
             ...(options.page !== undefined ? { page: parseInt(options.page, 10) } : {}),
           });
 
-          process.stdout.write(
-            JSON.stringify(
-              {
-                status: 'success',
-                action: 'funding-history',
-                data: history,
-              },
-              null,
-              2,
-            ) + '\n',
-          );
+          writeQueryResult('funding-history', history);
         } catch (err: unknown) {
           handleQueryError(log, 'fetch account funding history', err);
         }
@@ -939,10 +683,7 @@ function registerSyncCommand(parent: Command, getComponents: () => AppComponents
         );
 
         log.info({ synced: result.synced }, 'Fill sync complete');
-        process.stdout.write(
-          JSON.stringify({ status: 'success', action: 'sync', synced: result.synced }, null, 2) +
-            '\n',
-        );
+        writeQueryResult('sync', undefined, { synced: result.synced });
       } catch (err: unknown) {
         handleQueryError(log, 'sync fills', err);
       }
@@ -964,47 +705,39 @@ function registerAccountQuery(parent: Command, getComponents: () => AppComponent
       try {
         provider = resolveProvider(components, options.protocol);
         const account = await provider.getAccount();
-        process.stdout.write(
-          JSON.stringify({ status: 'success', action: 'account', data: account }, null, 2) + '\n',
-        );
+        writeQueryResult('account', account);
       } catch (err: unknown) {
         handleQueryError(log, 'fetch account', err, provider?.enrichError.bind(provider));
       }
     });
 }
 
-// --- Result mapping ---
-
-/** Whether the pipeline completed with a payload-worthy status. */
-function hasPayload(result: PipelineResult): boolean {
-  return (
-    result.status === 'success' || result.status === 'acknowledged' || result.status === 'simulated'
-  );
-}
+// ---------------------------------------------------------------------------
+// Result mapping
+// ---------------------------------------------------------------------------
 
 function mapDepositResult(
-  result: PipelineResult,
-  intent: PerpDepositIntent,
+  execResult: ExecutionResult,
   protocol: PerpProtocol,
-  valueUsd: number | undefined,
 ): MappedOutput<PerpDepositOutput> {
-  const payload: PerpDepositOutput | undefined = hasPayload(result)
+  const intent = execResult.resolvedIntent as PerpDepositIntent;
+  const payload: PerpDepositOutput | undefined = hasPayload(execResult)
     ? {
         token: intent.params.coinType,
         amount: parseFloat(intent.params.amount) / Math.pow(10, intent.params.decimals),
-        valueUsd: valueUsd ?? null,
+        valueUsd: execResult.tradeValueUsd ?? null,
       }
     : undefined;
 
-  return toMappedOutput(result, 'perp:deposit', intent, protocol, payload);
+  return toMappedOutput(execResult, 'perp:deposit', protocol, payload);
 }
 
 function mapWithdrawResult(
-  result: PipelineResult,
-  intent: PerpWithdrawIntent,
+  execResult: ExecutionResult,
   protocol: PerpProtocol,
 ): MappedOutput<PerpWithdrawOutput> {
-  const payload: PerpWithdrawOutput | undefined = hasPayload(result)
+  const intent = execResult.resolvedIntent as PerpWithdrawIntent;
+  const payload: PerpWithdrawOutput | undefined = hasPayload(execResult)
     ? {
         assetSymbol: intent.params.assetSymbol,
         amountE9: intent.params.amountE9,
@@ -1012,16 +745,16 @@ function mapWithdrawResult(
       }
     : undefined;
 
-  return toMappedOutput(result, 'perp:withdraw', intent, protocol, payload);
+  return toMappedOutput(execResult, 'perp:withdraw', protocol, payload);
 }
 
 function mapOrderResult(
-  result: PipelineResult,
-  intent: PerpPlaceOrderIntent,
+  execResult: ExecutionResult,
   protocol: PerpProtocol,
 ): MappedOutput<PerpOrderOutput> {
-  const metadata = result.metadata;
-  const payload: PerpOrderOutput | undefined = hasPayload(result)
+  const intent = execResult.resolvedIntent as PerpPlaceOrderIntent;
+  const metadata = execResult.pipelineResult.metadata;
+  const payload: PerpOrderOutput | undefined = hasPayload(execResult)
     ? {
         marketSymbol: intent.params.marketSymbol,
         side: intent.params.side,
@@ -1037,27 +770,31 @@ function mapOrderResult(
       }
     : undefined;
 
-  return toMappedOutput(result, 'perp:place_order', intent, protocol, payload);
+  return toMappedOutput(execResult, 'perp:place_order', protocol, payload);
 }
 
 function mapCancelResult(
-  result: PipelineResult,
-  intent: PerpCancelOrderIntent,
+  execResult: ExecutionResult,
   protocol: PerpProtocol,
 ): MappedOutput<PerpCancelOutput> {
+  const intent = execResult.resolvedIntent as PerpCancelOrderIntent;
   const cancelledCount =
-    typeof result.metadata?.['cancelledCount'] === 'number' ? result.metadata['cancelledCount'] : 0;
-  const payload: PerpCancelOutput | undefined = hasPayload(result)
+    typeof execResult.pipelineResult.metadata?.['cancelledCount'] === 'number'
+      ? execResult.pipelineResult.metadata['cancelledCount']
+      : 0;
+  const payload: PerpCancelOutput | undefined = hasPayload(execResult)
     ? {
         marketSymbol: intent.params.marketSymbol,
         cancelledCount,
       }
     : undefined;
 
-  return toMappedOutput(result, 'perp:cancel_order', intent, protocol, payload);
+  return toMappedOutput(execResult, 'perp:cancel_order', protocol, payload);
 }
 
-// --- Utilities ---
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 
 /** Commander helper to collect repeatable option values into an array. */
 function collectValues(value: string, prev: string[]): string[] {

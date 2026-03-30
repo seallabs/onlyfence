@@ -36,6 +36,11 @@ import { CliEventLog } from '../db/cli-events.js';
 import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
 import { DB_PATH, openDatabase } from '../db/connection.js';
 import { getLogger } from '../logger/index.js';
+import { PerpLeverageCapCheck } from '../policy/checks/perp-leverage-cap.js';
+import { PerpMarketAllowlistCheck } from '../policy/checks/perp-market-allowlist.js';
+import { PerpOrderSizeCheck } from '../policy/checks/perp-order-size.js';
+import { PerpVolumeCheck } from '../policy/checks/perp-volume.js';
+import { PerpWithdrawLimitCheck } from '../policy/checks/perp-withdraw-limit.js';
 import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
 import { PolicyCheckRegistry } from '../policy/registry.js';
@@ -193,6 +198,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     resolverServices: {
       marketResolver: (coinType: string, explicitMarketId?: string) =>
         resolveMarketId(alphalendClient, coinType, explicitMarketId),
+      perpProviders,
     },
     logger,
     close,
@@ -244,6 +250,11 @@ export function buildPolicyRegistry(_config: AppConfig): PolicyCheckRegistry {
 
   registry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
   registry.register(new SpendingLimitCheck());
+  registry.register(new PerpMarketAllowlistCheck());
+  registry.register(new PerpLeverageCapCheck());
+  registry.register(new PerpOrderSizeCheck());
+  registry.register(new PerpVolumeCheck());
+  registry.register(new PerpWithdrawLimitCheck());
 
   return registry;
 }

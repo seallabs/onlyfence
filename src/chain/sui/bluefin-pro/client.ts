@@ -98,6 +98,13 @@ export class BluefinClient {
     this.initialized = true;
   }
 
+  /** Get ticker data for a specific market. */
+  async getMarketTicker(symbol: string): Promise<{ lastPriceE9: string; markPriceE9: string }> {
+    await this.ensureInitialized();
+    const response = await this.sdk.exchangeDataApi.getMarketTicker(symbol);
+    return response.data;
+  }
+
   /** Get exchange info including all available markets. */
   async getExchangeInfo(): Promise<ExchangeInfoResponse> {
     await this.ensureInitialized();

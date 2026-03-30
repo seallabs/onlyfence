@@ -1,6 +1,6 @@
 import type { ActionIntent } from '../../core/action-types.js';
 import type { CheckResult } from '../../types/result.js';
-import type { PolicyCheck } from '../check.js';
+import { POLICY_PASS, policyPassSkipped, type PolicyCheck } from '../check.js';
 import type { PolicyContext } from '../context.js';
 
 /**
@@ -21,23 +21,17 @@ export class SpendingLimitCheck implements PolicyCheck {
       intent.action === 'lending:withdraw' ||
       intent.action === 'lending:borrow'
     ) {
-      return Promise.resolve({ status: 'pass' });
+      return Promise.resolve(POLICY_PASS);
     }
 
     const limits = ctx.config.limits;
 
     if (limits === undefined) {
-      return Promise.resolve({ status: 'pass' });
+      return Promise.resolve(POLICY_PASS);
     }
 
     if (ctx.tradeValueUsd === undefined) {
-      return Promise.resolve({
-        status: 'pass',
-        metadata: {
-          skipped: true,
-          reason: 'oracle_price_unavailable',
-        },
-      });
+      return Promise.resolve(policyPassSkipped('oracle_price_unavailable'));
     }
 
     const tradeValueUsd = ctx.tradeValueUsd;
@@ -78,6 +72,6 @@ export class SpendingLimitCheck implements PolicyCheck {
       }
     }
 
-    return Promise.resolve({ status: 'pass' });
+    return Promise.resolve(POLICY_PASS);
   }
 }

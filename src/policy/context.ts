@@ -17,4 +17,10 @@ export interface PolicyContext {
 
   /** Pre-resolved USD value of the trade (if price lookup succeeded) */
   readonly tradeValueUsd?: number;
+
+  /** Last price from exchange ticker (USD) -- for perp notional calculations */
+  readonly perpMarketPrice?: number;
+
+  /** On-chain max leverage for this market -- for leverage cap check */
+  readonly perpMarketMaxLeverage?: number;
 }

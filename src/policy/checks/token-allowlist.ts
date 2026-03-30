@@ -1,6 +1,6 @@
 import type { ActionIntent } from '../../core/action-types.js';
 import type { CheckResult } from '../../types/result.js';
-import type { PolicyCheck } from '../check.js';
+import { POLICY_PASS, type PolicyCheck } from '../check.js';
 import type { PolicyContext } from '../context.js';
 
 /**
@@ -52,13 +52,13 @@ export class TokenAllowlistCheck implements PolicyCheck {
 
   evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult> {
     if (intent.action === 'lending:claim_rewards') {
-      return Promise.resolve({ status: 'pass' });
+      return Promise.resolve(POLICY_PASS);
     }
 
     const allowlist = ctx.config.allowlist;
 
     if (allowlist === undefined) {
-      return Promise.resolve({ status: 'pass' });
+      return Promise.resolve(POLICY_PASS);
     }
 
     const allowedAddresses = this.getAllowedAddresses(allowlist.tokens);
@@ -91,12 +91,12 @@ export class TokenAllowlistCheck implements PolicyCheck {
         });
       }
 
-      return Promise.resolve({ status: 'pass' as const });
+      return Promise.resolve(POLICY_PASS);
     }
 
     // Perp cancel/withdraw: no token to check
     if (intent.action === 'perp:cancel_order' || intent.action === 'perp:withdraw') {
-      return Promise.resolve({ status: 'pass' as const });
+      return Promise.resolve(POLICY_PASS);
     }
 
     // Perp place order: check collateral coin type
@@ -112,7 +112,7 @@ export class TokenAllowlistCheck implements PolicyCheck {
           },
         });
       }
-      return Promise.resolve({ status: 'pass' as const });
+      return Promise.resolve(POLICY_PASS);
     }
 
     // Remaining actions (supply, borrow, withdraw, repay, deposit): single coinType check
@@ -128,6 +128,6 @@ export class TokenAllowlistCheck implements PolicyCheck {
       });
     }
 
-    return Promise.resolve({ status: 'pass' as const });
+    return Promise.resolve(POLICY_PASS);
   }
 }

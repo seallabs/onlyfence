@@ -12,6 +12,7 @@
 import type { ChainAdapter } from '../chain/adapter.js';
 import type { DataProvider } from './data-provider.js';
 import type { ActionIntent, ActivityAction } from './action-types.js';
+import type { PerpProviderRegistry } from './perp-provider.js';
 
 /** Function type for resolving a lending market ID from a coin type. */
 export type MarketResolverFn = (coinType: string, explicitMarketId?: string) => Promise<string>;
@@ -24,6 +25,7 @@ export type MarketResolverFn = (coinType: string, explicitMarketId?: string) => 
  */
 export interface ResolverServices {
   readonly marketResolver?: MarketResolverFn | undefined;
+  readonly perpProviders?: PerpProviderRegistry | undefined;
 }
 
 /**
@@ -40,6 +42,10 @@ export interface ResolverDeps {
 export interface ResolvedExecution {
   readonly intent: ActionIntent;
   readonly tradeValueUsd?: number;
+  /** Last traded price (USD) — set by perp resolvers to avoid redundant API calls. */
+  readonly perpMarketPrice?: number;
+  /** On-chain max leverage — set by perp resolvers to avoid redundant API calls. */
+  readonly perpMarketMaxLeverage?: number;
 }
 
 /**

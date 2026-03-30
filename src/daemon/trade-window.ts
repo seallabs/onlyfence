@@ -6,13 +6,14 @@
  * This avoids SQLite contention and provides sub-millisecond policy checks.
  */
 
-import type { ChainId } from '../core/action-types.js';
+import type { ActivityAction, ChainId } from '../core/action-types.js';
 import type { ActivityLogReader } from '../db/activity-log.js';
 
 interface TradeEntry {
   readonly chainId: string;
   readonly valueUsd: number;
   readonly timestamp: number;
+  readonly action?: ActivityAction;
 }
 
 /** 24 hours in milliseconds. */
@@ -25,18 +26,39 @@ export class InMemoryTradeWindow implements ActivityLogReader {
    * Pre-load from an existing ActivityLogReader (e.g., SQLite TradeLog).
    *
    * Called once at daemon startup to hydrate the in-memory window
-   * with existing 24h trade data.
+   * with existing 24h trade data (swap volume, perp volume, perp withdrawals).
    */
   preload(source: ActivityLogReader, chainIds: string[]): void {
     for (const chainId of chainIds) {
-      const volume = source.getRolling24hVolume(chainId as ChainId);
-      if (volume > 0) {
-        // Store as a single aggregate entry — exact trade-level granularity
-        // isn't needed since we're just tracking total volume.
+      // Swap volume
+      const swapVolume = source.getRolling24hVolume(chainId as ChainId);
+      if (swapVolume > 0) {
         this.entries.push({
           chainId,
-          valueUsd: volume,
+          valueUsd: swapVolume,
           timestamp: Date.now(),
+        });
+      }
+
+      // Perp volume
+      const perpVolume = source.getRolling24hPerpVolume(chainId as ChainId);
+      if (perpVolume > 0) {
+        this.entries.push({
+          chainId,
+          valueUsd: perpVolume,
+          timestamp: Date.now(),
+          action: 'perp:place_order',
+        });
+      }
+
+      // Perp withdrawals
+      const perpWithdraw = source.getRolling24hPerpWithdrawals(chainId as ChainId);
+      if (perpWithdraw > 0) {
+        this.entries.push({
+          chainId,
+          valueUsd: perpWithdraw,
+          timestamp: Date.now(),
+          action: 'perp:withdraw',
         });
       }
     }
@@ -47,9 +69,10 @@ export class InMemoryTradeWindow implements ActivityLogReader {
    *
    * @param chainId - Chain identifier
    * @param valueUsd - USD value of the trade
+   * @param action - Activity action (e.g. 'trade:swap', 'perp:place_order')
    */
-  record(chainId: string, valueUsd: number): void {
-    this.entries.push({ chainId, valueUsd, timestamp: Date.now() });
+  record(chainId: string, valueUsd: number, action?: ActivityAction): void {
+    this.entries.push({ chainId, valueUsd, timestamp: Date.now(), action });
     this.pruneExpired();
   }
 
@@ -67,6 +90,25 @@ export class InMemoryTradeWindow implements ActivityLogReader {
     }
 
     return total;
+  }
+
+  getRolling24hPerpVolume(chainId: ChainId): number {
+    return this.sumByAction(chainId, 'perp:place_order');
+  }
+
+  getRolling24hPerpWithdrawals(chainId: ChainId): number {
+    return this.sumByAction(chainId, 'perp:withdraw');
+  }
+
+  private sumByAction(chainId: string, action: ActivityAction): number {
+    const cutoff = Date.now() - WINDOW_MS;
+    let sum = 0;
+    for (const e of this.entries) {
+      if (e.chainId === chainId && e.action === action && e.timestamp > cutoff) {
+        sum += e.valueUsd;
+      }
+    }
+    return sum;
   }
 
   /** Remove entries older than 24h. */
