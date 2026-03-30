@@ -10,8 +10,7 @@
  */
 
 import type { Logger } from 'pino';
-import type { ActionIntent, PipelineResult } from '../core/action-types.js';
-import { extractCoinTypes } from '../core/action-types.js';
+import type { PipelineResult } from '../core/action-types.js';
 import { buildResolverDeps, executeWithPipeline } from '../core/action-executor.js';
 import { getPrimaryWallet } from '../wallet/manager.js';
 import type { AppComponents } from '../cli/bootstrap.js';
@@ -81,14 +80,11 @@ export class DaemonExecutor {
       perpMarketMaxLeverage: resolved.perpMarketMaxLeverage,
     });
 
-    // Record in in-memory trade window for spending limit tracking
+    // Record in in-memory trade window for spending limit tracking.
+    // SQLite persistence is handled by builder.finish() inside the pipeline —
+    // do NOT duplicate it here (every builder already calls logActivity in finish()).
     if (result.status === 'success' && resolved.tradeValueUsd !== undefined) {
       this.tradeWindow.record(rawIntent.chainId, resolved.tradeValueUsd, rawIntent.action);
-    }
-
-    // Persist to SQLite for activity history
-    if (result.status === 'success' || result.status === 'rejected') {
-      this.logActivity(resolved.intent, walletAddress, resolved.tradeValueUsd, result, log);
     }
 
     return {
@@ -107,35 +103,5 @@ export class DaemonExecutor {
   async executeTrade(payload: TradePayload): Promise<PipelineResult> {
     const response = await this.executeAction({ intent: payload.intent });
     return response.result;
-  }
-
-  /** Persist activity to SQLite (best-effort, does not throw). */
-  private logActivity(
-    intent: ActionIntent,
-    walletAddress: string,
-    tradeValueUsd: number | undefined,
-    result: PipelineResult,
-    log: Logger,
-  ): void {
-    try {
-      const coinTypes = extractCoinTypes(intent);
-      this.components.activityLog.logActivity({
-        chain_id: intent.chainId,
-        wallet_address: walletAddress,
-        action: intent.action,
-        ...(coinTypes[0] !== undefined ? { token_a_type: coinTypes[0] } : {}),
-        ...(coinTypes[1] !== undefined ? { token_b_type: coinTypes[1] } : {}),
-        ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
-        ...(result.txDigest !== undefined ? { tx_digest: result.txDigest } : {}),
-        ...(typeof result.gasUsed === 'number' ? { gas_cost: result.gasUsed } : {}),
-        policy_decision: result.status === 'rejected' ? 'rejected' : 'approved',
-        ...(result.rejectionReason !== undefined
-          ? { rejection_reason: result.rejectionReason }
-          : {}),
-        ...(result.rejectionCheck !== undefined ? { rejection_check: result.rejectionCheck } : {}),
-      });
-    } catch (err: unknown) {
-      log.warn({ err }, 'Failed to persist activity to SQLite (in-memory window still updated)');
-    }
   }
 }

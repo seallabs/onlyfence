@@ -14,7 +14,7 @@
  */
 export function assertNoPasswordInArgv(): void {
   for (const arg of process.argv) {
-    if (arg === '--password' || arg === '-p') {
+    if (arg === '--password') {
       throw new Error(
         'SECURITY: Password detected in process arguments.\n' +
           '  Passwords in argv are visible to all local users via `ps aux`.\n' +
