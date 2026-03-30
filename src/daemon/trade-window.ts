@@ -80,16 +80,7 @@ export class InMemoryTradeWindow implements ActivityLogReader {
    * Get the rolling 24h approved trade volume for a chain.
    */
   getRolling24hVolume(chainId: ChainId): number {
-    const cutoff = Date.now() - WINDOW_MS;
-    let total = 0;
-
-    for (const entry of this.entries) {
-      if (entry.chainId === chainId && entry.timestamp > cutoff) {
-        total += entry.valueUsd;
-      }
-    }
-
-    return total;
+    return this.sumByAction(chainId, 'trade:swap');
   }
 
   getRolling24hPerpVolume(chainId: ChainId): number {
