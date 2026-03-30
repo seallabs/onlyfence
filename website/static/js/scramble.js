@@ -56,7 +56,13 @@
     }, 28);
   }
 
+  function isLandingPage() {
+    return window.location.pathname === '/' || window.location.pathname === '/index.html';
+  }
+
   function initScramble() {
+    if (!isLandingPage()) return;
+
     // Target h2-h3 and buttons/links
     // EXCLUDE h1 (Main Titles)
     const targets = document.querySelectorAll('h2, h3, button, .navbar-7k-link, .topbarCTA, a.btn, a.nav-cta, a[href*="github.com"], a[href*="7k.ag"], a[href*="onlyfence.xyz"]');
