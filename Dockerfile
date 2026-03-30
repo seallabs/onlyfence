@@ -3,7 +3,7 @@ FROM node:25-slim AS builder
 
 WORKDIR /app
 
-RUN npm install -g corepack && corepack enable
+RUN npm install -g --force corepack && corepack enable
 
 COPY package.json package-lock.json ./
 COPY scripts/ scripts/
