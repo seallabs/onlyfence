@@ -2,6 +2,7 @@
 sidebar_position: 11
 title: FAQ
 description: Frequently asked questions about OnlyFence — pricing, wallet safety, supported DEXes, deployment, and AI agent integration.
+keywords: [FAQ, frequently asked questions, wallet safety, supported DEXes, DeFi pricing, AI agent support]
 ---
 
 import Head from '@docusaurus/Head';

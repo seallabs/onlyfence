@@ -3,6 +3,7 @@ sidebar_position: 1
 slug: /intro
 title: What is OnlyFence?
 description: OnlyFence is a free, open-source DeFi toolkit that gives AI agents safe onchain capabilities with spending limits, token allowlists, and security guardrails.
+keywords: [OnlyFence, DeFi toolkit, AI agents, blockchain safety, spending limits, token allowlist, crypto guardrails, open source]
 ---
 
 # What is OnlyFence?

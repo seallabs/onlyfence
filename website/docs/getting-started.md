@@ -2,6 +2,7 @@
 sidebar_position: 3
 title: Getting Started
 description: Set up OnlyFence in minutes — configure safety rules, execute your first swap, and open the terminal dashboard.
+keywords: [getting started, setup guide, first swap, DeFi tutorial, AI agent setup, OnlyFence quickstart]
 ---
 
 # Getting Started

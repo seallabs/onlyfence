@@ -2,6 +2,7 @@
 sidebar_position: 7
 title: Daemon Mode
 description: Run OnlyFence as a background daemon for persistent AI agent connections. Keeps wallets unlocked in memory and listens on a TCP socket.
+keywords: [daemon mode, background process, TCP socket, persistent connection, agent daemon, DeFi service]
 ---
 
 # Daemon Mode
