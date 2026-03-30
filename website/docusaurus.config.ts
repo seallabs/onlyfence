@@ -18,6 +18,14 @@ const config: Config = {
   projectName: 'onlyfence',
 
   onBrokenLinks: 'throw',
+  onBrokenMarkdownLinks: 'warn',
+
+  scripts: [
+    {
+      src: '/js/scramble.js',
+      defer: true,
+    },
+  ],
 
   i18n: {
     defaultLocale: 'en',
@@ -93,7 +101,14 @@ const config: Config = {
           editUrl: 'https://github.com/seallabs/onlyfence/tree/main/website/',
           showLastUpdateTime: true,
         },
-        blog: false,
+        blog: {
+          showReadingTime: true,
+          routeBasePath: 'blog',
+          path: 'blog',
+          blogTitle: 'OnlyFence Blog',
+          blogDescription: 'The Kinetic Guardrail for AI Agents',
+          postsPerPage: 'ALL',
+        },
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -127,6 +142,11 @@ const config: Config = {
           sidebarId: 'docsSidebar',
           position: 'left',
           label: 'Docs',
+        },
+        {
+          to: '/blog',
+          label: 'Blog',
+          position: 'left',
         },
         {
           to: '/docs/installation',
