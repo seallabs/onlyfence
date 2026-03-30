@@ -1,54 +1,549 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=IBM+Plex+Mono&family=JetBrains+Mono:wght@500;700&display=swap');
+
 /**
- * OnlyFence docs theme — custom Infima overrides.
+ * OnlyFence - Kinetic Console Branding for Docusaurus
+ * Consistent style across docs and blog.
  */
 
 :root {
-  --ifm-color-primary: #2e86c1;
-  --ifm-color-primary-dark: #2878ae;
-  --ifm-color-primary-darker: #2671a4;
-  --ifm-color-primary-darkest: #1f5d87;
-  --ifm-color-primary-light: #3d93ca;
-  --ifm-color-primary-lighter: #4599cd;
-  --ifm-color-primary-lightest: #63aad6;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
-  --ifm-font-family-base: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ifm-color-primary: #c3a6ff;
+  --ifm-background-color: transparent;
+  --ifm-navbar-background-color: rgba(18, 19, 24, 0.9);
+  --of-blue: #0055FF;
+  --of-blue-light: #c3a6ff;
+  --of-dark: #121318;
 }
 
-[data-theme='dark'] {
-  --ifm-color-primary: #4da2ff;
-  --ifm-color-primary-dark: #2e90ff;
-  --ifm-color-primary-darker: #1f87ff;
-  --ifm-color-primary-darkest: #006be0;
-  --ifm-color-primary-light: #6cb4ff;
-  --ifm-color-primary-lighter: #7bbcff;
-  --ifm-color-primary-lightest: #b3d9ff;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+/* 1. Global Cleanup */
+html {
+  background-color: var(--of-dark) !important;
 }
 
-/* Hero section */
-.hero--primary {
-  --ifm-hero-background-color: #1a2332;
-  --ifm-hero-text-color: #ffffff;
+body {
+  font-family: 'IBM Plex Mono', monospace !important;
+  background-color: transparent !important;
+  color: #ffffff !important;
 }
 
-.hero__subtitle {
-  font-size: 1.3rem;
-  opacity: 0.9;
+/* 1.1 The Micro-Grid Background */
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
 }
 
-/* Feature cards */
-.feature-card {
-  padding: 1.5rem;
-  border-radius: 8px;
-  text-align: center;
+/* Ensure all major containers are transparent to show the grid */
+.main-wrapper,
+main,
+.container,
+.row,
+.col,
+#__docusaurus,
+.theme-doc-main-container,
+.theme-doc-sidebar-container,
+.theme-blog-post-page,
+.theme-blog-list-page,
+.theme-doc-item-wrapper,
+article,
+aside,
+footer,
+.footer,
+div[class*='docItemContainer'],
+div[class*='docRoot'],
+div[class*='mainColumn'],
+div[class*='docMainContainer'],
+.markdown {
+  background: none !important;
+  background-color: transparent !important;
+  background-image: none !important;
 }
 
-.feature-card h3 {
-  margin-top: 0.5rem;
+/* Aggressively target nested structural divs while sparing components that NEED backgrounds */
+.theme-doc-main-container div:not(.of-deploy-container, .prism-code, pre, code, blockquote),
+.theme-blog-post-page div:not(.of-deploy-container, .prism-code, pre, code, blockquote),
+.theme-blog-list-page div:not(.of-blog-card, .of-blog-featured-card, .prism-code, pre, code, blockquote) {
+    background-color: transparent !important;
+    background: none !important;
 }
 
-/* Code blocks in dark theme */
-[data-theme='dark'] .prism-code {
-  background-color: #1a2332;
+/* Ensure navbar stays readable with blur */
+.navbar {
+    background: rgba(18, 19, 24, 0.7) !important;
+}
+
+/* 2. Remove Docusaurus Clutter */
+.breadcrumbs,
+.theme-doc-footer-edit-meta-row,
+.pagination-nav {
+  display: none !important;
+}
+
+/* 3. Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Space Grotesk', system-ui, sans-serif !important;
+  color: var(--of-blue-light) !important;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
+/* 3.1 Force Monospace during scrambling to avoid jumping */
+.scrambling {
+    font-family: 'IBM Plex Mono', monospace !important;
+}
+
+/* 4. Navbar */
+.navbar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  height: 64px;
+}
+
+.navbar__brand {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+}
+
+.navbar-7k-link {
+    border: 1px solid #2563eb !important;
+    color: #ffffff !important;
+    background: #2563eb !important;
+    padding: 4px 14px !important;
+    text-transform: uppercase;
+    font-weight: 700 !important;
+    font-size: 0.75rem !important;
+}
+
+.navbar-7k-link:hover {
+    background: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+    color: #ffffff !important;
+}
+
+.navbar-of-link {
+    border: 1px solid rgba(195, 166, 255, 0.4) !important;
+    color: #c3a6ff !important;
+    background: rgba(195, 166, 255, 0.05) !important;
+    padding: 4px 14px !important;
+    text-transform: uppercase;
+    font-weight: 700 !important;
+    font-size: 0.75rem !important;
+}
+
+.navbar-of-link:hover {
+    background: rgba(195, 166, 255, 0.12) !important;
+    color: #ffffff !important;
+}
+
+.navbar-7k-spaced {
+    margin-left: 1.5rem !important;
+}
+
+/* 5. Sidebar */
+.theme-doc-sidebar-container {
+    background-color: transparent !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.menu__link {
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.menu__list-item--category .menu__link {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    color: rgba(255, 255, 255, 0.4) !important;
+    margin-top: 1rem;
+}
+
+/* 6. Deploy Section */
+.of-deploy-container {
+    background: rgba(0, 85, 255, 0.04);
+    border: 1px solid rgba(0, 85, 255, 0.1);
+    margin: 4rem 0;
+    padding: 3rem 1.5rem;
+    text-align: center;
+}
+
+.of-deploy-title {
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 700;
+    font-size: 2.2rem;
+    color: white !important;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+
+.of-deploy-subtitle {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 2.5rem;
+}
+
+.of-deploy-bar {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    max-width: 800px;
+    margin: 0 auto;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: linear-gradient(90deg, #001f5f 0%, #0055ff 100%);
+    height: 56px;
+    overflow: hidden;
+}
+
+.of-deploy-label {
+    padding: 0 1.5rem;
+    display: flex;
+    align-items: center;
+    font-weight: 700;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+    white-space: nowrap;
+}
+
+.of-deploy-code {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    background: transparent;
+    overflow: hidden;
+}
+
+.of-deploy-code code {
+    white-space: nowrap !important;
+    background: transparent !important;
+    border: none !important;
+    color: white !important;
+    font-size: 0.85rem;
+    font-family: 'JetBrains Mono', monospace !important;
+}
+
+.of-deploy-copy {
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 0 1.5rem;
+    color: white !important;
+    font-weight: 700;
+    font-size: 0.65rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.of-deploy-copy:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* 7. Markdown Content tweaks */
+.markdown code {
+    background-color: rgba(0, 85, 255, 0.1);
+    border: 1px solid rgba(0, 85, 255, 0.2);
+    border-radius: 4px;
+    color: var(--of-blue-light);
+}
+
+.markdown blockquote {
+    background: rgba(0, 85, 255, 0.05);
+    border-left: 4px solid var(--of-blue);
+    padding: 1.5rem;
+    border-radius: 0;
+}
+
+/* 7.1 Markdown Link Styling */
+.markdown a {
+    color: #c3a6ff !important;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.markdown a:hover {
+    color: #ffffff !important;
+    text-decoration: underline;
+}
+
+.markdown li::marker {
+    color: var(--of-blue-light);
+}
+
+/* --- BLOG INDEX CUSTOM LAYOUT --- */
+
+.of-blog-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Force full width on Docusaurus Blog Layout for the List Page */
+.theme-blog-list-page main > .container > .row > .col:first-child {
+    max-width: 100% !important;
+    flex: 0 0 100% !important;
+    --ifm-col-width: 100% !important;
+}
+
+.theme-blog-list-page main > .container > .row > .col.col--3 {
+    display: none !important;
+}
+
+/* Force full width on Individual Blog Post Page (Hide Sidebar) */
+.theme-blog-post-page main > .container > .row > .col:first-child {
+    max-width: 100% !important;
+    flex: 0 0 100% !important;
+    --ifm-col-width: 100% !important;
+}
+
+.theme-blog-post-page .col.col--3,
+.theme-blog-post-page aside {
+    display: none !important;
+}
+
+.of-blog-read-next-section {
+    margin-top: 5rem;
+    padding-top: 3rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.of-blog-section-title {
+    font-family: 'Space Grotesk', sans-serif;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.2em;
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 2rem;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding-bottom: 0.5rem;
+}
+
+/* FEATURED POST */
+.of-blog-featured-card {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 5rem;
+    background: #232740 !important;
+    border: none;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.of-blog-featured-image-wrapper {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    aspect-ratio: 21 / 9;
+    background: #232740 !important;
+}
+
+.of-blog-featured-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+}
+
+.of-blog-featured-card:hover .of-blog-featured-image {
+    transform: scale(1.03);
+}
+
+.of-blog-featured-content {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding: 2rem 2.5rem 2.5rem;
+}
+
+.of-blog-date {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 1rem;
+}
+
+.of-blog-featured-title {
+    font-size: 2rem;
+    line-height: 1.15;
+    margin-bottom: 1rem;
+    color: #c3a6ff !important;
+    text-decoration: none !important;
+}
+
+.of-blog-featured-title:hover {
+    color: #c3a6ff !important;
+    text-decoration: none !important;
+}
+
+.of-blog-featured-content a:hover {
+    text-decoration: none !important;
+}
+
+.of-blog-featured-desc {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+    max-width: 680px;
+}
+
+/* BLOG GRID */
+.of-blog-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+.of-blog-card {
+    background: #232740 !important;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    transition: transform 0.3s ease, border-color 0.3s ease;
+    overflow: hidden;
+}
+
+.of-blog-card:hover {
+    transform: translateY(-5px);
+}
+
+.of-blog-card-image-wrapper {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: #232740 !important;
+}
+
+.of-blog-card-image-wrapper:hover {
+    background: #232740 !important;
+}
+
+.of-blog-card-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+}
+
+.of-blog-card:hover .of-blog-card-image {
+    transform: scale(1.03);
+}
+
+.of-blog-card-content {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.of-blog-card-title {
+    font-size: 1.4rem;
+    margin-bottom: 1rem;
+    color: #c3a6ff !important;
+}
+
+.of-blog-card-content a,
+.of-blog-card-content a:hover,
+a.of-blog-card,
+a.of-blog-card:hover {
+    text-decoration: none !important;
+}
+
+.of-blog-card-desc {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 1.5rem;
+    flex-grow: 1;
+}
+
+.of-blog-view-more {
+    display: inline-flex;
+    align-items: center;
+    color: #c3a6ff !important;
+    font-weight: 700;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    gap: 0.5rem;
+}
+
+.of-blog-view-more:hover {
+    color: white !important;
+    text-decoration: none;
+}
+
+/* --- SCROLL TO TOP --- */
+.of-scroll-top {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  width: 48px;
+  height: 48px;
+  border-radius: 4px;
+  background: rgba(195, 166, 255, 0.1);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(195, 166, 255, 0.2);
+  color: #c3a6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1000;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(20px);
+}
+
+.of-scroll-top.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.of-scroll-top:hover {
+  background: rgba(195, 166, 255, 0.2);
+  border-color: #c3a6ff;
+  color: white;
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+.of-scroll-top svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 3px;
+}
+
+/* --- BACK TO BLOG --- */
+.of-blog-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  transition: all 0.2s;
+  text-decoration: none !important;
+}
+
+.of-blog-back-link:hover {
+  color: #c3a6ff !important;
+  transform: translateX(-5px);
 }

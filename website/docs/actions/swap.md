@@ -2,6 +2,7 @@
 sidebar_position: 1
 title: Swap
 description: Swap tokens across multiple Sui DEXes with best-price routing via the 7K Aggregator. OnlyFence enforces spending limits and token allowlists before every swap.
+keywords: [token swap, DEX trading, 7K Aggregator, best price routing, Sui swap, Cetus, DeepBook, DeFi trading]
 ---
 
 # Swap
