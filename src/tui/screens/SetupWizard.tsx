@@ -1,6 +1,7 @@
 import { Box, Text, useInput } from 'ink';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { ReactElement } from 'react';
+import { buildChainRegistry } from '../../chain/registry.js';
 import {
   ensureSetupEnvironment,
   generateSetupWallet,
@@ -39,10 +40,16 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Default to Sui for now. TODO: add chain selection step.
+  const chains = useMemo(() => {
+    const registry = buildChainRegistry();
+    return [registry.get('sui')];
+  }, []);
+
   const doGenerate = useCallback(() => {
     try {
       const db = ensureSetupEnvironment();
-      const result = generateSetupWallet(db);
+      const result = generateSetupWallet(db, chains);
       setWalletResult(result);
       db.close();
       setStep('show_wallet');
@@ -50,12 +57,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       setErrorMessage(toErrorMessage(err));
       setStep('error');
     }
-  }, []);
+  }, [chains]);
 
   const doImport = useCallback(() => {
     try {
       const db = ensureSetupEnvironment();
-      const result = importSetupWallet(db, mnemonicInput);
+      const result = importSetupWallet(db, mnemonicInput, chains);
       setWalletResult(result);
       db.close();
       setStep('show_wallet');
@@ -63,7 +70,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       setErrorMessage(toErrorMessage(err));
       setStep('error');
     }
-  }, [mnemonicInput]);
+  }, [mnemonicInput, chains]);
 
   const doSaveKeystore = useCallback(() => {
     if (password !== confirmPassword) {
@@ -263,11 +270,15 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
             <Text color={theme.body} bold>
               {'Wallet Created'}
             </Text>
-            <Text color={theme.eyes}>{`  Chain:   ${walletResult.chainId}`}</Text>
-            <Text color={theme.eyes}>{`  Address: ${walletResult.address}`}</Text>
-            {walletResult.derivationPath !== null && (
-              <Text color={theme.eyes}>{`  Path:    ${walletResult.derivationPath}`}</Text>
-            )}
+            {walletResult.wallets.map((w) => (
+              <Box key={w.chainId} flexDirection="column">
+                <Text color={theme.eyes}>{`  Chain:   ${w.chainId}`}</Text>
+                <Text color={theme.eyes}>{`  Address: ${w.address}`}</Text>
+                {w.derivationPath !== null && (
+                  <Text color={theme.eyes}>{`  Path:    ${w.derivationPath}`}</Text>
+                )}
+              </Box>
+            ))}
           </Box>
 
           <Box marginTop={1}>

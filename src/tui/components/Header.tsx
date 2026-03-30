@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
 import { theme } from '../theme.js';
+import { useTui } from '../context.js';
 import { LogoSmall } from './Logo.js';
 import { CURRENT_VERSION } from '../../update/index.js';
 import { CHANGELOG } from '../../changelog.js';
@@ -12,6 +13,7 @@ interface HeaderProps {
 }
 
 export function Header({ activeTab }: HeaderProps): ReactElement {
+  const { activeChain, availableChains } = useTui();
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={theme.panelBorder} paddingX={1}>
       {/* Shortcuts bar */}
@@ -34,11 +36,22 @@ export function Header({ activeTab }: HeaderProps): ReactElement {
           </Text>
           <Text color={theme.muted}>{' Quit'}</Text>
         </Box>
-        <Box>
+        <Box marginRight={1}>
           <Text color={theme.highlight} bold>
             {'<r>'}
           </Text>
           <Text color={theme.muted}>{' Refresh'}</Text>
+        </Box>
+        {availableChains.length > 1 && (
+          <Box marginRight={1}>
+            <Text color={theme.highlight} bold>
+              {'<c>'}
+            </Text>
+            <Text color={theme.muted}>{' Chain'}</Text>
+          </Box>
+        )}
+        <Box>
+          <Text color={theme.eyes} bold>{`[${activeChain}]`}</Text>
         </Box>
       </Box>
 

@@ -1,11 +1,8 @@
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import {
-  formatAmountWithDecimals,
-  formatSmallestUnit,
-  resolveSymbol,
-} from '../../chain/sui/tokens.js';
+import { formatSmallestUnit, resolveSymbol } from '../../chain/sui/tokens.js';
+import { formatAmountWithDecimals } from '../../utils/token.js';
 import type { ActivityRow } from '../../db/activity-log.js';
 import { Panel } from '../components/Panel.js';
 import type { Column } from '../components/Table.js';

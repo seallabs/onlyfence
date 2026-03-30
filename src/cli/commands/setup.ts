@@ -2,6 +2,8 @@ import type { Command } from 'commander';
 import { readFileSync, existsSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
+import { buildChainRegistry } from '../../chain/registry.js';
+import type { ChainDefinition } from '../../chain/registry.js';
 import { openDatabase, DB_PATH } from '../../db/connection.js';
 import { initConfig, updateConfigFile, loadConfig, CONFIG_PATH } from '../../config/loader.js';
 import { ConfigAlreadyExistsError } from '../../config/schema.js';
@@ -37,6 +39,14 @@ interface SetupOptions {
   readonly mnemonicFile?: string;
   readonly passwordFile?: string;
   readonly generate?: boolean;
+}
+
+/** Get the default chain definitions for setup. */
+function getSetupChains(): readonly ChainDefinition[] {
+  const registry = buildChainRegistry();
+  // Default to Sui for backwards compatibility.
+  // TODO: Add chain selection step to interactive setup.
+  return [registry.get('sui')];
 }
 
 /**
@@ -160,30 +170,32 @@ async function runNonInteractiveSetup(
       }
     });
 
+    const chains = getSetupChains();
     let result: SetupResult;
 
     if (options.generate === true) {
       if (options.mnemonicFile !== undefined) {
         throw new Error('Cannot use both --generate and --mnemonic-file.');
       }
-      result = generateSetupWallet(db, options.alias);
+      result = generateSetupWallet(db, chains, options.alias);
     } else {
       const mnemonic = await resolveMnemonic(options.mnemonicFile);
-      result = importSetupWallet(db, mnemonic, options.alias);
+      result = importSetupWallet(db, mnemonic, chains, options.alias);
     }
 
     saveSetupKeystore(result, password);
 
-    // JSON to stdout for scripting
+    // JSON to stdout for scripting — output first wallet for backwards compat
+    const firstWallet = result.wallets[0];
     const output: Record<string, string> = {
-      address: result.address,
-      chain: result.chainId,
+      address: firstWallet?.address ?? '',
+      chain: firstWallet?.chainId ?? '',
     };
     if (options.generate === true) {
       output['mnemonic'] = result.mnemonic ?? '';
     }
-    if (result.derivationPath !== null) {
-      output['derivationPath'] = result.derivationPath;
+    if (firstWallet?.derivationPath !== null && firstWallet?.derivationPath !== undefined) {
+      output['derivationPath'] = firstWallet.derivationPath;
     }
     process.stdout.write(JSON.stringify(output) + '\n');
   } finally {
@@ -245,6 +257,7 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
       `  ${cyan('?')} Would you like to ${bold('(g)enerate')} a new wallet, ${bold('(i)mport')} by mnemonic, or import by private ${bold('(k)ey')}? ${dim('[g/i/k]')}: `,
     );
 
+    const chains = getSetupChains();
     let result: SetupResult;
 
     const trimmed = choice.trim();
@@ -261,22 +274,27 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
       const privateKey = await promptSecret(
         `  ${cyan('?')} Enter your private key (hex or suiprivkey1…): `,
       );
-      result = importSetupWalletFromKey(db, privateKey, alias);
+      // Private key import is single-chain (the key is chain-specific)
+      const firstChain = chains[0];
+      if (firstChain === undefined) throw new Error('No chains configured for setup.');
+      result = importSetupWalletFromKey(db, privateKey, firstChain, alias);
 
+      const w = result.wallets[0];
       success('Wallet imported from private key!');
       console.log('');
-      box([`${bold('Chain')}    ${result.chainId}`, `${bold('Address')}  ${result.address}`]);
+      box([`${bold('Chain')}    ${w?.chainId ?? ''}`, `${bold('Address')}  ${w?.address ?? ''}`]);
     } else if (trimmed.toLowerCase() === 'i' || looksLikeMnemonic) {
       const mnemonic = looksLikeMnemonic
         ? trimmed
         : await rl.question(`  ${cyan('?')} Enter your BIP-39 mnemonic phrase: `);
-      result = importSetupWallet(db, mnemonic, alias);
+      result = importSetupWallet(db, mnemonic, chains, alias);
 
+      const w = result.wallets[0];
       success('Wallet imported successfully!');
       console.log('');
-      box([`${bold('Chain')}    ${result.chainId}`, `${bold('Address')}  ${result.address}`]);
+      box([`${bold('Chain')}    ${w?.chainId ?? ''}`, `${bold('Address')}  ${w?.address ?? ''}`]);
     } else {
-      result = generateSetupWallet(db, alias);
+      result = generateSetupWallet(db, chains, alias);
 
       success('New wallet generated!');
       console.log('');
@@ -294,11 +312,12 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
         yellow,
       );
 
+      const w = result.wallets[0];
       console.log('');
       box([
-        `${bold('Chain')}    ${result.chainId}`,
-        `${bold('Address')}  ${result.address}`,
-        `${bold('Path')}     ${result.derivationPath ?? 'N/A'}`,
+        `${bold('Chain')}    ${w?.chainId ?? ''}`,
+        `${bold('Address')}  ${w?.address ?? ''}`,
+        `${bold('Path')}     ${w?.derivationPath ?? 'N/A'}`,
       ]);
     }
 
@@ -317,7 +336,10 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
     if (keystoreExists) {
       info('Existing keystore found. Enter your password to add the new key.');
       const password = await promptPasswordWithRetry(`  ${cyan('?')} Enter keystore password: `);
-      mergeKeyIntoKeystore(result.chainId, result.privateKeyHex, password);
+      // Merge all new chain keys into the existing keystore
+      for (const [chainId, keyHex] of Object.entries(result.keys)) {
+        mergeKeyIntoKeystore(chainId, keyHex, password);
+      }
     } else {
       const password = await promptPasswordWithRetry(
         `  ${cyan('?')} Enter a password to encrypt your keystore: `,

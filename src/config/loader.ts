@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { parse } from 'smol-toml';
+import type { ChainRegistry } from '../chain/registry.js';
 import type { AppConfig } from '../types/config.js';
 import { validateConfig, createDefaultConfig, ConfigAlreadyExistsError } from './schema.js';
 import { serializeToToml } from './serializer.js';
@@ -65,10 +66,14 @@ export function loadConfig(configPath: string = CONFIG_PATH): AppConfig {
  * @returns The path to the created config file
  * @throws Error if the config already exists and force is false
  */
-export function initConfig(configPath: string = CONFIG_PATH, force = false): string {
+export function initConfig(
+  configPath: string = CONFIG_PATH,
+  force = false,
+  options?: { chains?: readonly string[]; registry?: ChainRegistry },
+): string {
   mkdirSync(dirname(configPath), { recursive: true, mode: SECURE_DIR_MODE });
 
-  const defaultConfig = createDefaultConfig();
+  const defaultConfig = createDefaultConfig(options?.chains, options?.registry);
   const tomlContent = serializeToToml(defaultConfig as unknown as Record<string, unknown>, [
     'OnlyFence Configuration',
     'See https://github.com/seallabs/onlyfence for documentation',

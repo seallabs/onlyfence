@@ -1,31 +1,21 @@
 import type { AlphalendClient } from '@alphafi/alphalend-sdk';
-import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import type Database from 'better-sqlite3';
 import type { Logger } from 'pino';
 import { ChainAdapterFactory } from '../chain/factory.js';
-import { SuiSwapBuilder } from '../chain/sui/7k/swap.js';
-import { SuiAdapter } from '../chain/sui/adapter.js';
-import { buildSuiSigner } from '../chain/sui/signer.js';
-import { AlphaLendBorrowBuilder } from '../chain/sui/alphalend/borrow.js';
-import { AlphaLendClaimRewardsBuilder } from '../chain/sui/alphalend/claim-rewards.js';
+import { buildChainRegistry, type ChainRegistry } from '../chain/registry.js';
+import { bootstrapSuiChain } from '../chain/sui/bootstrap.js';
 import { resolveMarketId } from '../chain/sui/alphalend/markets.js';
-import { createAlphaLendClient } from '../chain/sui/alphalend/client.js';
-import { AlphaLendRepayBuilder } from '../chain/sui/alphalend/repay.js';
-import { AlphaLendSupplyBuilder } from '../chain/sui/alphalend/supply.js';
-import { AlphaLendWithdrawBuilder } from '../chain/sui/alphalend/withdraw.js';
-import { SuiDataProvider } from '../chain/sui/data-provider.js';
-import { SUI_KNOWN_DECIMALS, tryResolveTokenAddress } from '../chain/sui/tokens.js';
+import { tryResolveTokenAddress } from '../chain/sui/tokens.js';
+import { getChainConfig } from '../config/utils.js';
 import { CONFIG_PATH, loadConfig } from '../config/loader.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
 import type { IntentResolverRegistry, ResolverServices } from '../core/intent-resolver.js';
 import { buildIntentResolverRegistry } from '../core/resolvers/index.js';
-import { DataProviderRegistry, DataProviderWithCache } from '../core/data-provider.js';
+import { DataProviderRegistry } from '../core/data-provider.js';
 import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
-import { PriceCache } from '../core/price-cache.js';
 import { LPProService } from '../data/lp-pro-service.js';
 import { ActivityLog } from '../db/activity-log.js';
 import { CliEventLog } from '../db/cli-events.js';
-import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
 import { DB_PATH, openDatabase } from '../db/connection.js';
 import { getLogger } from '../logger/index.js';
 import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
@@ -41,6 +31,7 @@ import type { Signer } from '../types/result.js';
 export interface AppComponents {
   readonly db: Database.Database;
   readonly config: AppConfig;
+  readonly chainRegistry: ChainRegistry;
   readonly dataProviders: DataProviderRegistry;
   readonly activityLog: ActivityLog;
   readonly alphalendClient: AlphalendClient;
@@ -50,8 +41,8 @@ export interface AppComponents {
   readonly actionBuilderRegistry: ActionBuilderRegistry;
   readonly intentResolverRegistry: IntentResolverRegistry;
   readonly mevProtectors: Map<string, MevProtector>;
-  /** Chain-agnostic signer factory: builds a Signer from raw key bytes. */
-  readonly buildSigner: (keyBytes: Uint8Array) => Signer;
+  /** Chain-aware signer factory: builds a Signer from chain ID and raw key bytes. */
+  readonly buildSigner: (chainId: string, keyBytes: Uint8Array) => Signer;
   /** Protocol-specific services for intent resolvers. */
   readonly resolverServices: ResolverServices;
   readonly logger: Logger;
@@ -63,14 +54,11 @@ export interface AppComponents {
 /**
  * Bootstrap the OnlyFence application by initializing all core components.
  *
- * Steps:
- * 1. Open/create SQLite DB and run migrations
- * 2. Load config from TOML
- * 3. Initialize Sentry if telemetry is enabled
- * 4. Register data provider factories (lazy-init per chain)
- * 5. Create trade log and CLI event log
- * 6. Create policy registry and register checks based on config sections
- * 7. Create chain adapter factory and register adapters
+ * Chain initialization is config-driven: only chains present in `config.chain`
+ * are bootstrapped. Adding a new chain requires:
+ * 1. A ChainDefinition in the registry
+ * 2. A bootstrapXChain() function in src/chain/x/bootstrap.ts
+ * 3. A `[chain.x]` section in config.toml
  *
  * @param options - Optional overrides for paths
  * @returns Fully initialized AppComponents
@@ -80,24 +68,59 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const db = openDatabase(options?.dbPath ?? DB_PATH);
   const config = loadConfig(options?.configPath ?? CONFIG_PATH);
   const logger = getLogger();
+  const chainRegistry = buildChainRegistry();
 
   // Initialize Sentry if telemetry is configured and enabled
   initSentry(config.telemetry?.enabled ?? false);
 
   const lpPro = new LPProService();
-  const dataProviders = buildDataProviderRegistry(db, lpPro);
+  const dataProviders = new DataProviderRegistry();
   const activityLog = new ActivityLog(db);
   const cliEventLog = new CliEventLog(db);
   const policyRegistry = buildPolicyRegistry(config);
-  const suiClient = new SuiJsonRpcClient({
-    url: process.env['SUI_RPC_URL'] ?? SUI_MAINNET_RPC,
-    network: 'mainnet',
-  });
-  const alphalendClient = createAlphaLendClient(suiClient, 'mainnet');
-  const chainAdapterFactory = buildChainAdapterFactory(suiClient);
-  const actionBuilderRegistry = buildActionBuilderRegistry(activityLog, alphalendClient, suiClient);
+  const chainAdapterFactory = new ChainAdapterFactory();
+  const actionBuilderRegistry = new ActionBuilderRegistry();
+  const mevProtectors = new Map<string, MevProtector>();
   const intentResolverRegistry = buildIntentResolverRegistry();
-  const mevProtectors = buildMevProtectors();
+
+  // Bootstrap each configured chain
+  let alphalendClient: AlphalendClient | undefined;
+
+  for (const chainName of Object.keys(config.chain)) {
+    const chainConfig = getChainConfig(config, chainName);
+
+    if (chainName === 'sui') {
+      const suiResult = bootstrapSuiChain(chainConfig, db, lpPro, activityLog, {
+        chainAdapterFactory,
+        dataProviders,
+        actionBuilderRegistry,
+        mevProtectors,
+      });
+      alphalendClient = suiResult.alphalendClient;
+    }
+  }
+
+  // Fallback MEV protector for unconfigured chains
+  if (!mevProtectors.has('default')) {
+    mevProtectors.set('default', new NoOpMevProtector());
+  }
+
+  // Chain-aware signer factory using the registry
+  const buildSigner = (chainId: string, keyBytes: Uint8Array): Signer => {
+    const chainDef = chainRegistry.getByChainId(chainId);
+    return chainDef.walletDerivation.buildSigner(keyBytes);
+  };
+
+  // Build resolver services (AlphaLend market resolver is Sui-specific)
+  const resolverServices: ResolverServices = {
+    marketResolver:
+      alphalendClient !== undefined
+        ? (coinType: string, explicitMarketId?: string) =>
+            resolveMarketId(alphalendClient, coinType, explicitMarketId)
+        : (_coinType: string, _explicitMarketId?: string) => {
+            throw new Error('AlphaLend is not available: Sui chain is not configured');
+          },
+  };
 
   let closed = false;
 
@@ -113,55 +136,42 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
 
   logger.info('Bootstrap complete');
 
+  // alphalendClient is guaranteed to exist if Sui is configured
+  // For backwards compatibility, provide a stub that throws if Sui is not configured
+  const alphalendClientOrStub =
+    alphalendClient ??
+    (new Proxy(
+      {},
+      {
+        get: (_target, prop) => {
+          if (typeof prop === 'string') {
+            return () => {
+              throw new Error('AlphaLend is not available: Sui chain is not configured');
+            };
+          }
+          return undefined;
+        },
+      },
+    ) as AlphalendClient);
+
   return {
     db,
     config,
+    chainRegistry,
     dataProviders,
     activityLog,
-    alphalendClient,
+    alphalendClient: alphalendClientOrStub,
     cliEventLog,
     policyRegistry,
     chainAdapterFactory,
     actionBuilderRegistry,
     intentResolverRegistry,
     mevProtectors,
-    buildSigner: buildSuiSigner,
-    resolverServices: {
-      marketResolver: (coinType: string, explicitMarketId?: string) =>
-        resolveMarketId(alphalendClient, coinType, explicitMarketId),
-    },
+    buildSigner,
+    resolverServices,
     logger,
     close,
   };
-}
-
-/**
- * Build a DataProviderRegistry with lazy factories for each chain.
- *
- * The actual DataProvider (SuiDataProvider + cache) is only created
- * when first requested via `registry.get(chain)`.
- *
- * @param db - SQLite database connection (for metadata cache)
- * @param lpPro - Shared LPProService instance
- * @returns DataProviderRegistry with all chain factories registered
- */
-export function buildDataProviderRegistry(
-  db: Database.Database,
-  lpPro: LPProService,
-): DataProviderRegistry {
-  const registry = new DataProviderRegistry();
-
-  registry.register('sui', () => {
-    const inner = new SuiDataProvider(lpPro, SUI_KNOWN_DECIMALS);
-    const repo = new CoinMetadataRepository(db);
-    const cached = new DataProviderWithCache(inner, repo);
-    // Wrap with fail-closed price cache: if oracle is unreachable and
-    // cached price is older than 5 minutes, trades requiring USD pricing
-    // are rejected. This blocks the #1 attack vector (oracle manipulation).
-    return new PriceCache(cached);
-  });
-
-  return registry;
 }
 
 /**
@@ -181,85 +191,4 @@ export function buildPolicyRegistry(_config: AppConfig): PolicyCheckRegistry {
   registry.register(new SpendingLimitCheck());
 
   return registry;
-}
-
-/**
- * Build a chain adapter factory with all supported adapters registered.
- *
- * @param suiClient - Shared SuiJsonRpcClient instance
- * @returns ChainAdapterFactory with SuiAdapter registered
- */
-/** Default Sui mainnet RPC endpoint. */
-const SUI_MAINNET_RPC = 'https://fullnode.mainnet.sui.io:443';
-
-export function buildChainAdapterFactory(suiClient: SuiJsonRpcClient): ChainAdapterFactory {
-  const factory = new ChainAdapterFactory();
-  factory.register(new SuiAdapter(suiClient));
-  return factory;
-}
-
-/**
- * Build an ActionBuilderRegistry with all supported builders registered.
- *
- * Uses factory registration so builders are created lazily per-intent,
- * allowing intent-specific configuration (e.g., slippage).
- *
- * @param activityLog - Activity log instance for builders that log activities
- * @returns ActionBuilderRegistry with all builder factories registered
- */
-export function buildActionBuilderRegistry(
-  activityLog: ActivityLog,
-  alphalendClient: AlphalendClient,
-  suiClient: SuiJsonRpcClient,
-): ActionBuilderRegistry {
-  const registry = new ActionBuilderRegistry();
-
-  registry.registerFactory('sui', 'trade:swap', '7k', (intent) => {
-    const slippageBps = intent.action === 'trade:swap' ? intent.params.slippageBps : 100;
-    return new SuiSwapBuilder(activityLog, slippageBps);
-  });
-
-  registry.registerFactory(
-    'sui',
-    'lending:supply',
-    'alphalend',
-    (_intent) => new AlphaLendSupplyBuilder(alphalendClient, suiClient, activityLog),
-  );
-  registry.registerFactory(
-    'sui',
-    'lending:borrow',
-    'alphalend',
-    (_intent) => new AlphaLendBorrowBuilder(alphalendClient, suiClient, activityLog),
-  );
-  registry.registerFactory(
-    'sui',
-    'lending:withdraw',
-    'alphalend',
-    (_intent) => new AlphaLendWithdrawBuilder(alphalendClient, suiClient, activityLog),
-  );
-  registry.registerFactory(
-    'sui',
-    'lending:repay',
-    'alphalend',
-    (_intent) => new AlphaLendRepayBuilder(alphalendClient, suiClient, activityLog),
-  );
-  registry.registerFactory(
-    'sui',
-    'lending:claim_rewards',
-    'alphalend',
-    (_intent) => new AlphaLendClaimRewardsBuilder(alphalendClient, suiClient, activityLog),
-  );
-
-  return registry;
-}
-
-/**
- * Build a map of MEV protectors keyed by chain identifier.
- *
- * @returns Map of chain -> MevProtector
- */
-export function buildMevProtectors(): Map<string, MevProtector> {
-  const protectors = new Map<string, MevProtector>();
-  protectors.set('sui', new NoOpMevProtector());
-  return protectors;
 }

@@ -20,7 +20,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
     .command('swap <fromToken> <toToken> <amount>')
     .description('Execute a swap with policy enforcement')
     .option('-s, --slippage <percent>', 'Slippage tolerance in percent', '0.5')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('-o, --output <format>', 'Output format (json)', 'json')
     .action(
       async (
@@ -29,12 +29,13 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
         amountStr: string,
         options: {
           slippage: string;
-          chain: Chain;
+          chain?: Chain;
           output: string;
         },
       ) => {
-        const chain = options.chain;
-        const chainId: ChainId = `${chain}:mainnet`;
+        const components = getComponents();
+        const chain: Chain = options.chain ?? Object.keys(components.config.chain)[0] ?? 'sui';
+        const chainId: ChainId = components.chainRegistry.get(chain).defaultChainId;
         const slippageBps = Math.round(parseFloat(options.slippage) * 100);
 
         try {

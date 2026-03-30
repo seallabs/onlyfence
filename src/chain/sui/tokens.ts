@@ -1,5 +1,4 @@
 import { normalizeStructTag } from '@mysten/sui/utils';
-import BigNumber from 'bignumber.js';
 
 /**
  * Token entry in the Sui token registry.
@@ -660,55 +659,10 @@ export function getKnownDecimals(coinType: string): number | undefined {
   return SUI_KNOWN_DECIMALS[normalized];
 }
 
-/**
- * Scale a human-readable amount to the token's smallest unit.
- * E.g., scaleToSmallestUnit("100.5", 9) -> "100500000000" (100.5 * 10^9)
- *
- * The caller is responsible for providing the correct decimals value
- * (from remote API, cache, or local fallback). This decouples scaling
- * from decimal resolution.
- *
- * @param humanAmount - Human-readable amount string (e.g., "100.5")
- * @param decimals - Number of decimal places for the token
- * @returns The amount in the token's smallest unit as a string
- * @throws if the amount is not a valid positive number
- */
-export function scaleToSmallestUnit(humanAmount: string, decimals: number): string {
-  const float = parseFloat(humanAmount);
-  if (isNaN(float) || float <= 0) {
-    throw new Error(`Invalid amount "${humanAmount}": must be a positive number`);
-  }
-  const scaled = BigNumber(float)
-    .times(10 ** decimals)
-    .integerValue(BigNumber.ROUND_FLOOR)
-    .toString();
-  return scaled;
-}
+// Re-export chain-agnostic amount utilities from their canonical location.
+export { scaleToSmallestUnit, formatAmountWithDecimals } from '../../utils/token.js';
 
-/**
- * Format a raw smallest-unit amount string to a human-readable value
- * given the number of decimal places.
- *
- * E.g., formatAmountWithDecimals("100500000000", 9) -> "100.5"
- *
- * @param raw - Amount in smallest unit as a string
- * @param decimals - Number of decimal places for the token
- * @param maxFracDigits - Optional cap on fractional digits shown
- */
-export function formatAmountWithDecimals(
-  raw: string,
-  decimals: number,
-  maxFracDigits?: number,
-): string {
-  if (decimals === 0) return raw;
-
-  const padded = raw.padStart(decimals + 1, '0');
-  const intPart = padded.slice(0, padded.length - decimals);
-  const frac = padded.slice(padded.length - decimals);
-  const trimmed = maxFracDigits !== undefined ? frac.slice(0, maxFracDigits) : frac;
-  const fracPart = trimmed.replace(/0+$/, '');
-  return fracPart.length > 0 ? `${intPart}.${fracPart}` : intPart;
-}
+import { formatAmountWithDecimals as _formatAmountWithDecimals } from '../../utils/token.js';
 
 /**
  * Format a smallest-unit amount string to a human-readable value.
@@ -719,7 +673,7 @@ export function formatAmountWithDecimals(
 export function formatSmallestUnit(raw: string, coinType: string): string {
   const decimals = getKnownDecimals(coinType);
   if (decimals === undefined) return raw;
-  return formatAmountWithDecimals(raw, decimals);
+  return _formatAmountWithDecimals(raw, decimals);
 }
 
 /**

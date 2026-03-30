@@ -132,8 +132,9 @@ async function executeTokenLendingAction(
   options: { market?: string; chain: Chain; all?: boolean },
   getComponents: () => AppComponents,
 ): Promise<void> {
-  const chain = options.chain;
-  const chainId: ChainId = `${chain}:mainnet`;
+  const components = getComponents();
+  const adapter = components.chainAdapterFactory.get(options.chain);
+  const chainId: ChainId = adapter.chainId;
 
   try {
     const executor = createActionExecutor(getComponents);
@@ -217,8 +218,9 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
     .option('-c, --chain <chain>', 'Target chain', 'sui')
     .option('-o, --output <format>', 'Output format (json)', 'json')
     .action(async (options: { chain: Chain; output: string }) => {
-      const chain = options.chain;
-      const chainId: ChainId = `${chain}:mainnet`;
+      const components = getComponents();
+      const adapter = components.chainAdapterFactory.get(options.chain);
+      const chainId: ChainId = adapter.chainId;
 
       try {
         const executor = createActionExecutor(getComponents);
@@ -308,9 +310,9 @@ function registerPortfolioQuery(parent: Command, getComponents: () => AppCompone
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { db, alphalendClient, logger } = components;
-      const chain = options.chain;
-      const chainId: ChainId = `${chain}:mainnet`;
+      const { db, alphalendClient, chainAdapterFactory, logger } = components;
+      const adapter = chainAdapterFactory.get(options.chain);
+      const chainId: ChainId = adapter.chainId;
       const log = logger.child({ command: 'lend-portfolio' });
 
       try {

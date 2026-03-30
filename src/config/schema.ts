@@ -1,3 +1,5 @@
+import type { ChainRegistry } from '../chain/registry.js';
+import { SUI_DEFAULT_CHAIN_CONFIG } from '../chain/sui/defaults.js';
 import type {
   AllowlistConfig,
   AppConfig,
@@ -53,38 +55,38 @@ interface LimitCeilings {
 }
 
 /**
- * Default allowlist for Sui chain (MVP tokens).
- */
-const DEFAULT_SUI_ALLOWLIST: AllowlistConfig = {
-  tokens: ['SUI', 'USDC', 'USDT', 'DEEP', 'BLUE', 'WAL'],
-};
-
-/**
- * Default spending limits for Sui chain.
- */
-const DEFAULT_SUI_LIMITS: LimitsConfig = {
-  max_single_trade: 200,
-  max_24h_volume: 500,
-};
-
-/**
- * Default chain configuration for Sui.
- */
-const DEFAULT_SUI_CHAIN_CONFIG: ChainConfig = {
-  rpc: 'https://fullnode.mainnet.sui.io:443',
-  allowlist: DEFAULT_SUI_ALLOWLIST,
-  limits: DEFAULT_SUI_LIMITS,
-};
-
-/**
  * Returns a default AppConfig suitable for first-time setup.
+ *
+ * When called with no arguments, defaults to Sui-only for backwards compatibility.
+ * When called with explicit chains and a registry, builds config from chain definitions.
+ *
+ * @param chains - Chain names to include (defaults to ['sui'])
+ * @param registry - ChainRegistry to look up default configs from
  */
-export function createDefaultConfig(): AppConfig {
-  return {
-    chain: {
-      sui: DEFAULT_SUI_CHAIN_CONFIG,
-    },
-  };
+export function createDefaultConfig(
+  chains?: readonly string[],
+  registry?: ChainRegistry,
+): AppConfig {
+  const selected = chains ?? ['sui'];
+  const chainConfigs: Record<string, ChainConfig> = {};
+
+  for (const name of selected) {
+    if (registry?.has(name) === true) {
+      chainConfigs[name] = registry.get(name).defaultConfig;
+    } else if (name === 'sui') {
+      // Fallback for backwards compatibility when called without registry
+      chainConfigs[name] = SUI_DEFAULT_CHAIN_CONFIG;
+    } else {
+      throw new Error(
+        `Cannot create default config for unknown chain "${name}". ` +
+          (registry !== undefined
+            ? `Available: ${registry.names().join(', ')}`
+            : 'No chain registry provided.'),
+      );
+    }
+  }
+
+  return { chain: chainConfigs };
 }
 
 /**

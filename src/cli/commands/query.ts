@@ -1,5 +1,4 @@
 import type { Command } from 'commander';
-import { resolveSymbol, resolveTokenAddress } from '../../chain/sui/tokens.js';
 import type { Chain } from '../../core/action-types.js';
 import { ActivityQueryEngine, QueryValidationError } from '../../db/activity-query-engine.js';
 import type {
@@ -34,13 +33,14 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { dataProviders } = components;
+      const { dataProviders, chainAdapterFactory } = components;
       const dataProvider = dataProviders.get(options.chain);
+      const adapter = chainAdapterFactory.get(options.chain);
 
       const settled = await Promise.allSettled(
         tokens.map(async (token) => {
-          const coinType = resolveTokenAddress(token);
-          const symbol = resolveSymbol(coinType);
+          const coinType = adapter.resolveTokenAddress(token);
+          const symbol = adapter.resolveTokenSymbol(coinType);
           const price = await dataProvider.getPrice(coinType);
           return { token: symbol, priceUsd: price };
         }),

@@ -2,7 +2,7 @@ import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { updateConfigFile } from '../../config/loader.js';
-import { setNestedValue } from '../../config/utils.js';
+import { getChainConfig, setNestedValue } from '../../config/utils.js';
 import { parseTokenList, toErrorMessage } from '../../utils/index.js';
 import { Panel } from '../components/Panel.js';
 import { TextInput } from '../components/TextInput.js';
@@ -41,7 +41,7 @@ function PolicyHeader({
 export function PolicyConfig(): ReactElement {
   const { config, activeChain, reloadConfig, mode, setMode, dataProvider } = useTui();
 
-  const chainConfig = config.chain[activeChain];
+  const chainConfig = getChainConfig(config, activeChain);
 
   // Editable field values
   const [rpc, setRpc] = useState(chainConfig.rpc);
@@ -68,7 +68,7 @@ export function PolicyConfig(): ReactElement {
 
   // Sync local state when config changes externally
   useEffect(() => {
-    const cc = config.chain[activeChain];
+    const cc = getChainConfig(config, activeChain);
     setRpc(cc.rpc);
     setMaxSingleTrade(String(cc.limits?.max_single_trade ?? 200));
     setMax24hVolume(String(cc.limits?.max_24h_volume ?? 500));

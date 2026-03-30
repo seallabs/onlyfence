@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { Command } from 'commander';
 import { existsSync } from 'node:fs';
+import { buildChainRegistry } from '../../chain/registry.js';
 import { importFromPrivateKey, removeWallet } from '../../wallet/manager.js';
 import { mergeKeyIntoKeystore, saveSetupKeystore } from '../../wallet/setup.js';
 import { DEFAULT_KEYSTORE_PATH } from '../../wallet/keystore.js';
@@ -10,7 +11,7 @@ import { promptSecret, promptPasswordWithRetry } from '../prompt.js';
 /**
  * Register the `fence wallet import-key` subcommand.
  *
- * Imports a wallet from a raw private key (hex or suiprivkey bech32).
+ * Imports a wallet from a raw private key (hex or chain-specific format).
  * The key and password are prompted interactively with hidden input.
  *
  * @param walletCmd - The parent `wallet` command
@@ -22,9 +23,10 @@ export function registerWalletImportKeyCommand(
 ): void {
   walletCmd
     .command('import-key')
-    .description('Import a wallet from a private key (hex or suiprivkey1… bech32)')
+    .description('Import a wallet from a private key (hex or chain-specific format)')
     .option('-a, --alias <alias>', 'Custom alias for the wallet')
-    .action(async (options: { alias?: string }) => {
+    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .action(async (options: { alias?: string; chain: string }) => {
       try {
         if (!process.stdin.isTTY) {
           throw new Error(
@@ -32,7 +34,12 @@ export function registerWalletImportKeyCommand(
           );
         }
 
-        const privateKeyInput = await promptSecret('Enter private key (hex or suiprivkey1…): ');
+        const registry = buildChainRegistry();
+        const chainDef = registry.get(options.chain);
+
+        const privateKeyInput = await promptSecret(
+          'Enter private key (hex or chain-specific format): ',
+        );
         if (privateKeyInput.length === 0) {
           throw new Error('Private key cannot be empty.');
         }
@@ -52,7 +59,7 @@ export function registerWalletImportKeyCommand(
         }
 
         const db = getDb();
-        const result = importFromPrivateKey(db, privateKeyInput, options.alias);
+        const result = importFromPrivateKey(db, privateKeyInput, chainDef, options.alias);
 
         // Attempt keystore save — rollback DB record on failure
         try {
@@ -61,10 +68,14 @@ export function registerWalletImportKeyCommand(
           } else {
             saveSetupKeystore(
               {
-                address: result.wallet.address,
-                chainId: result.wallet.chainId,
-                derivationPath: null,
-                privateKeyHex: result.privateKeyHex,
+                wallets: [
+                  {
+                    address: result.wallet.address,
+                    chainId: result.wallet.chainId,
+                    derivationPath: null,
+                  },
+                ],
+                keys: { [result.wallet.chainId]: result.privateKeyHex },
               },
               password,
             );

@@ -5,6 +5,7 @@ import type Database from 'better-sqlite3';
 import { mnemonicToSeedSync, validateMnemonic } from 'bip39';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { encodeSuiPrivateKey } from '@mysten/sui/cryptography';
+import { buildChainRegistry } from '../chain/registry.js';
 import { openMemoryDatabase } from '../db/connection.js';
 import {
   deriveSuiKeypair,
@@ -29,6 +30,9 @@ import {
   removeWallet,
 } from '../wallet/manager.js';
 import type { KeystoreData } from '../wallet/types.js';
+
+const registry = buildChainRegistry();
+const suiChain = registry.get('sui');
 
 describe('Wallet Derivation', () => {
   // Known test mnemonic for deterministic testing
@@ -125,23 +129,23 @@ describe('Wallet Manager', () => {
 
   describe('generateWallet', () => {
     it('should generate a valid BIP-39 mnemonic', () => {
-      const result = generateWallet(db);
+      const result = generateWallet(db, [suiChain]);
       expect(validateMnemonic(result.mnemonic)).toBe(true);
     });
 
     it('should generate a 24-word mnemonic', () => {
-      const result = generateWallet(db);
+      const result = generateWallet(db, [suiChain]);
       const words = result.mnemonic.split(' ');
       expect(words.length).toBe(24);
     });
 
     it('should derive at least one wallet', () => {
-      const result = generateWallet(db);
+      const result = generateWallet(db, [suiChain]);
       expect(result.wallets.length).toBeGreaterThanOrEqual(1);
     });
 
     it('should create a Sui wallet with the correct derivation path', () => {
-      const result = generateWallet(db);
+      const result = generateWallet(db, [suiChain]);
       const suiWallet = result.wallets.find((w) => w.chainId === 'sui:mainnet');
       expect(suiWallet).toBeDefined();
       expect(suiWallet?.derivationPath).toBe(SUI_DERIVATION_PATH);
@@ -149,7 +153,7 @@ describe('Wallet Manager', () => {
     });
 
     it('should store the wallet in the database', () => {
-      const result = generateWallet(db);
+      const result = generateWallet(db, [suiChain]);
       const wallets = listWallets(db);
       expect(wallets.length).toBe(1);
       expect(wallets[0]?.address).toBe(result.wallets[0]?.address);
@@ -161,10 +165,11 @@ describe('Wallet Manager', () => {
       'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
     it('should import a valid mnemonic and derive the Sui address', () => {
-      const result = importFromMnemonic(db, TEST_MNEMONIC);
-      expect(result.wallet.chainId).toBe('sui:mainnet');
-      expect(result.wallet.address).toMatch(/^0x[0-9a-f]{64}$/);
-      expect(result.wallet.derivationPath).toBe(SUI_DERIVATION_PATH);
+      const result = importFromMnemonic(db, TEST_MNEMONIC, [suiChain]);
+      const suiWallet = result.wallets.find((w) => w.chainId === 'sui:mainnet');
+      expect(suiWallet).toBeDefined();
+      expect(suiWallet!.address).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(suiWallet!.derivationPath).toBe(SUI_DERIVATION_PATH);
     });
 
     it('should produce the same address as generateWallet for the same mnemonic', () => {
@@ -172,19 +177,20 @@ describe('Wallet Manager', () => {
       const seed = mnemonicToSeedSync(TEST_MNEMONIC);
       const keypair = deriveSuiKeypair(Buffer.from(seed));
 
-      const result = importFromMnemonic(db, TEST_MNEMONIC);
-      expect(result.wallet.address).toBe(keypair.address);
+      const result = importFromMnemonic(db, TEST_MNEMONIC, [suiChain]);
+      const suiWallet = result.wallets.find((w) => w.chainId === 'sui:mainnet');
+      expect(suiWallet!.address).toBe(keypair.address);
     });
 
     it('should throw on an invalid mnemonic', () => {
-      expect(() => importFromMnemonic(db, 'not a valid mnemonic phrase')).toThrow(
+      expect(() => importFromMnemonic(db, 'not a valid mnemonic phrase', [suiChain])).toThrow(
         'Invalid BIP-39 mnemonic',
       );
     });
 
     it('should throw on duplicate import', () => {
-      importFromMnemonic(db, TEST_MNEMONIC);
-      expect(() => importFromMnemonic(db, TEST_MNEMONIC)).toThrow('already exists');
+      importFromMnemonic(db, TEST_MNEMONIC, [suiChain]);
+      expect(() => importFromMnemonic(db, TEST_MNEMONIC, [suiChain])).toThrow('already exists');
     });
   });
 
@@ -261,7 +267,7 @@ describe('Wallet Manager', () => {
     const HEX_KEY = Buffer.from(RAW_SEED).toString('hex');
 
     it('should import a wallet from a hex private key', () => {
-      const result = importFromPrivateKey(db, HEX_KEY);
+      const result = importFromPrivateKey(db, HEX_KEY, suiChain);
       expect(result.wallet.chainId).toBe('sui:mainnet');
       expect(result.wallet.address).toMatch(/^0x[0-9a-f]{64}$/);
       expect(result.wallet.derivationPath).toBeNull();
@@ -272,47 +278,47 @@ describe('Wallet Manager', () => {
 
     it('should set isPrimary to false when a primary wallet already exists', () => {
       // First wallet gets primary
-      const first = importFromPrivateKey(db, HEX_KEY);
+      const first = importFromPrivateKey(db, HEX_KEY, suiChain);
       expect(first.wallet.isPrimary).toBe(true);
 
       // Second wallet (different key) should not be primary
       const otherSeed = new Uint8Array(32).fill(0xcd);
       const otherHex = Buffer.from(otherSeed).toString('hex');
-      const second = importFromPrivateKey(db, otherHex);
+      const second = importFromPrivateKey(db, otherHex, suiChain);
       expect(second.wallet.isPrimary).toBe(false);
     });
 
     it('should import a wallet from suiprivkey bech32 format', () => {
       const encoded = encodeSuiPrivateKey(RAW_SEED, 'ED25519');
-      const result = importFromPrivateKey(db, encoded);
+      const result = importFromPrivateKey(db, encoded, suiChain);
       expect(result.wallet.address).toMatch(/^0x[0-9a-f]{64}$/);
       expect(result.wallet.derivationPath).toBeNull();
     });
 
     it('should derive the same address from hex and bech32 of the same key', () => {
       const db2 = openMemoryDatabase();
-      const hexResult = importFromPrivateKey(db, HEX_KEY);
+      const hexResult = importFromPrivateKey(db, HEX_KEY, suiChain);
       const bech32Key = encodeSuiPrivateKey(RAW_SEED, 'ED25519');
-      const bech32Result = importFromPrivateKey(db2, bech32Key);
+      const bech32Result = importFromPrivateKey(db2, bech32Key, suiChain);
       expect(hexResult.wallet.address).toBe(bech32Result.wallet.address);
     });
 
     it('should respect a custom alias', () => {
-      const result = importFromPrivateKey(db, HEX_KEY, 'my-imported');
+      const result = importFromPrivateKey(db, HEX_KEY, suiChain, 'my-imported');
       expect(result.wallet.alias).toBe('my-imported');
     });
 
     it('should throw on duplicate address', () => {
-      importFromPrivateKey(db, HEX_KEY);
-      expect(() => importFromPrivateKey(db, HEX_KEY)).toThrow('already exists');
+      importFromPrivateKey(db, HEX_KEY, suiChain);
+      expect(() => importFromPrivateKey(db, HEX_KEY, suiChain)).toThrow('already exists');
     });
 
     it('should throw on invalid hex key (wrong length)', () => {
-      expect(() => importFromPrivateKey(db, 'abcd')).toThrow();
+      expect(() => importFromPrivateKey(db, 'abcd', suiChain)).toThrow();
     });
 
     it('should throw on invalid bech32 key', () => {
-      expect(() => importFromPrivateKey(db, 'suiprivkey1invalid')).toThrow();
+      expect(() => importFromPrivateKey(db, 'suiprivkey1invalid', suiChain)).toThrow();
     });
   });
 

@@ -1,8 +1,6 @@
 import type Database from 'better-sqlite3';
 import { generateMnemonic, validateMnemonic, mnemonicToSeedSync } from 'bip39';
-import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
-import { deriveSuiKeypair, keypairFromRawKey, SUI_DERIVATION_PATH } from './derivation.js';
-import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
+import type { ChainDefinition } from '../chain/registry.js';
 import type { WalletInfo, WalletRow } from './types.js';
 
 /**
@@ -13,18 +11,18 @@ export interface GenerateWalletResult {
   readonly mnemonic: string;
   /** Wallet info for each derived chain address */
   readonly wallets: readonly WalletInfo[];
-  /** Hex-encoded private key for keystore storage */
-  readonly privateKeyHex: string;
+  /** Per-chain hex-encoded private keys (chainId -> hex) */
+  readonly keys: Record<string, string>;
 }
 
 /**
- * Result of importing a wallet from a mnemonic.
+ * Result of importing wallets from a mnemonic.
  */
 export interface ImportWalletResult {
-  /** Wallet info for the imported address */
-  readonly wallet: WalletInfo;
-  /** Hex-encoded private key for keystore storage */
-  readonly privateKeyHex: string;
+  /** Wallet info for each imported chain address */
+  readonly wallets: readonly WalletInfo[];
+  /** Per-chain hex-encoded private keys (chainId -> hex) */
+  readonly keys: Record<string, string>;
 }
 
 /**
@@ -73,82 +71,94 @@ function generateAlias(db: Database.Database, chain: string, isWatchOnly: boolea
 }
 
 /**
- * Generate a new BIP-39 mnemonic and derive chain-specific wallets.
+ * Generate a new BIP-39 mnemonic and derive wallets for the given chains.
  *
- * Currently derives a Sui ed25519 keypair at m/44'/784'/0'/0'/0'.
- * The wallet record is stored in the SQLite wallets table.
+ * For each chain, derives a keypair using the chain's BIP-44 derivation path
+ * and stores the wallet record in the SQLite wallets table.
  *
  * @param db - SQLite database connection
- * @param alias - Optional custom alias for the wallet
- * @returns The mnemonic and derived wallet information
+ * @param chains - Chain definitions to derive wallets for
+ * @param alias - Optional custom alias prefix for wallets
+ * @returns The mnemonic, derived wallet information, and per-chain keys
  * @throws Error if mnemonic generation or key derivation fails
  */
-export function generateWallet(db: Database.Database, alias?: string): GenerateWalletResult {
+export function generateWallet(
+  db: Database.Database,
+  chains: readonly ChainDefinition[],
+  alias?: string,
+): GenerateWalletResult {
+  if (chains.length === 0) {
+    throw new Error('At least one chain must be specified for wallet generation.');
+  }
+
   const mnemonic = generateMnemonic(256);
   const seed = mnemonicToSeedSync(mnemonic);
+  const { wallets, keys } = deriveAndStoreWallets(db, seed, chains, alias);
 
-  const resolvedAlias = alias ?? generateAlias(db, 'sui', false);
-
-  const suiKeypair = deriveSuiKeypair(Buffer.from(seed));
-  const suiWallet: WalletInfo = {
-    chainId: SUI_CHAIN_ID,
-    address: suiKeypair.address,
-    derivationPath: SUI_DERIVATION_PATH,
-    isPrimary: true,
-    isWatchOnly: false,
-    alias: resolvedAlias,
-  };
-
-  insertWallet(db, suiWallet);
-
-  const privateKeyHex = Buffer.from(suiKeypair.secretKey).toString('hex');
-
-  return {
-    mnemonic,
-    wallets: [suiWallet],
-    privateKeyHex,
-  };
+  return { mnemonic, wallets, keys };
 }
 
 /**
- * Import a wallet from an existing BIP-39 mnemonic.
+ * Import wallets from an existing BIP-39 mnemonic for the given chains.
  *
- * Derives the Sui address using the standard derivation path and stores it in the database.
+ * Derives chain-specific addresses using each chain's standard derivation path.
  *
  * @param db - SQLite database connection
  * @param mnemonic - BIP-39 mnemonic phrase
- * @param alias - Optional custom alias for the wallet
- * @returns The imported wallet information
- * @throws Error if the mnemonic is invalid or the wallet already exists
+ * @param chains - Chain definitions to derive wallets for
+ * @param alias - Optional custom alias prefix for wallets
+ * @returns The imported wallet information and per-chain keys
+ * @throws Error if the mnemonic is invalid or a wallet already exists
  */
 export function importFromMnemonic(
   db: Database.Database,
   mnemonic: string,
+  chains: readonly ChainDefinition[],
   alias?: string,
 ): ImportWalletResult {
   if (!validateMnemonic(mnemonic)) {
     throw new Error('Invalid BIP-39 mnemonic phrase.');
   }
+  if (chains.length === 0) {
+    throw new Error('At least one chain must be specified for wallet import.');
+  }
 
   const seed = mnemonicToSeedSync(mnemonic);
-  const suiKeypair = deriveSuiKeypair(Buffer.from(seed));
+  return deriveAndStoreWallets(db, seed, chains, alias);
+}
 
-  const resolvedAlias = alias ?? generateAlias(db, 'sui', false);
+/**
+ * Derive wallets from a BIP-39 seed for each chain and store in the database.
+ */
+function deriveAndStoreWallets(
+  db: Database.Database,
+  seed: Uint8Array,
+  chains: readonly ChainDefinition[],
+  alias?: string,
+): { wallets: WalletInfo[]; keys: Record<string, string> } {
+  const seedBuf = Buffer.from(seed);
+  const wallets: WalletInfo[] = [];
+  const keys: Record<string, string> = {};
 
-  const wallet: WalletInfo = {
-    chainId: SUI_CHAIN_ID,
-    address: suiKeypair.address,
-    derivationPath: SUI_DERIVATION_PATH,
-    isPrimary: true,
-    isWatchOnly: false,
-    alias: resolvedAlias,
-  };
+  for (const chain of chains) {
+    const derived = chain.walletDerivation.deriveFromSeed(seedBuf);
+    const walletAlias = alias ?? generateAlias(db, chain.name, false);
 
-  insertWallet(db, wallet);
+    const wallet: WalletInfo = {
+      chainId: chain.defaultChainId,
+      address: derived.address,
+      derivationPath: chain.walletDerivation.derivationPath,
+      isPrimary: true,
+      isWatchOnly: false,
+      alias: walletAlias,
+    };
 
-  const privateKeyHex = Buffer.from(suiKeypair.secretKey).toString('hex');
+    insertWallet(db, wallet);
+    wallets.push(wallet);
+    keys[chain.defaultChainId] = Buffer.from(derived.secretKey).toString('hex');
+  }
 
-  return { wallet, privateKeyHex };
+  return { wallets, keys };
 }
 
 /**
@@ -214,7 +224,7 @@ export function listWallets(db: Database.Database): WalletInfo[] {
  * Get the primary wallet for a given chain.
  *
  * @param db - SQLite database connection
- * @param chain - Chain identifier (e.g., "sui")
+ * @param chain - Chain identifier (e.g., "sui:mainnet")
  * @returns The primary wallet info, or null if none is set
  */
 export function getPrimaryWallet(db: Database.Database, chain: string): WalletInfo | null {
@@ -291,45 +301,53 @@ export function renameAlias(db: Database.Database, oldAlias: string, newAlias: s
 /**
  * Parse a private key string into a 32-byte ed25519 seed.
  *
- * Accepts either:
- * - `suiprivkey1…` bech32-encoded key (decoded via @mysten/sui)
- * - 64-character hex string (32 bytes)
+ * Tries chain-specific parsing first (e.g., `suiprivkey1…` bech32 for Sui),
+ * then falls back to 64-character hex string.
  *
- * @param input - Private key in hex or bech32 format
+ * @param input - Private key in hex or chain-specific format
+ * @param chain - Chain definition for chain-specific key parsing
  * @returns 32-byte Uint8Array seed
  * @throws Error if the input format is invalid
  */
-function parsePrivateKeyInput(input: string): Uint8Array {
+function parsePrivateKeyInput(input: string, chain: ChainDefinition): Uint8Array {
   const trimmed = input.trim();
 
-  if (trimmed.startsWith('suiprivkey')) {
-    const decoded = decodeSuiPrivateKey(trimmed);
-    if (decoded.scheme !== 'ED25519') {
-      throw new Error(
-        `Unsupported key scheme "${decoded.scheme}". Only ED25519 keys are supported.`,
-      );
+  // Try chain-specific parsing first. If the chain parser recognizes the
+  // format but finds it invalid (bad checksum, wrong scheme), let that
+  // error propagate — don't mask it with a generic hex-format message.
+  let chainParseError: Error | undefined;
+  if (chain.walletDerivation.parsePrivateKey !== undefined) {
+    try {
+      return chain.walletDerivation.parsePrivateKey(trimmed);
+    } catch (err: unknown) {
+      chainParseError = err instanceof Error ? err : new Error(String(err));
     }
-    return decoded.secretKey;
   }
 
   // Hex format: must be exactly 64 hex chars (32 bytes)
-  if (!/^[0-9a-fA-F]{64}$/.test(trimmed)) {
-    throw new Error(
-      'Invalid private key format. Expected 64-character hex string or suiprivkey1… bech32 key.',
-    );
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    return new Uint8Array(Buffer.from(trimmed, 'hex'));
   }
 
-  return new Uint8Array(Buffer.from(trimmed, 'hex'));
+  // If the chain parser tried and failed, surface that error
+  if (chainParseError !== undefined) {
+    throw chainParseError;
+  }
+
+  throw new Error(
+    'Invalid private key format. Expected 64-character hex string or chain-specific key format.',
+  );
 }
 
 /**
- * Import a wallet from a raw private key (hex or suiprivkey bech32).
+ * Import a wallet from a raw private key (hex or chain-specific format).
  *
- * Derives the ed25519 public key and Sui address, then stores the wallet
- * in the database. No mnemonic or derivation path is associated.
+ * Derives the public key and address using the chain's derivation, then stores
+ * the wallet in the database. No mnemonic or derivation path is associated.
  *
  * @param db - SQLite database connection
- * @param privateKeyInput - Private key in hex or suiprivkey bech32 format
+ * @param privateKeyInput - Private key in hex or chain-specific format
+ * @param chain - Chain definition for key parsing and address derivation
  * @param alias - Optional custom alias for the wallet
  * @returns The imported wallet information and hex-encoded private key seed
  * @throws Error if the key format is invalid or the wallet already exists
@@ -337,18 +355,19 @@ function parsePrivateKeyInput(input: string): Uint8Array {
 export function importFromPrivateKey(
   db: Database.Database,
   privateKeyInput: string,
+  chain: ChainDefinition,
   alias?: string,
 ): ImportFromKeyResult {
-  const seed = parsePrivateKeyInput(privateKeyInput);
-  const keypair = keypairFromRawKey(seed);
+  const seed = parsePrivateKeyInput(privateKeyInput, chain);
+  const keypair = chain.walletDerivation.deriveFromRawKey(seed);
 
-  const resolvedAlias = alias ?? generateAlias(db, 'sui', false);
+  const resolvedAlias = alias ?? generateAlias(db, chain.name, false);
 
   // Set as primary if no other wallet exists for this chain
-  const isPrimary = getPrimaryWallet(db, SUI_CHAIN_ID) === null;
+  const isPrimary = getPrimaryWallet(db, chain.defaultChainId) === null;
 
   const wallet: WalletInfo = {
-    chainId: SUI_CHAIN_ID,
+    chainId: chain.defaultChainId,
     address: keypair.address,
     derivationPath: null,
     isPrimary,

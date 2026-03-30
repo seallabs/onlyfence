@@ -7,8 +7,8 @@
  */
 
 import type { ChainAdapter } from '../chain/adapter.js';
-import { scaleToSmallestUnit } from '../chain/sui/tokens.js';
 import type { DataProvider } from '../core/data-provider.js';
+import { scaleToSmallestUnit } from '../utils/token.js';
 
 /**
  * Fully resolved token input — the canonical representation used

@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { buildChainRegistry } from '../chain/registry.js';
 import { openMemoryDatabase } from '../db/connection.js';
 import {
   generateWallet,
@@ -10,6 +11,9 @@ import {
   switchWallet,
 } from '../wallet/manager.js';
 
+const registry = buildChainRegistry();
+const suiChain = registry.get('sui');
+
 describe('wallet alias', () => {
   let db: Database.Database;
 
@@ -19,7 +23,7 @@ describe('wallet alias', () => {
 
   describe('auto-generated alias', () => {
     it('generates alias on generateWallet with pattern sui-1', () => {
-      const result = generateWallet(db);
+      const result = generateWallet(db, [suiChain]);
       expect(result.wallets[0]!.alias).toBe('sui-1');
     });
 
@@ -50,7 +54,7 @@ describe('wallet alias', () => {
 
   describe('custom alias', () => {
     it('accepts custom alias on generateWallet', () => {
-      const result = generateWallet(db, 'my-wallet');
+      const result = generateWallet(db, [suiChain], 'my-wallet');
       expect(result.wallets[0]!.alias).toBe('my-wallet');
     });
 

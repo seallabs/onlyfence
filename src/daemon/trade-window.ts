@@ -29,7 +29,7 @@ export class InMemoryTradeWindow implements ActivityLogReader {
    */
   preload(source: ActivityLogReader, chainIds: string[]): void {
     for (const chainId of chainIds) {
-      const volume = source.getRolling24hVolume(chainId as ChainId);
+      const volume = source.getRolling24hVolume(chainId);
       if (volume > 0) {
         // Store as a single aggregate entry — exact trade-level granularity
         // isn't needed since we're just tracking total volume.

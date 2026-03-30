@@ -23,8 +23,8 @@ export function registerWalletCommand(program: Command, getComponents: () => App
 
   const getDb = (): Database.Database => getComponents().db;
 
-  // Register subcommands with lazy DB accessor
-  registerWalletWatchCommand(walletCmd, getDb);
+  // Register subcommands with lazy accessor
+  registerWalletWatchCommand(walletCmd, getComponents);
   registerWalletSwitchCommand(walletCmd, getDb);
   registerWalletRenameCommand(walletCmd, getDb);
   registerWalletImportKeyCommand(walletCmd, getDb);

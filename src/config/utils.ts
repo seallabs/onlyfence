@@ -1,3 +1,27 @@
+import type { AppConfig, ChainConfig } from '../types/config.js';
+
+/**
+ * Safely retrieve a chain's config from AppConfig.
+ *
+ * With `noUncheckedIndexedAccess` enabled, `config.chain[name]` returns
+ * `ChainConfig | undefined`. This helper throws a clear error when the
+ * requested chain is not configured instead of silently propagating `undefined`.
+ *
+ * @param config - Application configuration
+ * @param chain - Chain name to look up (e.g., "sui")
+ * @returns The chain configuration
+ * @throws Error if the chain is not found in config
+ */
+export function getChainConfig(config: AppConfig, chain: string): ChainConfig {
+  const cc = config.chain[chain];
+  if (cc === undefined) {
+    throw new Error(
+      `Chain "${chain}" is not configured. Available chains: ${Object.keys(config.chain).join(', ')}`,
+    );
+  }
+  return cc;
+}
+
 /**
  * Get a nested value from an object using a dot-notation key path.
  *

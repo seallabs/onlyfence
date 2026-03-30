@@ -139,7 +139,7 @@ export function createProgram(): { program: Command; cleanup: () => void } {
   registerWalletCommand(program, getComponents);
   registerStatsCommand(program, getComponents);
   registerUpdateCommand(program, checker, createUpdateInstaller(), CURRENT_VERSION);
-  registerUnlockCommand(program);
+  registerUnlockCommand(program, getComponents);
   registerLockCommand(program);
 
   // Daemon commands (Tier 1/2)

@@ -1,11 +1,11 @@
 import { existsSync } from 'node:fs';
 import type Database from 'better-sqlite3';
+import type { ChainDefinition } from '../chain/registry.js';
 import { openDatabase, DB_PATH } from '../db/connection.js';
 import { initConfig, CONFIG_PATH } from '../config/loader.js';
 import { ConfigAlreadyExistsError } from '../config/schema.js';
 import { generateWallet, importFromMnemonic, importFromPrivateKey } from './manager.js';
 import { saveKeystore, loadKeystore, DEFAULT_KEYSTORE_PATH } from './keystore.js';
-import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
 import type { KeystoreData } from './types.js';
 
 /**
@@ -14,10 +14,14 @@ import type { KeystoreData } from './types.js';
  */
 export interface SetupResult {
   readonly mnemonic?: string;
-  readonly address: string;
-  readonly chainId: string;
-  readonly derivationPath: string | null;
-  readonly privateKeyHex: string;
+  /** Wallet info for each chain */
+  readonly wallets: readonly {
+    readonly address: string;
+    readonly chainId: string;
+    readonly derivationPath: string | null;
+  }[];
+  /** Per-chain hex-encoded private keys (chainId -> hex) */
+  readonly keys: Record<string, string>;
 }
 
 /**
@@ -40,17 +44,24 @@ export function ensureSetupEnvironment(): Database.Database {
  * Generate a new wallet and return the setup result.
  *
  * @param db - Open database connection
- * @returns Setup result with mnemonic, address, and private key
+ * @param chains - Chain definitions to generate wallets for
+ * @param alias - Optional custom alias for the wallet
+ * @returns Setup result with mnemonic, addresses, and private keys
  */
-export function generateSetupWallet(db: Database.Database, alias?: string): SetupResult {
-  const result = generateWallet(db, alias);
-  const wallet = result.wallets[0];
+export function generateSetupWallet(
+  db: Database.Database,
+  chains: readonly ChainDefinition[],
+  alias?: string,
+): SetupResult {
+  const result = generateWallet(db, chains, alias);
   return {
     mnemonic: result.mnemonic,
-    address: wallet?.address ?? '',
-    chainId: wallet?.chainId ?? SUI_CHAIN_ID,
-    derivationPath: wallet?.derivationPath ?? null,
-    privateKeyHex: result.privateKeyHex,
+    wallets: result.wallets.map((w) => ({
+      address: w.address,
+      chainId: w.chainId,
+      derivationPath: w.derivationPath,
+    })),
+    keys: result.keys,
   };
 }
 
@@ -59,21 +70,26 @@ export function generateSetupWallet(db: Database.Database, alias?: string): Setu
  *
  * @param db - Open database connection
  * @param mnemonic - BIP-39 mnemonic phrase
- * @returns Setup result with mnemonic, address, and private key
+ * @param chains - Chain definitions to derive wallets for
+ * @param alias - Optional custom alias for the wallet
+ * @returns Setup result with addresses and private keys
  */
 export function importSetupWallet(
   db: Database.Database,
   mnemonic: string,
+  chains: readonly ChainDefinition[],
   alias?: string,
 ): SetupResult {
   const trimmed = mnemonic.trim();
-  const result = importFromMnemonic(db, trimmed, alias);
+  const result = importFromMnemonic(db, trimmed, chains, alias);
   return {
     mnemonic: trimmed,
-    address: result.wallet.address,
-    chainId: result.wallet.chainId,
-    derivationPath: result.wallet.derivationPath,
-    privateKeyHex: result.privateKeyHex,
+    wallets: result.wallets.map((w) => ({
+      address: w.address,
+      chainId: w.chainId,
+      derivationPath: w.derivationPath,
+    })),
+    keys: result.keys,
   };
 }
 
@@ -81,21 +97,27 @@ export function importSetupWallet(
  * Import a wallet from a raw private key and return the setup result.
  *
  * @param db - Open database connection
- * @param privateKeyInput - Private key in hex or suiprivkey bech32 format
+ * @param privateKeyInput - Private key in hex or chain-specific format
+ * @param chain - Chain definition for key parsing and derivation
  * @param alias - Optional custom alias for the wallet
  * @returns Setup result with address and private key (no mnemonic)
  */
 export function importSetupWalletFromKey(
   db: Database.Database,
   privateKeyInput: string,
+  chain: ChainDefinition,
   alias?: string,
 ): SetupResult {
-  const result = importFromPrivateKey(db, privateKeyInput, alias);
+  const result = importFromPrivateKey(db, privateKeyInput, chain, alias);
   return {
-    address: result.wallet.address,
-    chainId: result.wallet.chainId,
-    derivationPath: null,
-    privateKeyHex: result.privateKeyHex,
+    wallets: [
+      {
+        address: result.wallet.address,
+        chainId: result.wallet.chainId,
+        derivationPath: null,
+      },
+    ],
+    keys: { [result.wallet.chainId]: result.privateKeyHex },
   };
 }
 
@@ -108,7 +130,7 @@ export function importSetupWalletFromKey(
 export function saveSetupKeystore(result: SetupResult, password: string): void {
   const keystoreData: KeystoreData = {
     ...(result.mnemonic !== undefined ? { mnemonic: result.mnemonic } : {}),
-    keys: { [result.chainId]: result.privateKeyHex },
+    keys: result.keys,
   };
   saveKeystore(keystoreData, password);
 }

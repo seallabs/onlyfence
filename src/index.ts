@@ -1,18 +1,18 @@
 // Core types
 
 // Chain adapter
+export { ChainAdapterFactory, ChainRegistry, buildChainRegistry } from './chain/index.js';
+export type { ChainAdapter, ChainDefinition } from './chain/index.js';
+// Sui-specific exports (for backwards compatibility)
+export { SuiAdapter, SUI_CHAIN_ID } from './chain/sui/adapter.js';
 export {
-  ChainAdapterFactory,
   coinTypeToSymbol,
   isKnownToken,
   resolveTokenAddress,
-  SUI_CHAIN_ID,
   SUI_TOKEN_MAP,
-  SuiAdapter,
-} from './chain/index.js';
-export type { ChainAdapter } from './chain/index.js';
+} from './chain/sui/tokens.js';
 export { SuiDataProvider } from './chain/sui/data-provider.js';
-export { bootstrap, buildChainAdapterFactory, buildPolicyRegistry } from './cli/bootstrap.js';
+export { bootstrap, buildPolicyRegistry } from './cli/bootstrap.js';
 export type { AppComponents } from './cli/bootstrap.js';
 // CLI
 export { createProgram } from './cli/index.js';

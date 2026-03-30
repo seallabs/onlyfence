@@ -6,7 +6,6 @@
  */
 
 import { readFileSync } from 'node:fs';
-import type { ChainId } from '../core/action-types.js';
 import { toErrorMessage } from '../utils/index.js';
 import { trySetNondumpable, tryDenyAttach } from '../security/process-hardening.js';
 import { isRunningAsRoot } from '../security/index.js';
@@ -79,10 +78,9 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   const password = await resolvePassword(options);
   logger.info('Password resolved');
 
-  const keyHolder = KeyHolder.fromPassword(password);
-  logger.info('Keystore decrypted, keys held in memory');
-
   const components = bootstrap();
+  const keyHolder = KeyHolder.fromPassword(password, components.chainRegistry);
+  logger.info('Keystore decrypted, keys held in memory');
   logger.info('Bootstrap complete');
 
   const configSnapshot = new ConfigSnapshot(components.config);
@@ -94,7 +92,9 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   logger.info('Signed config snapshot written');
 
   const tradeWindow = new InMemoryTradeWindow();
-  const chainIds = Object.keys(components.config.chain).map((c) => `${c}:mainnet`);
+  const chainIds = Object.keys(components.config.chain).map(
+    (c) => components.chainRegistry.get(c).defaultChainId,
+  );
   tradeWindow.preload(components.activityLog, chainIds);
   logger.info('In-memory trade window initialized');
 
@@ -150,7 +150,7 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
       case 'status': {
         const volumes: Record<string, number> = {};
         for (const cid of chainIds) {
-          volumes[cid] = tradeWindow.getRolling24hVolume(cid as ChainId);
+          volumes[cid] = tradeWindow.getRolling24hVolume(cid);
         }
         return {
           id: req.id,

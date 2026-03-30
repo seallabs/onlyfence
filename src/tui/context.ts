@@ -26,6 +26,10 @@ export interface TuiContextValue {
   readonly activeChain: Chain;
   /** CAIP-2 chain ID for DB queries (e.g., "sui:mainnet") */
   readonly activeChainId: ChainId;
+  /** All configured chain names */
+  readonly availableChains: readonly string[];
+  /** Switch the active chain */
+  readonly setActiveChain: (chain: string) => void;
   readonly reloadConfig: () => void;
   readonly configError: string | null;
   readonly mode: 'navigate' | 'edit';

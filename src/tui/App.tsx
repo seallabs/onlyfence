@@ -3,7 +3,6 @@ import type { ReactElement } from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import type { AppComponents } from '../cli/bootstrap.js';
 import { loadConfig } from '../config/loader.js';
-import type { Chain } from '../core/action-types.js';
 import type { UpdateChecker } from '../update/checker.js';
 import { CURRENT_VERSION } from '../update/index.js';
 import { toErrorMessage } from '../utils/index.js';
@@ -41,7 +40,8 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
 
   const { db, dataProviders, activityLog, policyRegistry, chainAdapterFactory } = components;
 
-  const activeChain: Chain = Object.keys(config.chain)[0] as Chain;
+  const availableChains = useMemo(() => Object.keys(config.chain), [config]);
+  const [activeChain, setActiveChain] = useState(availableChains[0] ?? 'sui');
   const activeChainId = chainAdapterFactory.get(activeChain).chainId;
 
   const updateStatus = useUpdateCheck(updateChecker, CURRENT_VERSION);
@@ -55,6 +55,16 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
       setConfigError(toErrorMessage(err));
     }
   }, []);
+
+  // Cycle to the next chain
+  const cycleChain = useCallback(() => {
+    if (availableChains.length <= 1) return;
+    setActiveChain((prev) => {
+      const idx = availableChains.indexOf(prev);
+      const next = availableChains[(idx + 1) % availableChains.length];
+      return next ?? prev;
+    });
+  }, [availableChains]);
 
   // Global keyboard shortcuts — only active in navigate mode
   useInput(
@@ -74,6 +84,9 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
           break;
         case '5':
           setActiveTab(4);
+          break;
+        case 'c':
+          cycleChain();
           break;
         case 'q':
           exit();
@@ -98,6 +111,8 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
       config,
       activeChain,
       activeChainId,
+      availableChains,
+      setActiveChain,
       reloadConfig,
       configError,
       mode,
@@ -113,6 +128,7 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
       config,
       activeChain,
       activeChainId,
+      availableChains,
       reloadConfig,
       configError,
       mode,

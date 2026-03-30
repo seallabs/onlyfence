@@ -20,12 +20,13 @@ import type { ActivityLogReader } from '../db/activity-log.js';
 import { DaemonClient } from '../daemon/client.js';
 import { detectExecutionMode } from '../daemon/detect.js';
 import type { ExecuteResponse } from '../daemon/protocol.js';
+import { getChainConfig } from '../config/utils.js';
 import type { PolicyContext } from '../policy/context.js';
 import { captureException } from '../telemetry/index.js';
 import type { Signer } from '../types/result.js';
 import { getPrimaryWallet } from '../wallet/manager.js';
 import { loadSessionKeyBytes } from '../wallet/session.js';
-import type { ActionIntent, Chain, ChainId, PipelineResult } from './action-types.js';
+import type { ActionIntent, ChainId, PipelineResult } from './action-types.js';
 import type { DataProvider } from './data-provider.js';
 import type { ResolverDeps } from './intent-resolver.js';
 import { NoOpMevProtector } from './mev-protector.js';
@@ -66,7 +67,7 @@ export class InProcessActionExecutor implements ActionExecutor {
 
   async execute(rawIntent: ActionIntent): Promise<ExecutionResult> {
     const components = this.getComponents();
-    const chain = rawIntent.chainId.split(':')[0] as Chain;
+    const chain = rawIntent.chainId.split(':')[0] ?? rawIntent.chainId;
     const chainId: ChainId = rawIntent.chainId;
     const log = components.logger.child({ command: rawIntent.action, mode: 'in-process' });
 
@@ -82,7 +83,9 @@ export class InProcessActionExecutor implements ActionExecutor {
     const resolver = components.intentResolverRegistry.get(rawIntent.action);
     const { intent: resolvedIntent, tradeValueUsd } = await resolver.resolve(rawIntent, deps);
 
-    const signer = watchOnly ? undefined : components.buildSigner(loadSessionKeyBytes(chainId));
+    const signer = watchOnly
+      ? undefined
+      : components.buildSigner(chainId, loadSessionKeyBytes(chainId));
 
     const pipelineResult = await executeWithPipeline({
       resolvedIntent,
@@ -192,12 +195,12 @@ export interface PipelineExecutionOptions {
  */
 export async function executeWithPipeline(opts: PipelineExecutionOptions): Promise<PipelineResult> {
   const { resolvedIntent, components, signer, watchOnly, tradeValueUsd, logger } = opts;
-  const chain = resolvedIntent.chainId.split(':')[0] as Chain;
+  const chain = resolvedIntent.chainId.split(':')[0] ?? resolvedIntent.chainId;
   const chainAdapter = components.chainAdapterFactory.get(chain);
   const dataProvider = components.dataProviders.get(chain);
   const config = opts.configOverride ?? components.config;
 
-  const chainConfig = config.chain[chain];
+  const chainConfig = getChainConfig(config, chain);
   const policyCtx: PolicyContext = {
     config: chainConfig,
     activityLog: opts.activityLogOverride ?? components.activityLog,

@@ -22,12 +22,14 @@ export type ActivityAction =
 
 /** Category prefix extracted from ActivityAction */
 export type ActivityCategory = ActivityAction extends `${infer C}:${string}` ? C : never;
-export type Chain = 'sui';
-export type ChainId = `${Chain}:${string}`;
-export type LendingProtocol = 'alphalend' | 'suilend' | 'navi';
-export type DexProtocol = 'cetus_clmm' | 'bluefin_clmm';
-export type AggregatorProtocol = '7k_meta_ag';
-export type DefiProtocol = LendingProtocol | DexProtocol | AggregatorProtocol;
+/** Short chain name used as config key and registry key (e.g., "sui", "solana") */
+export type Chain = string;
+
+/** CAIP-2 chain identifier (e.g., "sui:mainnet", "solana:mainnet") */
+export type ChainId = string;
+
+/** Protocol identifier for activity logging (e.g., "alphalend", "7k") */
+export type DefiProtocol = string;
 
 /** Base intent -- all actions share these fields */
 export interface ActionIntentBase {
