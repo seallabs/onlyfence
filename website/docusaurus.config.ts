@@ -127,6 +127,7 @@ const config: Config = {
           blogTitle: 'OnlyFence Blog',
           blogDescription: 'DeFi security, AI agent trading, and blockchain guardrails — from the OnlyFence team',
           postsPerPage: 'ALL',
+          exclude: ['CLAUDE.md'],
         },
         theme: {
           customCss: './src/css/custom.css',
