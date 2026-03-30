@@ -328,15 +328,21 @@ export class BluefinClient {
             return;
           }
           // Subscribe to order and command failure events (required per SDK example)
-          socket.send(
-            JSON.stringify({
-              method: 'Subscribe',
-              dataStreams: [
-                AccountDataStream.AccountOrderUpdate,
-                AccountDataStream.AccountCommandFailureUpdate,
-              ],
-            }),
-          );
+          try {
+            socket.send(
+              JSON.stringify({
+                method: 'Subscribe',
+                dataStreams: [
+                  AccountDataStream.AccountOrderUpdate,
+                  AccountDataStream.AccountCommandFailureUpdate,
+                ],
+              }),
+            );
+          } catch (sendErr: unknown) {
+            const sendMsg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+            settle({ status: 'rejected', reason: `WebSocket send failed: ${sendMsg}` });
+            return;
+          }
           // Phase 2: WS is connected and subscribed — NOW place the order.
           // Errors from onReady (e.g. createOrder 400) must propagate as
           // order rejections, not as WS connection failures.

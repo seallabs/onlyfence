@@ -594,7 +594,10 @@ function registerFundingRateQuery(parent: Command, getComponents: () => AppCompo
 
           const enriched = entries.map((e) => ({
             ...e,
-            fundingRateApr: (Number(e.fundingRateE9) / 1e9) * (8760 / e.fundingIntervalHours) * 100,
+            fundingRateApr:
+              e.fundingIntervalHours > 0
+                ? (Number(e.fundingRateE9) / 1e9) * (8760 / e.fundingIntervalHours) * 100
+                : 0,
           }));
 
           writeQueryResult('funding-rate', enriched, { market: marketSymbol });
