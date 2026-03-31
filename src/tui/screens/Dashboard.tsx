@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
-import { formatAmountWithDecimals, resolveSymbol } from '../../chain/sui/tokens.js';
+import { formatAmountWithDecimals } from '../../utils/token.js';
 import type { ActivityRow } from '../../db/activity-log.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { Panel } from '../components/Panel.js';
@@ -66,7 +66,7 @@ export function Dashboard(): ReactElement {
     chainAdapterFactory,
   } = useTui();
 
-  const chainConfig = config.chain[activeChain];
+  const chainConfig = config.chain[activeChain] ?? { rpc: '' };
 
   const { data } = useAutoRefresh<DashboardData>(() => {
     const wallet = getPrimaryWallet(db, activeChainId);
@@ -91,7 +91,7 @@ export function Dashboard(): ReactElement {
       return result.balances
         .filter((b) => b.amount > 0n)
         .map((b) => ({
-          symbol: resolveSymbol(b.token),
+          symbol: adapter.resolveTokenSymbol(b.token),
           balance: formatAmountWithDecimals(b.amount.toString(), b.decimals, 4),
         }));
     },

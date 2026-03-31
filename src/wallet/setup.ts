@@ -5,7 +5,7 @@ import { initConfig, CONFIG_PATH } from '../config/loader.js';
 import { ConfigAlreadyExistsError } from '../config/schema.js';
 import { generateWallet, importFromMnemonic, importFromPrivateKey } from './manager.js';
 import { saveKeystore, loadKeystore, DEFAULT_KEYSTORE_PATH } from './keystore.js';
-import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
+import type { KeyDeriver } from './key-deriver.js';
 import type { KeystoreData } from './types.js';
 
 /**
@@ -42,13 +42,17 @@ export function ensureSetupEnvironment(): Database.Database {
  * @param db - Open database connection
  * @returns Setup result with mnemonic, address, and private key
  */
-export function generateSetupWallet(db: Database.Database, alias?: string): SetupResult {
-  const result = generateWallet(db, alias);
+export function generateSetupWallet(
+  db: Database.Database,
+  keyDeriver: KeyDeriver,
+  alias?: string,
+): SetupResult {
+  const result = generateWallet(db, keyDeriver, alias);
   const wallet = result.wallets[0];
   return {
     mnemonic: result.mnemonic,
     address: wallet?.address ?? '',
-    chainId: wallet?.chainId ?? SUI_CHAIN_ID,
+    chainId: wallet?.chainId ?? keyDeriver.chainId,
     derivationPath: wallet?.derivationPath ?? null,
     privateKeyHex: result.privateKeyHex,
   };
@@ -64,10 +68,11 @@ export function generateSetupWallet(db: Database.Database, alias?: string): Setu
 export function importSetupWallet(
   db: Database.Database,
   mnemonic: string,
+  keyDeriver: KeyDeriver,
   alias?: string,
 ): SetupResult {
   const trimmed = mnemonic.trim();
-  const result = importFromMnemonic(db, trimmed, alias);
+  const result = importFromMnemonic(db, trimmed, keyDeriver, alias);
   return {
     mnemonic: trimmed,
     address: result.wallet.address,
@@ -88,9 +93,10 @@ export function importSetupWallet(
 export function importSetupWalletFromKey(
   db: Database.Database,
   privateKeyInput: string,
+  keyDeriver: KeyDeriver,
   alias?: string,
 ): SetupResult {
-  const result = importFromPrivateKey(db, privateKeyInput, alias);
+  const result = importFromPrivateKey(db, privateKeyInput, keyDeriver, alias);
   return {
     address: result.wallet.address,
     chainId: result.wallet.chainId,

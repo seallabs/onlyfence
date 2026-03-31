@@ -1,6 +1,8 @@
 import { Box, Text, useInput } from 'ink';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { ReactElement } from 'react';
+import { applyChainConfigDefaults } from '../../config/apply-chain-defaults.js';
+import { buildChainModuleRegistry, buildKeyDeriverRegistry } from '../../cli/bootstrap.js';
 import {
   ensureSetupEnvironment,
   generateSetupWallet,
@@ -39,10 +41,25 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
+  const { keyDeriver, defaultChainConfig } = useMemo(() => {
+    const keyDeriverRegistry = buildKeyDeriverRegistry();
+    const chains = keyDeriverRegistry.list();
+    if (chains.length === 0 || chains[0] === undefined)
+      throw new Error('No key derivers registered');
+    const deriver = keyDeriverRegistry.get(chains[0]);
+
+    const moduleRegistry = buildChainModuleRegistry();
+    const chainConfig = moduleRegistry.has(deriver.chain)
+      ? moduleRegistry.getInfo(deriver.chain).defaultChainConfig
+      : undefined;
+
+    return { keyDeriver: deriver, defaultChainConfig: chainConfig };
+  }, []);
+
   const doGenerate = useCallback(() => {
     try {
       const db = ensureSetupEnvironment();
-      const result = generateSetupWallet(db);
+      const result = generateSetupWallet(db, keyDeriver);
       setWalletResult(result);
       db.close();
       setStep('show_wallet');
@@ -50,12 +67,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       setErrorMessage(toErrorMessage(err));
       setStep('error');
     }
-  }, []);
+  }, [keyDeriver]);
 
   const doImport = useCallback(() => {
     try {
       const db = ensureSetupEnvironment();
-      const result = importSetupWallet(db, mnemonicInput);
+      const result = importSetupWallet(db, mnemonicInput, keyDeriver);
       setWalletResult(result);
       db.close();
       setStep('show_wallet');
@@ -63,7 +80,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       setErrorMessage(toErrorMessage(err));
       setStep('error');
     }
-  }, [mnemonicInput]);
+  }, [mnemonicInput, keyDeriver]);
 
   const doSaveKeystore = useCallback(() => {
     if (password !== confirmPassword) {
@@ -127,6 +144,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       }
       updateConfigFile((raw) => {
         raw[key] = value;
+        if (defaultChainConfig !== undefined) {
+          applyChainConfigDefaults(raw, keyDeriver.chain, defaultChainConfig);
+        }
       });
       setStep(nextStep);
     } catch (err: unknown) {

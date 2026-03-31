@@ -24,3 +24,30 @@ export function parseTokenList(raw: string): string[] {
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
 }
+
+/**
+ * Format a smallest-unit amount string to a human-readable decimal value.
+ *
+ * This is a chain-agnostic utility — it only performs string-based decimal
+ * placement. No chain-specific token registry lookups are involved.
+ *
+ * E.g., formatAmountWithDecimals("100500000000", 9) -> "100.5"
+ *
+ * @param raw - Amount in smallest unit as a string (e.g., "100500000000")
+ * @param decimals - Number of decimal places for the token
+ * @param maxFracDigits - Optional cap on fractional digits shown
+ */
+export function formatAmountWithDecimals(
+  raw: string,
+  decimals: number,
+  maxFracDigits?: number,
+): string {
+  if (decimals === 0) return raw;
+
+  const padded = raw.padStart(decimals + 1, '0');
+  const intPart = padded.slice(0, padded.length - decimals);
+  const frac = padded.slice(padded.length - decimals);
+  const trimmed = maxFracDigits !== undefined ? frac.slice(0, maxFracDigits) : frac;
+  const fracPart = trimmed.replace(/0+$/, '');
+  return fracPart.length > 0 ? `${intPart}.${fracPart}` : intPart;
+}

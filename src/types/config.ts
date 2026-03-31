@@ -70,6 +70,12 @@ export interface ChainConfig {
   /** RPC endpoint URL */
   readonly rpc: string;
 
+  /** Network identifier (e.g., "mainnet", "testnet"). Defaults to "mainnet". */
+  readonly network?: string;
+
+  /** Chain-specific credentials (API keys, etc.). Keys are credential names, values are secrets. */
+  readonly credentials?: Readonly<Record<string, string>>;
+
   /** Token allowlist (MVP) */
   readonly allowlist?: AllowlistConfig;
 
@@ -145,8 +151,11 @@ export interface SecurityConfig {
  * Root application configuration parsed from ~/.onlyfence/config.toml.
  */
 export interface AppConfig {
-  /** Per-chain configuration keyed by chain name */
-  readonly chain: Record<Chain, ChainConfig>;
+  /** Per-chain configuration keyed by chain name. Not all supported chains need to be configured. */
+  readonly chain: Record<string, ChainConfig>;
+
+  /** Default chain for CLI commands when --chain is omitted. Resolved from first configured chain if absent. */
+  readonly default_chain?: Chain;
 
   /** Global settings (post-MVP) */
   readonly global?: GlobalConfig;

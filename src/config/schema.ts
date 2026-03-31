@@ -1,3 +1,4 @@
+import type { Chain } from '../core/action-types.js';
 import type {
   AllowlistConfig,
   AppConfig,
@@ -63,37 +64,14 @@ interface LimitCeilings {
 }
 
 /**
- * Default allowlist for Sui chain (MVP tokens).
- */
-const DEFAULT_SUI_ALLOWLIST: AllowlistConfig = {
-  tokens: ['SUI', 'USDC', 'USDT', 'DEEP', 'BLUE', 'WAL'],
-};
-
-/**
- * Default spending limits for Sui chain.
- */
-const DEFAULT_SUI_LIMITS: LimitsConfig = {
-  max_single_trade: 200,
-  max_24h_volume: 500,
-};
-
-/**
- * Default chain configuration for Sui.
- */
-const DEFAULT_SUI_CHAIN_CONFIG: ChainConfig = {
-  rpc: 'https://fullnode.mainnet.sui.io:443',
-  allowlist: DEFAULT_SUI_ALLOWLIST,
-  limits: DEFAULT_SUI_LIMITS,
-};
-
-/**
  * Returns a default AppConfig suitable for first-time setup.
+ *
+ * Starts with an empty chain section — the setup wizard populates it
+ * based on the user's chain selection.
  */
 export function createDefaultConfig(): AppConfig {
   return {
-    chain: {
-      sui: DEFAULT_SUI_CHAIN_CONFIG,
-    },
+    chain: {},
   };
 }
 
@@ -129,15 +107,17 @@ export function validateConfig(raw: unknown): AppConfig {
       validatedSecurity?.max_perp_24h_withdraw_ceiling ?? DEFAULT_MAX_PERP_24H_WITHDRAW_CEILING,
   };
 
-  if (!isRecord(raw['chain'])) {
-    throw new ConfigValidationError('Missing or invalid "chain" section', 'chain');
+  const chainSection = raw['chain'];
+  if (chainSection !== undefined && !isRecord(chainSection)) {
+    throw new ConfigValidationError('"chain" must be an object if present', 'chain');
   }
 
-  const chainSection = raw['chain'];
   const validatedChains: Record<string, ChainConfig> = {};
 
-  for (const [chainName, chainValue] of Object.entries(chainSection)) {
-    validatedChains[chainName] = validateChainConfig(chainValue, `chain.${chainName}`, ceilings);
+  if (chainSection !== undefined) {
+    for (const [chainName, chainValue] of Object.entries(chainSection)) {
+      validatedChains[chainName] = validateChainConfig(chainValue, `chain.${chainName}`, ceilings);
+    }
   }
 
   const global = raw['global'];
@@ -155,8 +135,26 @@ export function validateConfig(raw: unknown): AppConfig {
     throw new ConfigValidationError('"update" must be an object if present', 'update');
   }
 
+  // Validate default_chain
+  const defaultChain = raw['default_chain'];
+  if (defaultChain !== undefined) {
+    if (typeof defaultChain !== 'string' || defaultChain.length === 0) {
+      throw new ConfigValidationError(
+        '"default_chain" must be a non-empty string if present',
+        'default_chain',
+      );
+    }
+    if (!(defaultChain in validatedChains)) {
+      throw new ConfigValidationError(
+        `"default_chain" value "${defaultChain}" must match a key in the [chain] section`,
+        'default_chain',
+      );
+    }
+  }
+
   return {
     chain: validatedChains,
+    ...(defaultChain !== undefined ? { default_chain: defaultChain as Chain } : {}),
     ...(global !== undefined ? { global: validateGlobalConfig(global) } : {}),
     ...(telemetry !== undefined ? { telemetry: validateTelemetryConfig(telemetry) } : {}),
     ...(update !== undefined ? { update: validateUpdateConfig(update) } : {}),
@@ -173,8 +171,36 @@ function validateChainConfig(raw: unknown, path: string, ceilings: LimitCeilings
     throw new ConfigValidationError('Missing or empty "rpc" field', `${path}.rpc`);
   }
 
+  const network = raw['network'];
+  if (network !== undefined && (typeof network !== 'string' || network.length === 0)) {
+    throw new ConfigValidationError(
+      '"network" must be a non-empty string if present',
+      `${path}.network`,
+    );
+  }
+
+  const credentials = raw['credentials'];
+  if (credentials !== undefined) {
+    if (!isRecord(credentials)) {
+      throw new ConfigValidationError(
+        '"credentials" must be an object if present',
+        `${path}.credentials`,
+      );
+    }
+    for (const [key, value] of Object.entries(credentials)) {
+      if (typeof value !== 'string') {
+        throw new ConfigValidationError(
+          `credential "${key}" must be a string`,
+          `${path}.credentials.${key}`,
+        );
+      }
+    }
+  }
+
   return {
     rpc: raw['rpc'],
+    ...(network !== undefined ? { network } : {}),
+    ...(credentials !== undefined ? { credentials: credentials as Record<string, string> } : {}),
     ...(raw['allowlist'] !== undefined
       ? { allowlist: validateAllowlist(raw['allowlist'], `${path}.allowlist`) }
       : {}),

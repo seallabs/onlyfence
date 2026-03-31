@@ -1,5 +1,5 @@
 import type { CoinMetadataRepository, CoinMetadataRow } from '../db/coin-metadata-repo.js';
-import type { Chain, ChainId } from './action-types.js';
+import type { ChainId } from './action-types.js';
 
 export interface TokenMetadata {
   readonly symbol: string;
@@ -32,13 +32,13 @@ export type DataProviderFactory = () => DataProvider;
  * when first requested via `get(chain)`.
  */
 export class DataProviderRegistry {
-  private readonly factories = new Map<Chain, DataProviderFactory>();
-  private readonly instances = new Map<Chain, DataProvider>();
+  private readonly factories = new Map<string, DataProviderFactory>();
+  private readonly instances = new Map<string, DataProvider>();
 
   /**
    * Register a factory for a chain. The factory is called lazily on first `get()`.
    */
-  register(chain: Chain, factory: DataProviderFactory): void {
+  register(chain: string, factory: DataProviderFactory): void {
     this.factories.set(chain, factory);
   }
 
@@ -47,7 +47,7 @@ export class DataProviderRegistry {
    *
    * @throws Error if no factory is registered for the chain
    */
-  get(chain: Chain): DataProvider {
+  get(chain: string): DataProvider {
     let provider = this.instances.get(chain);
     if (provider !== undefined) return provider;
 
