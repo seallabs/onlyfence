@@ -1,6 +1,8 @@
 import { Box, Text, useInput } from 'ink';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { ReactElement } from 'react';
+import { buildKeyDeriverRegistry } from '../../cli/bootstrap.js';
+import type { KeyDeriver } from '../../wallet/key-deriver.js';
 import {
   ensureSetupEnvironment,
   generateSetupWallet,
@@ -39,10 +41,17 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
+  const keyDeriver: KeyDeriver = useMemo(() => {
+    const registry = buildKeyDeriverRegistry();
+    const chains = registry.list();
+    if (chains.length === 0) throw new Error('No key derivers registered');
+    return registry.get(chains[0] ?? 'sui');
+  }, []);
+
   const doGenerate = useCallback(() => {
     try {
       const db = ensureSetupEnvironment();
-      const result = generateSetupWallet(db);
+      const result = generateSetupWallet(db, keyDeriver);
       setWalletResult(result);
       db.close();
       setStep('show_wallet');
@@ -50,12 +59,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       setErrorMessage(toErrorMessage(err));
       setStep('error');
     }
-  }, []);
+  }, [keyDeriver]);
 
   const doImport = useCallback(() => {
     try {
       const db = ensureSetupEnvironment();
-      const result = importSetupWallet(db, mnemonicInput);
+      const result = importSetupWallet(db, mnemonicInput, keyDeriver);
       setWalletResult(result);
       db.close();
       setStep('show_wallet');
@@ -63,7 +72,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       setErrorMessage(toErrorMessage(err));
       setStep('error');
     }
-  }, [mnemonicInput]);
+  }, [mnemonicInput, keyDeriver]);
 
   const doSaveKeystore = useCallback(() => {
     if (password !== confirmPassword) {

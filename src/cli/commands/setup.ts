@@ -5,6 +5,8 @@ import { stdin, stdout } from 'node:process';
 import { openDatabase, DB_PATH } from '../../db/connection.js';
 import { initConfig, updateConfigFile, loadConfig, CONFIG_PATH } from '../../config/loader.js';
 import { ConfigAlreadyExistsError } from '../../config/schema.js';
+import type { KeyDeriver } from '../../wallet/key-deriver.js';
+import { buildKeyDeriverRegistry } from '../bootstrap.js';
 import {
   ensureSetupEnvironment,
   generateSetupWallet,
@@ -37,6 +39,7 @@ interface SetupOptions {
   readonly mnemonicFile?: string;
   readonly passwordFile?: string;
   readonly generate?: boolean;
+  readonly chain?: string;
 }
 
 /**
@@ -65,6 +68,7 @@ export function registerSetupCommand(program: Command): void {
     .option('--mnemonic-file <path>', 'Import mnemonic from file (non-interactive)')
     .option('--password-file <path>', 'Read password from file (enables non-interactive mode)')
     .option('--generate', 'Generate a new wallet (non-interactive, outputs mnemonic in JSON)')
+    .option('--chain <chain>', 'Target chain (default: sui)', 'sui')
     .action(async (options: SetupOptions) => {
       const { passwordFile } = options;
 
@@ -151,6 +155,10 @@ async function runNonInteractiveSetup(
     );
   }
 
+  const registry = buildKeyDeriverRegistry();
+  const chainName = options.chain ?? 'sui';
+  const keyDeriver = registry.get(chainName);
+
   const db = ensureSetupEnvironment();
   try {
     // Disable telemetry by default in non-interactive mode
@@ -166,10 +174,10 @@ async function runNonInteractiveSetup(
       if (options.mnemonicFile !== undefined) {
         throw new Error('Cannot use both --generate and --mnemonic-file.');
       }
-      result = generateSetupWallet(db, options.alias);
+      result = generateSetupWallet(db, keyDeriver, options.alias);
     } else {
       const mnemonic = await resolveMnemonic(options.mnemonicFile);
-      result = importSetupWallet(db, mnemonic, options.alias);
+      result = importSetupWallet(db, mnemonic, keyDeriver, options.alias);
     }
 
     saveSetupKeystore(result, password);
@@ -210,7 +218,7 @@ async function resolveMnemonic(mnemonicFile: string | undefined): Promise<string
 
 // ── Interactive setup ────────────────────────────────────────────────────────
 
-const INTERACTIVE_STEPS = 6;
+const INTERACTIVE_STEPS = 7;
 
 /** Interactive setup wizard with TTY prompts. */
 async function runInteractiveSetup(alias?: string): Promise<void> {
@@ -238,8 +246,30 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
       }
     }
 
-    // Step 3: Wallet setup
-    step(3, INTERACTIVE_STEPS, 'Wallet Setup');
+    // Step 3: Select Chain
+    step(3, INTERACTIVE_STEPS, 'Select Chain');
+    const registry = buildKeyDeriverRegistry();
+    const availableChains = registry.list();
+
+    let keyDeriver: KeyDeriver;
+    if (availableChains.length === 1) {
+      const singleChain = availableChains[0];
+      if (singleChain === undefined) throw new Error('No chains registered');
+      keyDeriver = registry.get(singleChain);
+      info(`Using chain: ${bold(keyDeriver.chain)}`);
+    } else {
+      console.log(`  Available chains: ${availableChains.map((c) => bold(c)).join(', ')}`);
+      const chainChoice = await rl.question(
+        `  ${cyan('?')} Select chain ${dim(`[${availableChains.join('/')}]`)}: `,
+      );
+      const trimmedChoice = chainChoice.trim().toLowerCase();
+      const selected = trimmedChoice.length > 0 ? trimmedChoice : (availableChains[0] ?? 'sui');
+      keyDeriver = registry.get(selected);
+      success(`Selected chain: ${keyDeriver.chain}`);
+    }
+
+    // Step 4: Wallet setup
+    step(4, INTERACTIVE_STEPS, 'Wallet Setup');
 
     const choice = await rl.question(
       `  ${cyan('?')} Would you like to ${bold('(g)enerate')} a new wallet, ${bold('(i)mport')} by mnemonic, or import by private ${bold('(k)ey')}? ${dim('[g/i/k]')}: `,
@@ -261,7 +291,7 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
       const privateKey = await promptSecret(
         `  ${cyan('?')} Enter your private key (hex or suiprivkey1…): `,
       );
-      result = importSetupWalletFromKey(db, privateKey, alias);
+      result = importSetupWalletFromKey(db, privateKey, keyDeriver, alias);
 
       success('Wallet imported from private key!');
       console.log('');
@@ -270,13 +300,13 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
       const mnemonic = looksLikeMnemonic
         ? trimmed
         : await rl.question(`  ${cyan('?')} Enter your BIP-39 mnemonic phrase: `);
-      result = importSetupWallet(db, mnemonic, alias);
+      result = importSetupWallet(db, mnemonic, keyDeriver, alias);
 
       success('Wallet imported successfully!');
       console.log('');
       box([`${bold('Chain')}    ${result.chainId}`, `${bold('Address')}  ${result.address}`]);
     } else {
-      result = generateSetupWallet(db, alias);
+      result = generateSetupWallet(db, keyDeriver, alias);
 
       success('New wallet generated!');
       console.log('');
@@ -309,8 +339,8 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
     stdin.removeAllListeners('keypress');
     stdin.resume();
 
-    // Step 4: Encrypt and save keystore
-    step(4, INTERACTIVE_STEPS, 'Encrypt Keystore');
+    // Step 5: Encrypt and save keystore
+    step(5, INTERACTIVE_STEPS, 'Encrypt Keystore');
 
     const keystoreExists = existsSync(DEFAULT_KEYSTORE_PATH);
 
@@ -336,7 +366,7 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
     // Step 5: Automatic updates (only if not already configured)
     const config = loadConfig(CONFIG_PATH);
     if (config.update === undefined) {
-      step(5, INTERACTIVE_STEPS, 'Enable Automatic Updates');
+      step(6, INTERACTIVE_STEPS, 'Enable Automatic Updates');
       console.log('');
       console.log(`  OnlyFence can automatically install new versions when available.`);
       console.log(
@@ -363,7 +393,7 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
 
     // Step 6: Telemetry opt-in (only if not already configured)
     if (config.telemetry === undefined) {
-      step(6, INTERACTIVE_STEPS, 'Anonymous Error Reporting');
+      step(7, INTERACTIVE_STEPS, 'Anonymous Error Reporting');
       console.log('');
       console.log(`  OnlyFence can report anonymous crash data to help improve the tool.`);
       console.log(`  ${dim('No wallet addresses, keys, balances, or trade data will be sent.')}`);

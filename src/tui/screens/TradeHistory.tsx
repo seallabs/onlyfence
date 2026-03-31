@@ -1,11 +1,7 @@
 import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import {
-  formatAmountWithDecimals,
-  formatSmallestUnit,
-  resolveSymbol,
-} from '../../chain/sui/tokens.js';
+import { formatAmountWithDecimals } from '../../utils/token.js';
 import type { ActivityRow } from '../../db/activity-log.js';
 import { Panel } from '../components/Panel.js';
 import type { Column } from '../components/Table.js';
@@ -16,10 +12,10 @@ import { policyDecisionColor, theme } from '../theme.js';
 
 const PAGE_SIZE = 15;
 
-/** Format raw amount using joined decimals, falling back to coinType-based lookup */
-function formatAmount(raw: string, coinType: string, decimals: number | null): string {
+/** Format raw amount using joined decimals, falling back to raw string */
+function formatAmount(raw: string, _coinType: string, decimals: number | null): string {
   if (decimals !== null) return formatAmountWithDecimals(raw, decimals);
-  return formatSmallestUnit(raw, coinType);
+  return raw;
 }
 
 const COLUMNS: readonly Column<ActivityRow>[] = [
@@ -75,7 +71,7 @@ const COLUMNS: readonly Column<ActivityRow>[] = [
 ];
 
 export function TradeHistory(): ReactElement {
-  const { activeChain, activeChainId, mode, activityLog } = useTui();
+  const { activeChain, activeChainId, mode, activityLog, chainAdapterFactory } = useTui();
 
   const [page, setPage] = useState(0);
   const [selectedRow, setSelectedRow] = useState(0);
@@ -155,10 +151,10 @@ export function TradeHistory(): ReactElement {
             <Box flexDirection="column" width="50%">
               <Text
                 color={theme.eyes}
-              >{`Amount In:  ${selected.token_a_amount !== null && selected.token_a_type !== null ? `${formatAmount(selected.token_a_amount, selected.token_a_type, selected.token_a_decimals)} ${selected.token_a_symbol ?? resolveSymbol(selected.token_a_type)}` : '-'}`}</Text>
+              >{`Amount In:  ${selected.token_a_amount !== null && selected.token_a_type !== null ? `${formatAmount(selected.token_a_amount, selected.token_a_type, selected.token_a_decimals)} ${selected.token_a_symbol ?? chainAdapterFactory.get(activeChain).resolveTokenSymbol(selected.token_a_type)}` : '-'}`}</Text>
               <Text
                 color={theme.eyes}
-              >{`Amount Out: ${selected.token_b_amount !== null && selected.token_b_type !== null ? `${formatAmount(selected.token_b_amount, selected.token_b_type, selected.token_b_decimals)} ${selected.token_b_symbol ?? resolveSymbol(selected.token_b_type)}` : '-'}`}</Text>
+              >{`Amount Out: ${selected.token_b_amount !== null && selected.token_b_type !== null ? `${formatAmount(selected.token_b_amount, selected.token_b_type, selected.token_b_decimals)} ${selected.token_b_symbol ?? chainAdapterFactory.get(activeChain).resolveTokenSymbol(selected.token_b_type)}` : '-'}`}</Text>
               <Text
                 color={theme.eyes}
               >{`USD Value:  ${selected.value_usd !== null ? `$${selected.value_usd.toFixed(2)}` : '-'}`}</Text>

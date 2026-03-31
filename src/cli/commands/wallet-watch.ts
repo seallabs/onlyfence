@@ -28,6 +28,9 @@ export function registerWalletWatchCommand(
         );
       }
       const db = getDb();
+      // Note: wallet-watch uses a default of 'sui' since it doesn't have access to
+      // getComponents for config. For watch-only wallets, the chain:network pattern is
+      // acceptable since the user explicitly chose the chain.
       const chainId = `${options.chain}:mainnet`;
       const result = registerWalletAddress(db, chainId, address, false, true, options.alias);
       console.log(

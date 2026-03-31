@@ -1,7 +1,9 @@
 import type { Command } from 'commander';
 import { SUI_CHAIN_ID } from '../../chain/sui/adapter.js';
+import { loadConfig } from '../../config/loader.js';
 import { createSession, hasActiveSession } from '../../wallet/session.js';
 import { toErrorMessage } from '../../utils/index.js';
+import { resolveDefaultChain } from '../resolve-chain.js';
 import { promptSecret } from '../prompt.js';
 
 /** Allowed TTL values and their seconds equivalent. */
@@ -50,9 +52,11 @@ export function registerUnlockCommand(program: Command): void {
           throw new Error('Password cannot be empty.');
         }
 
-        // Default to Sui — the only supported chain in standalone mode
-        const chain = SUI_CHAIN_ID;
-        createSession(chain, password, ttlSeconds);
+        // Resolve chain from config. When multi-chain unlock is supported,
+        // inject ChainAdapterFactory and use resolveChainId() like other commands.
+        const config = loadConfig();
+        void resolveDefaultChain(config); // validate config has a chain
+        createSession(SUI_CHAIN_ID, password, ttlSeconds);
 
         process.stderr.write(`\u2713 Session active (expires in ${options.ttl})\n`);
       } catch (err: unknown) {

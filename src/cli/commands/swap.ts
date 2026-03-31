@@ -1,10 +1,11 @@
 import type { Command } from 'commander';
-import type { Chain, ChainId, SwapIntent } from '../../core/action-types.js';
+import type { SwapIntent } from '../../core/action-types.js';
 import { createActionExecutor, type ExecutionResult } from '../../core/action-executor.js';
 import { captureException } from '../../telemetry/index.js';
 import type { AppComponents } from '../bootstrap.js';
 import type { CliOutput, MappedOutput, SwapOutput } from '../output.js';
 import { EXIT_CODES, handleCommandError, printJsonOutput } from '../output.js';
+import { resolveChainId, resolveDefaultChain } from '../resolve-chain.js';
 
 /**
  * Register the `fence swap` command on the given program.
@@ -20,7 +21,7 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
     .command('swap <fromToken> <toToken> <amount>')
     .description('Execute a swap with policy enforcement')
     .option('-s, --slippage <percent>', 'Slippage tolerance in percent', '0.5')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('-o, --output <format>', 'Output format (json)', 'json')
     .action(
       async (
@@ -29,12 +30,13 @@ export function registerSwapCommand(program: Command, getComponents: () => AppCo
         amountStr: string,
         options: {
           slippage: string;
-          chain: Chain;
+          chain?: string;
           output: string;
         },
       ) => {
-        const chain = options.chain;
-        const chainId: ChainId = `${chain}:mainnet`;
+        const components = getComponents();
+        const chain = options.chain ?? resolveDefaultChain(components.config);
+        const chainId = resolveChainId(chain, components.chainAdapterFactory);
         const slippageBps = Math.round(parseFloat(options.slippage) * 100);
 
         try {

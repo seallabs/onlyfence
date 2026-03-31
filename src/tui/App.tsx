@@ -41,7 +41,10 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
 
   const { db, dataProviders, activityLog, policyRegistry, chainAdapterFactory } = components;
 
-  const activeChain: Chain = Object.keys(config.chain)[0] as Chain;
+  const configuredChains = useMemo(() => Object.keys(config.chain) as Chain[], [config.chain]);
+  const [activeChainIndex, setActiveChainIndex] = useState(0);
+  const activeChain: Chain =
+    configuredChains[activeChainIndex % configuredChains.length] ?? ('sui' as Chain);
   const activeChainId = chainAdapterFactory.get(activeChain).chainId;
 
   const updateStatus = useUpdateCheck(updateChecker, CURRENT_VERSION);
@@ -80,6 +83,11 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
           break;
         case 'r':
           reloadConfig();
+          break;
+        case 'c':
+          if (configuredChains.length > 1) {
+            setActiveChainIndex((i) => (i + 1) % configuredChains.length);
+          }
           break;
       }
     },

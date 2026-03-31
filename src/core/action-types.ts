@@ -25,7 +25,8 @@ export type ActivityAction =
 /** Category prefix extracted from ActivityAction */
 export type ActivityCategory = ActivityAction extends `${infer C}:${string}` ? C : never;
 export type Chain = 'sui';
-export type ChainId = `${Chain}:${string}`;
+/** CAIP-2 chain identifier. Adapters own their own chainId (e.g., "sui:mainnet", "eip155:1"). */
+export type ChainId = string;
 export type LendingProtocol = 'alphalend' | 'suilend' | 'navi';
 export type DexProtocol = 'cetus_clmm' | 'bluefin_clmm';
 export type AggregatorProtocol = '7k_meta_ag';

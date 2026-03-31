@@ -1,3 +1,4 @@
+import type { Chain } from '../core/action-types.js';
 import type {
   AllowlistConfig,
   AppConfig,
@@ -155,8 +156,26 @@ export function validateConfig(raw: unknown): AppConfig {
     throw new ConfigValidationError('"update" must be an object if present', 'update');
   }
 
+  // Validate default_chain
+  const defaultChain = raw['default_chain'];
+  if (defaultChain !== undefined) {
+    if (typeof defaultChain !== 'string' || defaultChain.length === 0) {
+      throw new ConfigValidationError(
+        '"default_chain" must be a non-empty string if present',
+        'default_chain',
+      );
+    }
+    if (!(defaultChain in validatedChains)) {
+      throw new ConfigValidationError(
+        `"default_chain" value "${defaultChain}" must match a key in the [chain] section`,
+        'default_chain',
+      );
+    }
+  }
+
   return {
     chain: validatedChains,
+    ...(defaultChain !== undefined ? { default_chain: defaultChain as Chain } : {}),
     ...(global !== undefined ? { global: validateGlobalConfig(global) } : {}),
     ...(telemetry !== undefined ? { telemetry: validateTelemetryConfig(telemetry) } : {}),
     ...(update !== undefined ? { update: validateUpdateConfig(update) } : {}),
@@ -173,8 +192,17 @@ function validateChainConfig(raw: unknown, path: string, ceilings: LimitCeilings
     throw new ConfigValidationError('Missing or empty "rpc" field', `${path}.rpc`);
   }
 
+  const network = raw['network'];
+  if (network !== undefined && (typeof network !== 'string' || network.length === 0)) {
+    throw new ConfigValidationError(
+      '"network" must be a non-empty string if present',
+      `${path}.network`,
+    );
+  }
+
   return {
     rpc: raw['rpc'],
+    ...(network !== undefined ? { network } : {}),
     ...(raw['allowlist'] !== undefined
       ? { allowlist: validateAllowlist(raw['allowlist'], `${path}.allowlist`) }
       : {}),

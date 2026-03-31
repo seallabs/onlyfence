@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import type { Logger } from 'pino';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { ChainAdapterFactory } from '../chain/factory.js';
+import { SuiKeyDeriver } from '../chain/sui/key-deriver.js';
 import { SuiSwapBuilder } from '../chain/sui/7k/swap.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
 import { buildSuiSigner } from '../chain/sui/signer.js';
@@ -46,7 +47,8 @@ import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
 import { PolicyCheckRegistry } from '../policy/registry.js';
 import { initSentry } from '../telemetry/sentry.js';
 import type { AppConfig } from '../types/config.js';
-import type { Signer } from '../types/result.js';
+import { KeyDeriverRegistry } from '../wallet/key-deriver.js';
+import { SignerRegistry } from '../wallet/signer-registry.js';
 import { loadSessionKeyBytes as loadSessionKeyBytesSync } from '../wallet/session.js';
 
 /**
@@ -69,8 +71,8 @@ export interface AppComponents {
   readonly actionBuilderRegistry: ActionBuilderRegistry;
   readonly intentResolverRegistry: IntentResolverRegistry;
   readonly mevProtectors: Map<string, MevProtector>;
-  /** Chain-agnostic signer factory: builds a Signer from raw key bytes. */
-  readonly buildSigner: (keyBytes: Uint8Array) => Signer;
+  /** Chain-agnostic signer registry: builds a Signer from chainId + raw key bytes. */
+  readonly signerRegistry: SignerRegistry;
   /** Protocol-specific services for intent resolvers. */
   readonly resolverServices: ResolverServices;
   readonly logger: Logger;
@@ -109,12 +111,16 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const activityLog = new ActivityLog(db);
   const cliEventLog = new CliEventLog(db);
   const policyRegistry = buildPolicyRegistry(config);
+  const suiChainConfig = config.chain.sui;
+  const suiRpc = suiChainConfig?.rpc ?? process.env['SUI_RPC_URL'] ?? SUI_MAINNET_RPC;
+  const suiNetwork = (suiChainConfig?.network ?? 'mainnet') as 'mainnet' | 'testnet';
   const suiClient = new SuiJsonRpcClient({
-    url: process.env['SUI_RPC_URL'] ?? SUI_MAINNET_RPC,
-    network: 'mainnet',
+    url: suiRpc,
+    network: suiNetwork,
   });
-  const alphalendClient = createAlphaLendClient(suiClient, 'mainnet');
+  const alphalendClient = createAlphaLendClient(suiClient, suiNetwork);
   const chainAdapterFactory = buildChainAdapterFactory(suiClient);
+  const signerRegistry = buildSignerRegistry();
 
   // Bluefin client is created lazily on first access via getBluefinClient().
   // Requires an active wallet session (unlocked) to derive the keypair.
@@ -194,7 +200,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     actionBuilderRegistry,
     intentResolverRegistry,
     mevProtectors,
-    buildSigner: buildSuiSigner,
+    signerRegistry,
     resolverServices: {
       marketResolver: (coinType: string, explicitMarketId?: string) =>
         resolveMarketId(alphalendClient, coinType, explicitMarketId),
@@ -368,4 +374,31 @@ export function buildMevProtectors(): Map<string, MevProtector> {
   const protectors = new Map<string, MevProtector>();
   protectors.set('sui', new NoOpMevProtector());
   return protectors;
+}
+
+/**
+ * Build a SignerRegistry with all supported chain signer factories.
+ *
+ * Each chain registers a factory that knows how to produce a Signer from raw key bytes.
+ *
+ * @returns SignerRegistry with all chain factories registered
+ */
+export function buildSignerRegistry(): SignerRegistry {
+  const registry = new SignerRegistry();
+  registry.register('sui', buildSuiSigner);
+  return registry;
+}
+
+/**
+ * Build a KeyDeriverRegistry with all supported chain key derivers.
+ *
+ * Each chain registers a KeyDeriver that handles seed derivation and
+ * chain-specific private key parsing.
+ *
+ * @returns KeyDeriverRegistry with all chain derivers registered
+ */
+export function buildKeyDeriverRegistry(): KeyDeriverRegistry {
+  const registry = new KeyDeriverRegistry();
+  registry.register(new SuiKeyDeriver());
+  return registry;
 }

@@ -82,7 +82,9 @@ export class InProcessActionExecutor implements ActionExecutor {
     const resolver = components.intentResolverRegistry.get(rawIntent.action);
     const resolved = await resolver.resolve(rawIntent, deps);
 
-    const signer = watchOnly ? undefined : components.buildSigner(loadSessionKeyBytes(chainId));
+    const signer = watchOnly
+      ? undefined
+      : components.signerRegistry.build(chainId, loadSessionKeyBytes(chainId));
 
     // Perp resolvers return perpMarketPrice/perpMarketMaxLeverage alongside the intent,
     // so we don't need a separate API call to resolve perp policy context.
@@ -206,6 +208,11 @@ export async function executeWithPipeline(opts: PipelineExecutionOptions): Promi
   const config = opts.configOverride ?? components.config;
 
   const chainConfig = config.chain[chain];
+  if (chainConfig === undefined) {
+    throw new Error(
+      `No configuration found for chain "${chain}". Add [chain.${chain}] to config.toml.`,
+    );
+  }
   const policyCtx: PolicyContext = {
     config: chainConfig,
     activityLog: opts.activityLogOverride ?? components.activityLog,

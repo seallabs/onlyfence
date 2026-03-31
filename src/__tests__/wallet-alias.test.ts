@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { SuiKeyDeriver } from '../chain/sui/key-deriver.js';
 import { openMemoryDatabase } from '../db/connection.js';
 import {
   generateWallet,
@@ -12,6 +13,7 @@ import {
 
 describe('wallet alias', () => {
   let db: Database.Database;
+  const suiDeriver = new SuiKeyDeriver();
 
   beforeEach(() => {
     db = openMemoryDatabase();
@@ -19,7 +21,7 @@ describe('wallet alias', () => {
 
   describe('auto-generated alias', () => {
     it('generates alias on generateWallet with pattern sui-1', () => {
-      const result = generateWallet(db);
+      const result = generateWallet(db, suiDeriver);
       expect(result.wallets[0]!.alias).toBe('sui-1');
     });
 
@@ -50,7 +52,7 @@ describe('wallet alias', () => {
 
   describe('custom alias', () => {
     it('accepts custom alias on generateWallet', () => {
-      const result = generateWallet(db, 'my-wallet');
+      const result = generateWallet(db, suiDeriver, 'my-wallet');
       expect(result.wallets[0]!.alias).toBe('my-wallet');
     });
 

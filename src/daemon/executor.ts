@@ -54,9 +54,9 @@ export class DaemonExecutor {
     }
 
     // Resolve intent via shared resolver registry
-    const chain = rawIntent.chainId.split(':')[0];
-    const chainAdapter = this.components.chainAdapterFactory.get(chain as 'sui');
-    const dataProvider = this.components.dataProviders.get(chain as 'sui');
+    const chain = rawIntent.chainId.split(':')[0] ?? '';
+    const chainAdapter = this.components.chainAdapterFactory.get(chain);
+    const dataProvider = this.components.dataProviders.get(chain);
     const deps = buildResolverDeps(chainAdapter, dataProvider, walletAddress, this.components);
     const resolver = this.components.intentResolverRegistry.get(rawIntent.action);
     const resolved = await resolver.resolve(rawIntent, deps);

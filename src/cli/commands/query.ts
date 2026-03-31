@@ -1,6 +1,4 @@
 import type { Command } from 'commander';
-import { resolveSymbol, resolveTokenAddress } from '../../chain/sui/tokens.js';
-import type { Chain } from '../../core/action-types.js';
 import { ActivityQueryEngine, QueryValidationError } from '../../db/activity-query-engine.js';
 import type {
   ActivityFilter,
@@ -10,6 +8,7 @@ import type {
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import type { AppComponents } from '../bootstrap.js';
+import { resolveDefaultChain } from '../resolve-chain.js';
 import { withComponents } from '../with-components.js';
 
 /**
@@ -28,19 +27,21 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
   queryCmd
     .command('price <tokens...>')
     .description('Query token prices')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
-    .action(async (tokens: string[], options: { chain: Chain; output: string }) => {
+    .action(async (tokens: string[], options: { chain?: string; output: string }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { dataProviders } = components;
-      const dataProvider = dataProviders.get(options.chain);
+      const chain = options.chain ?? resolveDefaultChain(components.config);
+      const { dataProviders, chainAdapterFactory } = components;
+      const chainAdapter = chainAdapterFactory.get(chain);
+      const dataProvider = dataProviders.get(chain);
 
       const settled = await Promise.allSettled(
         tokens.map(async (token) => {
-          const coinType = resolveTokenAddress(token);
-          const symbol = resolveSymbol(coinType);
+          const coinType = chainAdapter.resolveTokenAddress(token);
+          const symbol = chainAdapter.resolveTokenSymbol(coinType);
           const price = await dataProvider.getPrice(coinType);
           return { token: symbol, priceUsd: price };
         }),
@@ -77,14 +78,14 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
   queryCmd
     .command('balance')
     .description('Query wallet balance via chain adapter')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
-    .action(async (options: { chain: Chain; output: string }) => {
+    .action(async (options: { chain?: string; output: string }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
       const { db, chainAdapterFactory } = components;
-      const chainAlias = options.chain;
+      const chainAlias = options.chain ?? resolveDefaultChain(components.config);
 
       try {
         const adapter = chainAdapterFactory.get(chainAlias);
@@ -129,7 +130,7 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
   queryCmd
     .command('activities')
     .description('Query activity history with flexible filtering and aggregation')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('-s, --select <columns>', 'Comma-separated columns or aggregations')
     .option('-f, --filter <expr>', 'Filter: column=op=value (repeatable)', collectRepeatable, [])
     .option('-g, --group-by <columns>', 'Comma-separated GROUP BY columns')
@@ -141,7 +142,7 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
     .option('-o, --output <format>', 'Output format (json|table)', 'table')
     .action(
       (options: {
-        chain: Chain;
+        chain?: string;
         select?: string;
         filter: string[];
         groupBy?: string;
@@ -155,10 +156,11 @@ export function registerQueryCommand(program: Command, getComponents: () => AppC
         const components = withComponents(getComponents);
         if (components === undefined) return;
 
-        const { db, chainAdapterFactory } = components;
+        const { db, chainAdapterFactory, config } = components;
+        const chain = options.chain ?? resolveDefaultChain(config);
 
         try {
-          const adapter = chainAdapterFactory.get(options.chain);
+          const adapter = chainAdapterFactory.get(chain);
           const chainId = adapter.chainId;
 
           const filters: ActivityFilter[] = [
