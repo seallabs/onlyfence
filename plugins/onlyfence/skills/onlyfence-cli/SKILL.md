@@ -4,11 +4,14 @@ description: >
   How to use the OnlyFence CLI (`fence`) to execute DeFi actions on-chain with safety guardrails.
   Use this skill whenever the user asks to swap tokens, lend/borrow/supply/withdraw tokens,
   check wallet balances, query token prices, query activity history, analyze trading patterns,
-  manage wallets, configure trading limits or token allowlists, start/stop the daemon,
-  or perform any on-chain DeFi action through OnlyFence. Also use when the user mentions
-  "fence", "OnlyFence", trading guardrails, DeFi safety rules, activity analysis, lending,
-  AlphaLend, or wants an AI agent to interact with the Sui blockchain. If the user asks to
-  "trade", "swap", "lend", "borrow", "supply", "repay", "check balance", "check price",
+  manage wallets, configure trading limits or token allowlists, trade perpetual futures,
+  open/close perp positions, place limit/market orders, check funding rates, manage margin deposits,
+  start/stop the daemon, or perform any on-chain DeFi action through OnlyFence.
+  Also use when the user mentions "fence", "OnlyFence", trading guardrails, DeFi safety rules,
+  activity analysis, lending, AlphaLend, perpetual, perp, leverage, margin, funding rate,
+  or wants an AI agent to interact with the Sui blockchain. If the user asks to
+  "trade", "swap", "lend", "borrow", "supply", "repay", "long", "short",
+  "check balance", "check price", "open position", "close position", "place order",
   "query activities", "show history", "analyze trades", "set spending limit", "start daemon",
   or "update fence" in the context of this project, this skill applies.
 ---
@@ -631,13 +634,135 @@ fence config set chain.sui.allowlist.tokens '["SUI","USDC","USDT","DEEP","BLUE",
 fence restart                            # review diff and restart with password
 ```
 
+## Perpetual Futures (`fence perp`)
+
+Trade perpetual futures on Bluefin Pro (Sui). Requires wallet unlock. All amounts are human-readable. All numeric values from Bluefin use **e9 format** (divide by 10^9 for human values):
+- **Sizes/prices/PnL:** `sizeE9 = 1000000000` → 1.0 (unit)
+- **Leverage:** `leverageE9 = 20000000000` → 20x
+- **Fees (ratios, not percentages):** `takerFeeE9 = 1000000` → 1000000 / 10^9 = 0.001 = **0.1%**. Always multiply by 100 to get percent.
+
+### Available Markets
+
+```bash
+fence perp markets                       # list all markets with config
+```
+
+Returns: `symbol`, `baseAsset`, `status`, `defaultLeverageE9`, `maxLeverageE9`, `minOrderSizeE9`, `makerFeeE9`, `takerFeeE9`, `makerFeePercent`, `takerFeePercent`.
+
+### Place Orders
+
+```bash
+# Market order (fills immediately)
+fence perp order SUI-PERP long 1 --type market
+
+# Limit order
+fence perp order SUI-PERP short 1 --type limit --price 5
+
+# With options
+fence perp order SUI-PERP long 10 --type limit --price 0.5 --leverage 10 --tif IOC --reduce-only
+```
+
+| Arg/Option | Required | Default | Description |
+|------------|----------|---------|-------------|
+| `<market>` | yes | — | Market symbol: `SUI-PERP`, `BTC-PERP`, `ETH-PERP`, etc. |
+| `<side>` | yes | — | `long` or `short` |
+| `<qty>` | yes | — | Quantity in base asset (e.g., `1` = 1 SUI) |
+| `--type` | no | `market` | `market` or `limit` |
+| `--price` | limit only | — | Limit price in USD |
+| `--leverage` | no | auto | Auto-resolved from existing position, else market default |
+| `--tif` | no | `GTT` | `GTT` (Good Til Time), `IOC`, `FOK` — limit orders only |
+| `--reduce-only` | no | false | Only reduce existing position |
+
+**Response status values:**
+- `success` — order confirmed (limit: on the book; market: filled)
+- `acknowledged` — order submitted but WS confirmation timed out. Verify with `fence perp orders`
+- `error` — rejected with reason (e.g., `INSUFFICIENT_MARGIN`, `INVALID_LEVERAGE`, `REDUCE_ONLY_WOULD_OPEN`)
+
+**Key behaviors:**
+- Leverage auto-resolves from your existing position in cross-margin mode. If no position, uses market default. Explicit `--leverage` validates against market max.
+- Market orders are sent as `LIMIT + IOC` with aggressive price bounds internally.
+- `IOC`/`FOK` limit orders that find no counterparty return `success` (not error) — this is expected.
+
+### Cancel Orders
+
+```bash
+fence perp cancel SUI-PERP                    # cancel all orders for market
+fence perp cancel SUI-PERP --order <hash>      # cancel specific order
+fence perp cancel SUI-PERP -o <h1> -o <h2>    # cancel multiple by hash
+```
+
+### Close Position
+
+```bash
+fence perp close SUI-PERP                      # close full position at market
+fence perp close SUI-PERP --size 0.5           # partial close
+```
+
+Auto-detects position side and places a reduce-only market order in the opposite direction. Errors if no position exists.
+
+### Deposit / Withdraw Margin
+
+```bash
+fence perp deposit 10                          # deposit 10 USDC to margin bank
+fence perp withdraw 5                          # withdraw 5 USDC from margin bank
+```
+
+### Query Commands
+
+```bash
+fence perp positions                           # open positions (live from exchange)
+fence perp orders                              # open orders
+fence perp orders --market SUI-PERP            # filter by market
+fence perp order-status <orderHash>            # check specific order status
+fence perp account                             # full account: balance, margin, PnL, positions
+fence perp funding-rate SUI-PERP               # exchange funding rate history
+fence perp funding-rate BTC-PERP --limit 5     # with limit
+fence perp funding-history                     # your funding payments
+fence perp funding-history --limit 10          # with limit
+fence perp sync                                # sync filled trades to local DB
+```
+
+**`positions` response fields:** `symbol`, `side`, `sizeE9`, `avgEntryPriceE9`, `liquidationPriceE9`, `unrealizedPnlE9`, `leverageE9`, `isIsolated`
+
+**`account` response fields:** `marginBalanceE9`, `freeMarginE9`, `accountValueE9`, `unrealizedPnlE9`, `positions[]`
+
+**`funding-rate` response:** Array of `{ symbol, fundingRateE9, fundingIntervalHours, fundingRateApr, fundingTimeAtMillis }`. `fundingIntervalHours` is per-entry (protocol may change interval over time).
+
+**`funding-history` response:** Array of `{ symbol, paymentAmountE9, rateE9, positionSide, executedAtMillis }`
+
+### Perp Workflow Patterns
+
+**Open a leveraged long:**
+```bash
+fence perp deposit 100                                      # fund margin
+fence perp order SUI-PERP long 50 --type limit --price 3.5  # place order
+fence perp orders --market SUI-PERP                         # verify
+```
+
+**Close a position:**
+```bash
+fence perp positions                  # check current positions
+fence perp close SUI-PERP             # close at market
+fence perp positions                  # verify closed
+```
+
+**Monitor:**
+```bash
+fence perp account                    # margin, PnL overview
+fence perp funding-history            # funding payments
+fence perp sync                       # sync fills to local DB for analytics
+```
+
 ## Important Notes
 
 - **Swap and lending output amounts are human-readable** — `payload.amountIn: 10` means 10 SUI, not 10 MIST. No conversion needed when displaying to the user.
 - **Balance query amounts are in smallest units** — `"amount": "1000000000"` with `"decimals": 9` means 1.0 SUI. Divide by `10^decimals` for display.
+- **Perp e9 format** — divide by 10^9 for human values. **Fee e9 values are ratios** — multiply by 100 after dividing to get percent (e.g., `1000000 / 1e9 = 0.001 = 0.1%`).
 - **`fence setup`, `fence unlock`, and `fence wallet import-key` are interactive** — they prompt for passwords or keys. Never try to pipe passwords or automate these (except non-interactive setup with `--password-file`). Tell the user to run them.
-- **All guardrail checks happen automatically** on every swap and lending supply. You do not need to manually check policy before calling `fence swap` or `fence lend supply`.
+- **All guardrail checks happen automatically** on every swap, lending supply, and perp action. You do not need to manually check policy.
 - **USD price oracle can fail.** When it does, token allowlist checks still apply but USD-based spending limits are skipped (logged, not silently bypassed).
+- **Perp orders use WebSocket confirmation** — the CLI waits for exchange confirmation before returning. If WS times out, status is `acknowledged` (not `success`).
+- **SDK logs go to stderr** — stdout is always clean JSON. Parse stdout only.
 - **Config changes require user action in daemon mode** — `fence config set` only writes to the file on disk. The daemon does NOT auto-reload. The user must run `fence restart` to review the diff and apply changes with their password. Never claim a config change is active without this step.
 - **Config ceilings exist** — `max_single_trade` cannot exceed $10,000 and `max_24h_volume` cannot exceed $100,000, regardless of what the user sets.
 - **The `--verbose` global flag** enables debug logging to stderr. Useful for troubleshooting but noisy — only use when diagnosing issues.

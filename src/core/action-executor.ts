@@ -80,24 +80,28 @@ export class InProcessActionExecutor implements ActionExecutor {
     const dataProvider = components.dataProviders.get(chain);
     const deps = buildResolverDeps(chainAdapter, dataProvider, wallet.address, components);
     const resolver = components.intentResolverRegistry.get(rawIntent.action);
-    const { intent: resolvedIntent, tradeValueUsd } = await resolver.resolve(rawIntent, deps);
+    const resolved = await resolver.resolve(rawIntent, deps);
 
     const signer = watchOnly ? undefined : components.buildSigner(loadSessionKeyBytes(chainId));
 
+    // Perp resolvers return perpMarketPrice/perpMarketMaxLeverage alongside the intent,
+    // so we don't need a separate API call to resolve perp policy context.
     const pipelineResult = await executeWithPipeline({
-      resolvedIntent,
+      resolvedIntent: resolved.intent,
       components,
       signer,
       watchOnly,
-      tradeValueUsd,
+      tradeValueUsd: resolved.tradeValueUsd,
       logger: log,
+      perpMarketPrice: resolved.perpMarketPrice,
+      perpMarketMaxLeverage: resolved.perpMarketMaxLeverage,
     });
 
     return {
       pipelineResult,
-      resolvedIntent,
+      resolvedIntent: resolved.intent,
       walletAddress: wallet.address,
-      ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
+      ...(resolved.tradeValueUsd !== undefined ? { tradeValueUsd: resolved.tradeValueUsd } : {}),
     };
   }
 }
@@ -184,6 +188,10 @@ export interface PipelineExecutionOptions {
   readonly activityLogOverride?: ActivityLogReader | undefined;
   /** Override the app config (e.g., daemon's ConfigSnapshot.current after reload). */
   readonly configOverride?: AppComponents['config'] | undefined;
+  /** Last traded price (USD) for perp order size / leverage policy checks. */
+  readonly perpMarketPrice?: number | undefined;
+  /** On-chain max leverage for perp leverage cap policy check. */
+  readonly perpMarketMaxLeverage?: number | undefined;
 }
 
 /**
@@ -202,6 +210,10 @@ export async function executeWithPipeline(opts: PipelineExecutionOptions): Promi
     config: chainConfig,
     activityLog: opts.activityLogOverride ?? components.activityLog,
     ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
+    ...(opts.perpMarketPrice !== undefined ? { perpMarketPrice: opts.perpMarketPrice } : {}),
+    ...(opts.perpMarketMaxLeverage !== undefined
+      ? { perpMarketMaxLeverage: opts.perpMarketMaxLeverage }
+      : {}),
   };
 
   const builder = components.actionBuilderRegistry.getDefault(

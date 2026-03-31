@@ -10,8 +10,7 @@
  */
 
 import type { Logger } from 'pino';
-import type { ActionIntent, PipelineResult } from '../core/action-types.js';
-import { extractCoinTypes } from '../core/action-types.js';
+import type { PipelineResult } from '../core/action-types.js';
 import { buildResolverDeps, executeWithPipeline } from '../core/action-executor.js';
 import { getPrimaryWallet } from '../wallet/manager.js';
 import type { AppComponents } from '../cli/bootstrap.js';
@@ -60,38 +59,39 @@ export class DaemonExecutor {
     const dataProvider = this.components.dataProviders.get(chain as 'sui');
     const deps = buildResolverDeps(chainAdapter, dataProvider, walletAddress, this.components);
     const resolver = this.components.intentResolverRegistry.get(rawIntent.action);
-    const { intent: resolvedIntent, tradeValueUsd } = await resolver.resolve(rawIntent, deps);
+    const resolved = await resolver.resolve(rawIntent, deps);
 
     // Get signer from daemon's KeyHolder (pre-decrypted keys in memory)
     const signer = this.keyHolder.getSigner(rawIntent.chainId);
 
-    // Execute through the shared pipeline, using InMemoryTradeWindow for policy
+    // Execute through the shared pipeline, using InMemoryTradeWindow for policy.
+    // Perp resolvers return perpMarketPrice/perpMarketMaxLeverage alongside the intent,
+    // so we don't need a separate API call to resolve perp policy context.
     const result = await executeWithPipeline({
-      resolvedIntent,
+      resolvedIntent: resolved.intent,
       components: this.components,
       signer,
       watchOnly: false,
-      tradeValueUsd,
+      tradeValueUsd: resolved.tradeValueUsd,
       logger: log,
       activityLogOverride: this.tradeWindow,
       configOverride: this.configSnapshot.current,
+      perpMarketPrice: resolved.perpMarketPrice,
+      perpMarketMaxLeverage: resolved.perpMarketMaxLeverage,
     });
 
-    // Record in in-memory trade window for spending limit tracking
-    if (result.status === 'success' && tradeValueUsd !== undefined) {
-      this.tradeWindow.record(rawIntent.chainId, tradeValueUsd);
-    }
-
-    // Persist to SQLite for activity history
-    if (result.status === 'success' || result.status === 'rejected') {
-      this.logActivity(resolvedIntent, walletAddress, tradeValueUsd, result, log);
+    // Record in in-memory trade window for spending limit tracking.
+    // SQLite persistence is handled by builder.finish() inside the pipeline —
+    // do NOT duplicate it here (every builder already calls logActivity in finish()).
+    if (result.status === 'success' && resolved.tradeValueUsd !== undefined) {
+      this.tradeWindow.record(rawIntent.chainId, resolved.tradeValueUsd, rawIntent.action);
     }
 
     return {
       result,
-      resolvedIntent,
+      resolvedIntent: resolved.intent,
       walletAddress,
-      ...(tradeValueUsd !== undefined ? { tradeValueUsd } : {}),
+      ...(resolved.tradeValueUsd !== undefined ? { tradeValueUsd: resolved.tradeValueUsd } : {}),
     };
   }
 
@@ -103,35 +103,5 @@ export class DaemonExecutor {
   async executeTrade(payload: TradePayload): Promise<PipelineResult> {
     const response = await this.executeAction({ intent: payload.intent });
     return response.result;
-  }
-
-  /** Persist activity to SQLite (best-effort, does not throw). */
-  private logActivity(
-    intent: ActionIntent,
-    walletAddress: string,
-    tradeValueUsd: number | undefined,
-    result: PipelineResult,
-    log: Logger,
-  ): void {
-    try {
-      const coinTypes = extractCoinTypes(intent);
-      this.components.activityLog.logActivity({
-        chain_id: intent.chainId,
-        wallet_address: walletAddress,
-        action: intent.action,
-        ...(coinTypes[0] !== undefined ? { token_a_type: coinTypes[0] } : {}),
-        ...(coinTypes[1] !== undefined ? { token_b_type: coinTypes[1] } : {}),
-        ...(tradeValueUsd !== undefined ? { value_usd: tradeValueUsd } : {}),
-        ...(result.txDigest !== undefined ? { tx_digest: result.txDigest } : {}),
-        ...(typeof result.gasUsed === 'number' ? { gas_cost: result.gasUsed } : {}),
-        policy_decision: result.status === 'rejected' ? 'rejected' : 'approved',
-        ...(result.rejectionReason !== undefined
-          ? { rejection_reason: result.rejectionReason }
-          : {}),
-        ...(result.rejectionCheck !== undefined ? { rejection_check: result.rejectionCheck } : {}),
-      });
-    } catch (err: unknown) {
-      log.warn({ err }, 'Failed to persist activity to SQLite (in-memory window still updated)');
-    }
   }
 }

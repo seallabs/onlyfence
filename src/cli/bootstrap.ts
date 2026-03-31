@@ -2,6 +2,7 @@ import type { AlphalendClient } from '@alphafi/alphalend-sdk';
 import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import type Database from 'better-sqlite3';
 import type { Logger } from 'pino';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { ChainAdapterFactory } from '../chain/factory.js';
 import { SuiSwapBuilder } from '../chain/sui/7k/swap.js';
 import { SuiAdapter } from '../chain/sui/adapter.js';
@@ -13,6 +14,12 @@ import { createAlphaLendClient } from '../chain/sui/alphalend/client.js';
 import { AlphaLendRepayBuilder } from '../chain/sui/alphalend/repay.js';
 import { AlphaLendSupplyBuilder } from '../chain/sui/alphalend/supply.js';
 import { AlphaLendWithdrawBuilder } from '../chain/sui/alphalend/withdraw.js';
+import { BluefinCancelOrderBuilder } from '../chain/sui/bluefin-pro/cancel-order.js';
+import { BluefinClient } from '../chain/sui/bluefin-pro/client.js';
+import { BluefinDepositBuilder } from '../chain/sui/bluefin-pro/deposit.js';
+import { BluefinPlaceOrderBuilder } from '../chain/sui/bluefin-pro/place-order.js';
+import { BluefinPerpProvider } from '../chain/sui/bluefin-pro/provider.js';
+import { BluefinWithdrawBuilder } from '../chain/sui/bluefin-pro/withdraw.js';
 import { SuiDataProvider } from '../chain/sui/data-provider.js';
 import { SUI_KNOWN_DECIMALS, tryResolveTokenAddress } from '../chain/sui/tokens.js';
 import { CONFIG_PATH, loadConfig } from '../config/loader.js';
@@ -22,18 +29,25 @@ import { buildIntentResolverRegistry } from '../core/resolvers/index.js';
 import { DataProviderRegistry, DataProviderWithCache } from '../core/data-provider.js';
 import { type MevProtector, NoOpMevProtector } from '../core/mev-protector.js';
 import { PriceCache } from '../core/price-cache.js';
+import { PerpProviderRegistry } from '../core/perp-provider.js';
 import { LPProService } from '../data/lp-pro-service.js';
 import { ActivityLog } from '../db/activity-log.js';
 import { CliEventLog } from '../db/cli-events.js';
 import { CoinMetadataRepository } from '../db/coin-metadata-repo.js';
 import { DB_PATH, openDatabase } from '../db/connection.js';
 import { getLogger } from '../logger/index.js';
+import { PerpLeverageCapCheck } from '../policy/checks/perp-leverage-cap.js';
+import { PerpMarketAllowlistCheck } from '../policy/checks/perp-market-allowlist.js';
+import { PerpOrderSizeCheck } from '../policy/checks/perp-order-size.js';
+import { PerpVolumeCheck } from '../policy/checks/perp-volume.js';
+import { PerpWithdrawLimitCheck } from '../policy/checks/perp-withdraw-limit.js';
 import { SpendingLimitCheck } from '../policy/checks/spending-limit.js';
 import { TokenAllowlistCheck } from '../policy/checks/token-allowlist.js';
 import { PolicyCheckRegistry } from '../policy/registry.js';
 import { initSentry } from '../telemetry/sentry.js';
 import type { AppConfig } from '../types/config.js';
 import type { Signer } from '../types/result.js';
+import { loadSessionKeyBytes as loadSessionKeyBytesSync } from '../wallet/session.js';
 
 /**
  * All initialized application components returned by bootstrap.
@@ -44,6 +58,11 @@ export interface AppComponents {
   readonly dataProviders: DataProviderRegistry;
   readonly activityLog: ActivityLog;
   readonly alphalendClient: AlphalendClient;
+  readonly coinMetadataRepo: CoinMetadataRepository;
+  /** Lazily creates and returns a BluefinClient. Throws if wallet is not unlocked. */
+  getBluefinClient(): BluefinClient;
+  /** Protocol-abstract perp provider registry. Prefer this over getBluefinClient(). */
+  readonly perpProviders: PerpProviderRegistry;
   readonly cliEventLog: CliEventLog;
   readonly policyRegistry: PolicyCheckRegistry;
   readonly chainAdapterFactory: ChainAdapterFactory;
@@ -56,8 +75,8 @@ export interface AppComponents {
   readonly resolverServices: ResolverServices;
   readonly logger: Logger;
 
-  /** Close the database and release resources. Safe to call multiple times. */
-  close(): void;
+  /** Close the database, dispose SDK clients, and release resources. Safe to call multiple times. */
+  close(): Promise<void>;
 }
 
 /**
@@ -85,7 +104,8 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   initSentry(config.telemetry?.enabled ?? false);
 
   const lpPro = new LPProService();
-  const dataProviders = buildDataProviderRegistry(db, lpPro);
+  const coinMetadataRepo = new CoinMetadataRepository(db);
+  const dataProviders = buildDataProviderRegistry(db, lpPro, coinMetadataRepo);
   const activityLog = new ActivityLog(db);
   const cliEventLog = new CliEventLog(db);
   const policyRegistry = buildPolicyRegistry(config);
@@ -95,15 +115,61 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   });
   const alphalendClient = createAlphaLendClient(suiClient, 'mainnet');
   const chainAdapterFactory = buildChainAdapterFactory(suiClient);
-  const actionBuilderRegistry = buildActionBuilderRegistry(activityLog, alphalendClient, suiClient);
+
+  // Bluefin client is created lazily on first access via getBluefinClient().
+  // Requires an active wallet session (unlocked) to derive the keypair.
+  let cachedBluefinClient: BluefinClient | undefined;
+
+  function getBluefinClient(): BluefinClient {
+    if (cachedBluefinClient !== undefined) return cachedBluefinClient;
+
+    const keyBytes = loadSessionKeyBytesSync('sui:mainnet');
+    const seed = keyBytes.length === 64 ? keyBytes.subarray(0, 32) : keyBytes;
+    const keypair = Ed25519Keypair.fromSecretKey(seed);
+
+    cachedBluefinClient = new BluefinClient({
+      network: 'mainnet',
+      suiClient,
+      keypair,
+    });
+    return cachedBluefinClient;
+  }
+
+  const actionBuilderRegistry = buildActionBuilderRegistry(
+    activityLog,
+    alphalendClient,
+    suiClient,
+    getBluefinClient,
+  );
   const intentResolverRegistry = buildIntentResolverRegistry();
   const mevProtectors = buildMevProtectors();
 
+  // Build perp provider registry (lazy — providers are created on first access via getBluefinClient)
+  const perpProviders = new PerpProviderRegistry();
+  // Register Bluefin lazily: the provider wraps getBluefinClient() which is itself lazy.
+  // We defer registration until first use so we don't force wallet unlock at bootstrap.
+  perpProviders.registerLazy('bluefin_pro', () => new BluefinPerpProvider(getBluefinClient()));
+
   let closed = false;
 
-  function close(): void {
+  async function close(): Promise<void> {
     if (closed) return;
     closed = true;
+    // Dispose perp providers (which includes Bluefin client) to clear SDK timers.
+    if (perpProviders.isInitialized('bluefin_pro')) {
+      try {
+        await perpProviders.disposeAll();
+      } catch (err: unknown) {
+        logger.warn({ err }, 'Error disposing perp providers');
+      }
+    } else if (cachedBluefinClient !== undefined) {
+      // If provider was never registered but client was created directly
+      try {
+        await cachedBluefinClient.dispose();
+      } catch (err: unknown) {
+        logger.warn({ err }, 'Error disposing Bluefin client');
+      }
+    }
     try {
       db.close();
     } catch (err: unknown) {
@@ -119,6 +185,9 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     dataProviders,
     activityLog,
     alphalendClient,
+    coinMetadataRepo,
+    getBluefinClient,
+    perpProviders,
     cliEventLog,
     policyRegistry,
     chainAdapterFactory,
@@ -129,6 +198,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
     resolverServices: {
       marketResolver: (coinType: string, explicitMarketId?: string) =>
         resolveMarketId(alphalendClient, coinType, explicitMarketId),
+      perpProviders,
     },
     logger,
     close,
@@ -148,12 +218,13 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
 export function buildDataProviderRegistry(
   db: Database.Database,
   lpPro: LPProService,
+  coinMetadataRepo?: CoinMetadataRepository,
 ): DataProviderRegistry {
   const registry = new DataProviderRegistry();
 
   registry.register('sui', () => {
     const inner = new SuiDataProvider(lpPro, SUI_KNOWN_DECIMALS);
-    const repo = new CoinMetadataRepository(db);
+    const repo = coinMetadataRepo ?? new CoinMetadataRepository(db);
     const cached = new DataProviderWithCache(inner, repo);
     // Wrap with fail-closed price cache: if oracle is unreachable and
     // cached price is older than 5 minutes, trades requiring USD pricing
@@ -179,6 +250,11 @@ export function buildPolicyRegistry(_config: AppConfig): PolicyCheckRegistry {
 
   registry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
   registry.register(new SpendingLimitCheck());
+  registry.register(new PerpMarketAllowlistCheck());
+  registry.register(new PerpLeverageCapCheck());
+  registry.register(new PerpOrderSizeCheck());
+  registry.register(new PerpVolumeCheck());
+  registry.register(new PerpWithdrawLimitCheck());
 
   return registry;
 }
@@ -211,6 +287,7 @@ export function buildActionBuilderRegistry(
   activityLog: ActivityLog,
   alphalendClient: AlphalendClient,
   suiClient: SuiJsonRpcClient,
+  getBluefinClient?: () => BluefinClient,
 ): ActionBuilderRegistry {
   const registry = new ActionBuilderRegistry();
 
@@ -249,6 +326,35 @@ export function buildActionBuilderRegistry(
     'alphalend',
     (_intent) => new AlphaLendClaimRewardsBuilder(alphalendClient, suiClient, activityLog),
   );
+
+  // Bluefin Pro perp builders (off-chain signed).
+  // getBluefinClient() is called at factory invocation time (lazy), not at registration time.
+  if (getBluefinClient !== undefined) {
+    registry.registerFactory(
+      'sui',
+      'perp:place_order',
+      'bluefin_pro',
+      (_intent) => new BluefinPlaceOrderBuilder(getBluefinClient(), activityLog),
+    );
+    registry.registerFactory(
+      'sui',
+      'perp:cancel_order',
+      'bluefin_pro',
+      (_intent) => new BluefinCancelOrderBuilder(getBluefinClient(), activityLog),
+    );
+    registry.registerFactory(
+      'sui',
+      'perp:deposit',
+      'bluefin_pro',
+      (_intent) => new BluefinDepositBuilder(getBluefinClient(), activityLog),
+    );
+    registry.registerFactory(
+      'sui',
+      'perp:withdraw',
+      'bluefin_pro',
+      (_intent) => new BluefinWithdrawBuilder(getBluefinClient(), activityLog),
+    );
+  }
 
   return registry;
 }

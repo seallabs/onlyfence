@@ -60,8 +60,43 @@ export interface LPOutput {
   readonly rewards?: RewardMap;
 }
 
+export interface PerpOrderOutput {
+  readonly marketSymbol: string;
+  readonly side: string;
+  readonly orderType: string;
+  readonly quantityE9: string;
+  readonly priceE9?: string;
+  readonly leverageE9?: string;
+  readonly orderHash?: string;
+}
+
+export interface PerpDepositOutput {
+  readonly token: string;
+  readonly amount: number;
+  readonly valueUsd: number | null;
+}
+
+export interface PerpWithdrawOutput {
+  readonly assetSymbol: string;
+  readonly amountE9: string;
+  readonly valueUsd: number | null;
+}
+
+export interface PerpCancelOutput {
+  readonly marketSymbol: string;
+  readonly cancelledCount: number;
+}
+
 /** Action payload union -- extend when adding new action output types */
-export type ActionPayload = SwapOutput | LendingOutput | LendingRewardsOutput | LPOutput;
+export type ActionPayload =
+  | SwapOutput
+  | LendingOutput
+  | LendingRewardsOutput
+  | LPOutput
+  | PerpOrderOutput
+  | PerpDepositOutput
+  | PerpWithdrawOutput
+  | PerpCancelOutput;
 
 /**
  * Unified CLI output for all pipeline-based commands.
@@ -85,6 +120,7 @@ export interface CliOutput<T extends ActionPayload = ActionPayload> {
 /** Exit codes by pipeline status */
 export const EXIT_CODES: Record<PipelineStatus, number> = {
   success: 0,
+  acknowledged: 0,
   simulated: 0,
   rejected: 3,
   simulation_failed: 4,
@@ -112,10 +148,13 @@ export function formatJsonOutput(output: CliOutput): string {
 /**
  * Print a CLI output object to stdout as JSON.
  *
+ * Uses process.stdout.write directly to ensure output always goes to stdout,
+ * even when console.log is temporarily redirected (e.g. during SDK noise suppression).
+ *
  * @param output - The output object to print
  */
 export function printJsonOutput(output: CliOutput): void {
-  console.log(formatJsonOutput(output));
+  process.stdout.write(formatJsonOutput(output) + '\n');
 }
 
 /**

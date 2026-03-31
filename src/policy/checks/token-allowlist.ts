@@ -1,6 +1,6 @@
 import type { ActionIntent } from '../../core/action-types.js';
 import type { CheckResult } from '../../types/result.js';
-import type { PolicyCheck } from '../check.js';
+import { POLICY_PASS, type PolicyCheck } from '../check.js';
 import type { PolicyContext } from '../context.js';
 
 /**
@@ -52,13 +52,13 @@ export class TokenAllowlistCheck implements PolicyCheck {
 
   evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult> {
     if (intent.action === 'lending:claim_rewards') {
-      return Promise.resolve({ status: 'pass' });
+      return Promise.resolve(POLICY_PASS);
     }
 
     const allowlist = ctx.config.allowlist;
 
     if (allowlist === undefined) {
-      return Promise.resolve({ status: 'pass' });
+      return Promise.resolve(POLICY_PASS);
     }
 
     const allowedAddresses = this.getAllowedAddresses(allowlist.tokens);
@@ -91,10 +91,31 @@ export class TokenAllowlistCheck implements PolicyCheck {
         });
       }
 
-      return Promise.resolve({ status: 'pass' as const });
+      return Promise.resolve(POLICY_PASS);
     }
 
-    // Remaining actions (supply, borrow, withdraw, repay): single coinType check
+    // Perp cancel/withdraw: no token to check
+    if (intent.action === 'perp:cancel_order' || intent.action === 'perp:withdraw') {
+      return Promise.resolve(POLICY_PASS);
+    }
+
+    // Perp place order: check collateral coin type
+    if (intent.action === 'perp:place_order') {
+      if (!allowedAddresses.has(intent.params.collateralCoinType)) {
+        return Promise.resolve({
+          status: 'reject' as const,
+          reason: 'token_not_allowed',
+          detail: `Collateral token "${intent.params.collateralCoinType}" is not in the allowlist for chain "${intent.chainId}"`,
+          metadata: {
+            token: intent.params.collateralCoinType,
+            allowedTokens: [...allowlist.tokens],
+          },
+        });
+      }
+      return Promise.resolve(POLICY_PASS);
+    }
+
+    // Remaining actions (supply, borrow, withdraw, repay, deposit): single coinType check
     if (!allowedAddresses.has(intent.params.coinType)) {
       return Promise.resolve({
         status: 'reject' as const,
@@ -107,6 +128,6 @@ export class TokenAllowlistCheck implements PolicyCheck {
       });
     }
 
-    return Promise.resolve({ status: 'pass' as const });
+    return Promise.resolve(POLICY_PASS);
   }
 }

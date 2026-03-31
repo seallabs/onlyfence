@@ -74,6 +74,8 @@ export interface ActivityRow {
  */
 export interface ActivityLogReader {
   getRolling24hVolume(chainId: ChainId): number;
+  getRolling24hPerpVolume(chainId: ChainId): number;
+  getRolling24hPerpWithdrawals(chainId: ChainId): number;
 }
 
 /**
@@ -86,10 +88,13 @@ export interface ActivityLogReader {
 export class ActivityLog implements ActivityLogReader {
   private readonly insertStmt: Statement;
   private readonly rolling24hStmt: Statement;
+  private readonly rolling24hPerpVolumeStmt: Statement;
+  private readonly rolling24hPerpWithdrawStmt: Statement;
   private readonly recentStmt: Statement;
   private readonly recentByCategoryStmt: Statement;
   private readonly countStmt: Statement;
   private readonly countByCategoryStmt: Statement;
+  private readonly lastSyncStmt: Statement;
 
   constructor(db: Database.Database) {
     this.insertStmt = db.prepare(`
@@ -120,6 +125,20 @@ export class ActivityLog implements ActivityLogReader {
         AND action = 'trade:swap'
     `);
 
+    this.rolling24hPerpVolumeStmt = db.prepare(`
+      SELECT COALESCE(SUM(value_usd), 0) as total FROM activities
+      WHERE chain_id = ? AND action = 'perp:place_order'
+      AND policy_decision = 'approved'
+      AND created_at > datetime('now', '-24 hours')
+    `);
+
+    this.rolling24hPerpWithdrawStmt = db.prepare(`
+      SELECT COALESCE(SUM(value_usd), 0) as total FROM activities
+      WHERE chain_id = ? AND action = 'perp:withdraw'
+      AND policy_decision = 'approved'
+      AND created_at > datetime('now', '-24 hours')
+    `);
+
     const selectWithJoin = `
       SELECT a.*,
         cm_a.symbol AS token_a_symbol, cm_a.decimals AS token_a_decimals,
@@ -148,6 +167,12 @@ export class ActivityLog implements ActivityLogReader {
 
     this.countByCategoryStmt = db.prepare(`
       SELECT COUNT(*) as count FROM activities WHERE chain_id = ? AND category = ?
+    `);
+
+    this.lastSyncStmt = db.prepare(`
+      SELECT MAX(created_at) as last_sync
+      FROM activities
+      WHERE action = ? AND protocol = ?
     `);
   }
 
@@ -194,6 +219,22 @@ export class ActivityLog implements ActivityLogReader {
   }
 
   /**
+   * Get the rolling 24-hour approved perp order volume in USD for a given chain.
+   */
+  getRolling24hPerpVolume(chainId: ChainId): number {
+    const row = this.rolling24hPerpVolumeStmt.get(chainId) as { total: number } | undefined;
+    return row?.total ?? 0;
+  }
+
+  /**
+   * Get the rolling 24-hour approved perp withdrawal volume in USD for a given chain.
+   */
+  getRolling24hPerpWithdrawals(chainId: ChainId): number {
+    const row = this.rolling24hPerpWithdrawStmt.get(chainId) as { total: number } | undefined;
+    return row?.total ?? 0;
+  }
+
+  /**
    * Get recent activities for a given chain, ordered by most recent first.
    * Returns ALL categories. Use `getRecentByCategory()` to filter.
    */
@@ -227,5 +268,14 @@ export class ActivityLog implements ActivityLogReader {
   getActivityCountByCategory(chain: string, category: ActivityCategory): number {
     const row = this.countByCategoryStmt.get(chain, category) as { count: number } | undefined;
     return row?.count ?? 0;
+  }
+
+  /**
+   * Get the timestamp of the most recent activity for a given action+protocol.
+   * Used by fill sync to determine the starting point for fetching new data.
+   */
+  getLastSyncTimestamp(action: ActivityAction, protocol: DefiProtocol): string | null {
+    const row = this.lastSyncStmt.get(action, protocol) as { last_sync: string | null } | undefined;
+    return row?.last_sync ?? null;
   }
 }

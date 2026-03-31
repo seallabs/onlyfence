@@ -191,7 +191,7 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
     await server.start(handleRequest);
   } catch (err: unknown) {
     keyHolder.destroy();
-    components.close();
+    await components.close();
     const msg = toErrorMessage(err);
     if (msg.includes('EADDRINUSE')) {
       throw new Error(
@@ -222,7 +222,7 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
     logger.info('Shutting down daemon...');
     await server.stop();
     keyHolder.destroy();
-    components.close();
+    await components.close();
     removePidFile();
     logger.info('Daemon stopped');
     process.exit(0);

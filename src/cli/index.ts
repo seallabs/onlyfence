@@ -21,6 +21,7 @@ import {
   registerConfigCommand,
   registerLendCommand,
   registerLockCommand,
+  registerPerpCommand,
   registerQueryCommand,
   registerRestartCommand,
   registerSetupCommand,
@@ -73,7 +74,7 @@ function handleFatalError(err: unknown): void {
  *
  * @returns Configured Commander program instance and a cleanup function
  */
-export function createProgram(): { program: Command; cleanup: () => void } {
+export function createProgram(): { program: Command; cleanup: () => Promise<void> } {
   const program = new Command();
 
   program
@@ -92,8 +93,8 @@ export function createProgram(): { program: Command; cleanup: () => void } {
   }
 
   /** Close all resources. Safe to call multiple times. */
-  function cleanup(): void {
-    cachedComponents?.close();
+  async function cleanup(): Promise<void> {
+    await cachedComponents?.close();
   }
 
   // Initialize logger before any command runs
@@ -134,6 +135,7 @@ export function createProgram(): { program: Command; cleanup: () => void } {
   registerSetupCommand(program);
   registerSwapCommand(program, getComponents);
   registerLendCommand(program, getComponents);
+  registerPerpCommand(program, getComponents);
   registerQueryCommand(program, getComponents);
   registerConfigCommand(program);
   registerWalletCommand(program, getComponents);
@@ -203,13 +205,16 @@ if (isBackgroundCheckProcess()) {
   // Run CLI when this is the entry point
   const { program, cleanup } = createProgram();
 
-  // Ensure resources are released on signal (process.exit triggers 'exit' which runs cleanup)
+  // Ensure resources are released on signal
   function gracefulShutdown(code: number): void {
-    cleanup();
-    void closeSentry().finally(() => process.exit(code));
+    void cleanup()
+      .then(() => closeSentry())
+      .finally(() => process.exit(code));
   }
 
-  process.on('exit', cleanup);
+  process.on('exit', () => {
+    void cleanup();
+  });
   process.on('SIGINT', () => {
     gracefulShutdown(130);
   });
@@ -223,7 +228,10 @@ if (isBackgroundCheckProcess()) {
       handleFatalError(err);
     })
     .finally(async () => {
-      cleanup();
+      await cleanup();
       await closeSentry();
+      // Force exit: the Bluefin SDK may leave internal handles (axios keep-alive,
+      // etc.) that prevent the Node.js event loop from draining naturally.
+      process.exit(process.exitCode ?? 0);
     });
 }

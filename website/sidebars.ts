@@ -11,7 +11,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'DeFi Actions',
-      items: ['actions/swap', 'actions/lending'],
+      items: ['actions/swap', 'actions/lending', 'actions/perpetuals'],
     },
     'daemon',
     {

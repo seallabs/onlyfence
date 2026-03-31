@@ -4,6 +4,7 @@ import {
   ConfigValidationError,
   DEFAULT_MAX_SINGLE_TRADE_CEILING,
   DEFAULT_MAX_24H_VOLUME_CEILING,
+  DEFAULT_MAX_PERP_LEVERAGE_CEILING,
 } from '../../config/schema.js';
 
 function makeConfig(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -104,5 +105,56 @@ describe('Config upper bounds validation', () => {
     };
 
     expect(() => validateConfig(raw)).toThrow(ConfigValidationError);
+  });
+});
+
+describe('PerpConfig validation', () => {
+  it('rejects max_leverage < 1', () => {
+    expect(() =>
+      validateConfig(makeConfig({ perp: { allowlist_markets: ['SUI-PERP'], max_leverage: 0 } })),
+    ).toThrow();
+  });
+
+  it('rejects max_leverage above ceiling', () => {
+    expect(() =>
+      validateConfig(
+        makeConfig({
+          perp: {
+            allowlist_markets: ['SUI-PERP'],
+            max_leverage: DEFAULT_MAX_PERP_LEVERAGE_CEILING + 1,
+          },
+        }),
+      ),
+    ).toThrow(/ceiling/);
+  });
+
+  it('accepts valid perp config', () => {
+    const cfg = validateConfig(
+      makeConfig({
+        perp: {
+          allowlist_markets: ['SUI-PERP'],
+          max_leverage: 10,
+          max_single_order: 500,
+          max_24h_volume: 5000,
+          max_24h_withdraw: 1000,
+        },
+      }),
+    );
+    expect(cfg.chain['sui']?.perp?.max_leverage).toBe(10);
+  });
+
+  it('accepts absent perp config', () => {
+    const cfg = validateConfig(makeConfig({}));
+    expect(cfg.chain['sui']?.perp).toBeUndefined();
+  });
+
+  it('rejects empty string in allowlist_markets', () => {
+    expect(() => validateConfig(makeConfig({ perp: { allowlist_markets: [''] } }))).toThrow();
+  });
+
+  it('rejects duplicate entries in allowlist_markets', () => {
+    expect(() =>
+      validateConfig(makeConfig({ perp: { allowlist_markets: ['SUI-PERP', 'SUI-PERP'] } })),
+    ).toThrow(/duplicate/i);
   });
 });

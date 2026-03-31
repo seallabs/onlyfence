@@ -7,7 +7,7 @@ import { captureException } from '../telemetry/index.js';
 import type { Signer } from '../types/result.js';
 import { toErrorMessage } from '../utils/index.js';
 import type { ActionBuilder } from './action-builder.js';
-import type { ActionIntent, PipelineResult } from './action-types.js';
+import type { ActionIntent, PipelineResult, PipelineStatus } from './action-types.js';
 import { extractCoinTypes } from './action-types.js';
 import type { DataProvider } from './data-provider.js';
 import type { MevProtector } from './mev-protector.js';
@@ -89,20 +89,53 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
       };
     }
 
-    // Step 3: Build transaction (includes quote fetching)
-    log.info('Building transaction');
-    const built = await builder.build(intent);
-
-    // Step 3.5: Cache coin metadata for all intent coin types (best-effort)
+    // Step 2.5: Cache coin metadata for all intent coin types (best-effort)
     if (input.dataProvider !== undefined) {
       const coinTypes = extractCoinTypes(intent);
       if (coinTypes.length > 0) {
-        // Don't await this, just fire and forget
         input.dataProvider.getMetadatas(coinTypes).catch((err: unknown) => {
           log.warn({ error: toErrorMessage(err) }, 'Coin metadata caching failed');
         });
       }
     }
+
+    // Branch: off-chain-signed execution strategy
+    const strategy = builder.executionStrategy ?? 'on-chain';
+
+    if (strategy === 'off-chain-signed') {
+      // Watch-only: return simulated without executing
+      if (watchOnly) {
+        builder.finish?.({ intent, status: 'approved', metadata: {} });
+        return { status: 'simulated', metadata: {} };
+      }
+
+      if (builder.execute === undefined) {
+        return { status: 'error', error: 'Off-chain builder missing execute() method' };
+      }
+
+      log.info('Executing off-chain signed action');
+      const result = await builder.execute(intent);
+
+      builder.finish?.({
+        intent,
+        status: 'approved',
+        metadata: result.metadata,
+      });
+
+      // Allow off-chain builders to signal a non-success status (e.g. 'acknowledged'
+      // when a WS confirmation timed out but the order was submitted).
+      const statusOverride = result.metadata['_pipelineStatus'];
+      const resolvedStatus: PipelineStatus =
+        typeof statusOverride === 'string' && isValidPipelineStatus(statusOverride)
+          ? statusOverride
+          : 'success';
+
+      return { status: resolvedStatus, metadata: result.metadata };
+    }
+
+    // Step 3: Build transaction (includes quote fetching)
+    log.info('Building transaction');
+    const built = await builder.build(intent);
 
     // Step 4: Serialize to bytes
     log.info('Serializing transaction bytes');
@@ -191,4 +224,17 @@ export async function executePipeline(input: PipelineInput): Promise<PipelineRes
       error: toErrorMessage(err),
     };
   }
+}
+
+const VALID_PIPELINE_STATUSES: ReadonlySet<string> = new Set<PipelineStatus>([
+  'success',
+  'acknowledged',
+  'simulated',
+  'rejected',
+  'simulation_failed',
+  'error',
+]);
+
+function isValidPipelineStatus(value: string): value is PipelineStatus {
+  return VALID_PIPELINE_STATUSES.has(value);
 }
