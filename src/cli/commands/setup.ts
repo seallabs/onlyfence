@@ -2,11 +2,12 @@ import type { Command } from 'commander';
 import { readFileSync, existsSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
+import { applyChainConfigDefaults } from '../../config/apply-chain-defaults.js';
 import { openDatabase, DB_PATH } from '../../db/connection.js';
 import { initConfig, updateConfigFile, loadConfig, CONFIG_PATH } from '../../config/loader.js';
 import { ConfigAlreadyExistsError } from '../../config/schema.js';
 import type { KeyDeriver } from '../../wallet/key-deriver.js';
-import { buildKeyDeriverRegistry } from '../bootstrap.js';
+import { buildChainModuleRegistry, buildKeyDeriverRegistry } from '../bootstrap.js';
 import {
   ensureSetupEnvironment,
   generateSetupWallet,
@@ -68,7 +69,7 @@ export function registerSetupCommand(program: Command): void {
     .option('--mnemonic-file <path>', 'Import mnemonic from file (non-interactive)')
     .option('--password-file <path>', 'Read password from file (enables non-interactive mode)')
     .option('--generate', 'Generate a new wallet (non-interactive, outputs mnemonic in JSON)')
-    .option('--chain <chain>', 'Target chain (default: sui)', 'sui')
+    .option('--chain <chain>', 'Target chain (required for non-interactive mode)')
     .action(async (options: SetupOptions) => {
       const { passwordFile } = options;
 
@@ -155,16 +156,44 @@ async function runNonInteractiveSetup(
     );
   }
 
-  const registry = buildKeyDeriverRegistry();
-  const chainName = options.chain ?? 'sui';
-  const keyDeriver = registry.get(chainName);
+  const keyDeriverRegistry = buildKeyDeriverRegistry();
+  const chainName = options.chain;
+  if (chainName === undefined) {
+    throw new Error('--chain is required in non-interactive mode.');
+  }
+  const keyDeriver = keyDeriverRegistry.get(chainName);
+
+  // Resolve credentials from env vars for the selected chain
+  const chainModuleRegistry = buildChainModuleRegistry();
+  const credentials: Record<string, string> = {};
+  if (chainModuleRegistry.has(chainName)) {
+    const moduleInfo = chainModuleRegistry.getInfo(chainName);
+    for (const cred of moduleInfo.credentialRequirements) {
+      const envValue = process.env[cred.envVar];
+      if (envValue !== undefined && envValue.length > 0) {
+        credentials[cred.name] = envValue;
+      } else if (cred.required) {
+        throw new Error(
+          `Required credential "${cred.name}" not found. Set the ${cred.envVar} environment variable.`,
+        );
+      }
+    }
+  }
 
   const db = ensureSetupEnvironment();
   try {
-    // Disable telemetry by default in non-interactive mode
+    // Write chain config and disable telemetry in one pass
     updateConfigFile((raw) => {
       if (raw['telemetry'] === undefined) {
         raw['telemetry'] = { enabled: false };
+      }
+      if (chainModuleRegistry.has(chainName)) {
+        applyChainConfigDefaults(
+          raw,
+          chainName,
+          chainModuleRegistry.getInfo(chainName).defaultChainConfig,
+          Object.keys(credentials).length > 0 ? credentials : undefined,
+        );
       }
     });
 
@@ -248,25 +277,73 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
 
     // Step 3: Select Chain
     step(3, INTERACTIVE_STEPS, 'Select Chain');
-    const registry = buildKeyDeriverRegistry();
-    const availableChains = registry.list();
+    const chainModuleRegistry = buildChainModuleRegistry();
+    const keyDeriverRegistry = buildKeyDeriverRegistry();
+    const availableChains = chainModuleRegistry.list();
+    const chainInfos = chainModuleRegistry.listInfo();
 
-    let keyDeriver: KeyDeriver;
+    if (availableChains.length === 0) {
+      throw new Error('No chain modules registered');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- length > 0 checked above
+    const firstChain = availableChains[0]!;
+
+    let selectedChain: string;
     if (availableChains.length === 1) {
-      const singleChain = availableChains[0];
-      if (singleChain === undefined) throw new Error('No chains registered');
-      keyDeriver = registry.get(singleChain);
-      info(`Using chain: ${bold(keyDeriver.chain)}`);
+      selectedChain = firstChain;
+      const chainInfo = chainModuleRegistry.getInfo(selectedChain);
+      info(`Using chain: ${bold(chainInfo.displayName)}`);
     } else {
-      console.log(`  Available chains: ${availableChains.map((c) => bold(c)).join(', ')}`);
+      console.log(`  Available chains: ${chainInfos.map((c) => bold(c.displayName)).join(', ')}`);
       const chainChoice = await rl.question(
         `  ${cyan('?')} Select chain ${dim(`[${availableChains.join('/')}]`)}: `,
       );
       const trimmedChoice = chainChoice.trim().toLowerCase();
-      const selected = trimmedChoice.length > 0 ? trimmedChoice : (availableChains[0] ?? 'sui');
-      keyDeriver = registry.get(selected);
-      success(`Selected chain: ${keyDeriver.chain}`);
+      selectedChain = trimmedChoice.length > 0 ? trimmedChoice : firstChain;
+      if (!chainModuleRegistry.has(selectedChain)) {
+        throw new Error(
+          `Unknown chain "${selectedChain}". Available: ${availableChains.join(', ')}`,
+        );
+      }
+      success(`Selected chain: ${chainModuleRegistry.getInfo(selectedChain).displayName}`);
     }
+
+    const moduleInfo = chainModuleRegistry.getInfo(selectedChain);
+    const keyDeriver: KeyDeriver = keyDeriverRegistry.get(selectedChain);
+
+    // Collect credentials if needed
+    const collectedCredentials: Record<string, string> = {};
+    if (moduleInfo.credentialRequirements.length > 0) {
+      console.log('');
+      info('This chain requires the following credentials:');
+      for (const cred of moduleInfo.credentialRequirements) {
+        const envValue = process.env[cred.envVar];
+        if (envValue !== undefined && envValue.length > 0) {
+          collectedCredentials[cred.name] = envValue;
+          info(`  ${cred.name}: ${dim(`(from ${cred.envVar})`)}`);
+        } else if (cred.required) {
+          const value = await rl.question(
+            `  ${cyan('?')} ${cred.description} ${dim(`(or set ${cred.envVar})`)}: `,
+          );
+          if (value.trim().length === 0) {
+            throw new Error(`Required credential "${cred.name}" was not provided.`);
+          }
+          collectedCredentials[cred.name] = value.trim();
+        }
+      }
+    }
+
+    // Write chain config to config.toml with module defaults
+    updateConfigFile((raw) => {
+      applyChainConfigDefaults(
+        raw,
+        selectedChain,
+        moduleInfo.defaultChainConfig,
+        Object.keys(collectedCredentials).length > 0 ? collectedCredentials : undefined,
+      );
+    });
+    success(`Chain "${selectedChain}" configured.`);
 
     // Step 4: Wallet setup
     step(4, INTERACTIVE_STEPS, 'Wallet Setup');

@@ -5,17 +5,22 @@ import type { AppConfig } from '../types/config.js';
 /**
  * Resolve the default chain from config.
  *
- * Priority: config.default_chain > first configured chain > 'sui' fallback.
+ * Priority: config.default_chain > first configured chain.
+ * Throws if no chains are configured.
  *
  * @param config - Application configuration
  * @returns The default chain identifier
+ * @throws Error if no chains are configured
  */
 export function resolveDefaultChain(config: AppConfig): Chain {
   if (config.default_chain !== undefined) {
     return config.default_chain;
   }
   const chains = Object.keys(config.chain);
-  return (chains[0] as Chain | undefined) ?? 'sui';
+  if (chains.length === 0) {
+    throw new Error('No chains configured. Run "fence setup" to configure a chain.');
+  }
+  return chains[0] as Chain;
 }
 
 /**

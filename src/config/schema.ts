@@ -64,37 +64,14 @@ interface LimitCeilings {
 }
 
 /**
- * Default allowlist for Sui chain (MVP tokens).
- */
-const DEFAULT_SUI_ALLOWLIST: AllowlistConfig = {
-  tokens: ['SUI', 'USDC', 'USDT', 'DEEP', 'BLUE', 'WAL'],
-};
-
-/**
- * Default spending limits for Sui chain.
- */
-const DEFAULT_SUI_LIMITS: LimitsConfig = {
-  max_single_trade: 200,
-  max_24h_volume: 500,
-};
-
-/**
- * Default chain configuration for Sui.
- */
-const DEFAULT_SUI_CHAIN_CONFIG: ChainConfig = {
-  rpc: 'https://fullnode.mainnet.sui.io:443',
-  allowlist: DEFAULT_SUI_ALLOWLIST,
-  limits: DEFAULT_SUI_LIMITS,
-};
-
-/**
  * Returns a default AppConfig suitable for first-time setup.
+ *
+ * Starts with an empty chain section — the setup wizard populates it
+ * based on the user's chain selection.
  */
 export function createDefaultConfig(): AppConfig {
   return {
-    chain: {
-      sui: DEFAULT_SUI_CHAIN_CONFIG,
-    },
+    chain: {},
   };
 }
 
@@ -130,15 +107,17 @@ export function validateConfig(raw: unknown): AppConfig {
       validatedSecurity?.max_perp_24h_withdraw_ceiling ?? DEFAULT_MAX_PERP_24H_WITHDRAW_CEILING,
   };
 
-  if (!isRecord(raw['chain'])) {
-    throw new ConfigValidationError('Missing or invalid "chain" section', 'chain');
+  const chainSection = raw['chain'];
+  if (chainSection !== undefined && !isRecord(chainSection)) {
+    throw new ConfigValidationError('"chain" must be an object if present', 'chain');
   }
 
-  const chainSection = raw['chain'];
   const validatedChains: Record<string, ChainConfig> = {};
 
-  for (const [chainName, chainValue] of Object.entries(chainSection)) {
-    validatedChains[chainName] = validateChainConfig(chainValue, `chain.${chainName}`, ceilings);
+  if (chainSection !== undefined) {
+    for (const [chainName, chainValue] of Object.entries(chainSection)) {
+      validatedChains[chainName] = validateChainConfig(chainValue, `chain.${chainName}`, ceilings);
+    }
   }
 
   const global = raw['global'];
@@ -200,9 +179,28 @@ function validateChainConfig(raw: unknown, path: string, ceilings: LimitCeilings
     );
   }
 
+  const credentials = raw['credentials'];
+  if (credentials !== undefined) {
+    if (!isRecord(credentials)) {
+      throw new ConfigValidationError(
+        '"credentials" must be an object if present',
+        `${path}.credentials`,
+      );
+    }
+    for (const [key, value] of Object.entries(credentials)) {
+      if (typeof value !== 'string') {
+        throw new ConfigValidationError(
+          `credential "${key}" must be a string`,
+          `${path}.credentials.${key}`,
+        );
+      }
+    }
+  }
+
   return {
     rpc: raw['rpc'],
     ...(network !== undefined ? { network } : {}),
+    ...(credentials !== undefined ? { credentials: credentials as Record<string, string> } : {}),
     ...(raw['allowlist'] !== undefined
       ? { allowlist: validateAllowlist(raw['allowlist'], `${path}.allowlist`) }
       : {}),

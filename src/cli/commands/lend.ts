@@ -19,6 +19,7 @@ import { createActionExecutor, type ExecutionResult } from '../../core/action-ex
 import { captureException } from '../../telemetry/index.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
+import type { SuiChainModule } from '../../chain/sui/module.js';
 import type { AppComponents } from '../bootstrap.js';
 import type { CliOutput, LendingOutput, LendingRewardsOutput, MappedOutput } from '../output.js';
 import { EXIT_CODES, handleCommandError, printJsonOutput } from '../output.js';
@@ -255,11 +256,15 @@ function registerMarketsQuery(parent: Command, getComponents: () => AppComponent
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { alphalendClient, logger } = components;
+      const { chainModules, logger } = components;
       const log = logger.child({ command: 'lend-markets' });
 
       try {
-        const markets = await fetchAllMarkets(alphalendClient);
+        const suiModule = chainModules.get('sui') as SuiChainModule;
+        if (suiModule.alphalendClient === undefined) {
+          throw new Error('AlphaLend client not initialized. Ensure Sui chain is configured.');
+        }
+        const markets = await fetchAllMarkets(suiModule.alphalendClient);
         console.log(
           JSON.stringify({ status: 'success', action: 'markets', data: markets }, null, 2),
         );
@@ -283,14 +288,18 @@ function registerMarketDetailQuery(parent: Command, getComponents: () => AppComp
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { alphalendClient, chainAdapterFactory, logger, config } = components;
+      const { chainModules, chainAdapterFactory, logger, config } = components;
       const chain = options.chain ?? resolveDefaultChain(config);
       const log = logger.child({ command: 'lend-market' });
 
       try {
+        const suiModule = chainModules.get('sui') as SuiChainModule;
+        if (suiModule.alphalendClient === undefined) {
+          throw new Error('AlphaLend client not initialized. Ensure Sui chain is configured.');
+        }
         const chainAdapter = chainAdapterFactory.get(chain);
         const coinType = chainAdapter.resolveTokenAddress(token);
-        const detail = await fetchMarketDetail(alphalendClient, coinType);
+        const detail = await fetchMarketDetail(suiModule.alphalendClient, coinType);
         console.log(JSON.stringify({ status: 'success', action: 'market', data: detail }, null, 2));
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Failed to fetch market detail');
@@ -312,12 +321,16 @@ function registerPortfolioQuery(parent: Command, getComponents: () => AppCompone
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { db, alphalendClient, chainAdapterFactory, logger, config } = components;
+      const { db, chainModules, chainAdapterFactory, logger, config } = components;
       const chain = options.chain ?? resolveDefaultChain(config);
       const chainId = resolveChainId(chain, chainAdapterFactory);
       const log = logger.child({ command: 'lend-portfolio' });
 
       try {
+        const suiModule = chainModules.get('sui') as SuiChainModule;
+        if (suiModule.alphalendClient === undefined) {
+          throw new Error('AlphaLend client not initialized. Ensure Sui chain is configured.');
+        }
         const wallet = getPrimaryWallet(db, chainId);
         if (wallet === null) {
           throw new Error(
@@ -325,7 +338,7 @@ function registerPortfolioQuery(parent: Command, getComponents: () => AppCompone
           );
         }
 
-        const portfolio = await fetchPortfolio(alphalendClient, wallet.address);
+        const portfolio = await fetchPortfolio(suiModule.alphalendClient, wallet.address);
         console.log(
           JSON.stringify({ status: 'success', action: 'portfolio', data: portfolio }, null, 2),
         );

@@ -92,7 +92,9 @@ export async function startDaemon(options: DaemonOptions): Promise<void> {
   logger.info('Signed config snapshot written');
 
   const tradeWindow = new InMemoryTradeWindow();
-  const chainIds = Object.keys(components.config.chain).map((c) => `${c}:mainnet`);
+  const chainIds = Object.entries(components.config.chain).map(
+    ([c, cfg]) => `${c}:${cfg.network ?? 'mainnet'}`,
+  );
   tradeWindow.preload(components.activityLog, chainIds);
   logger.info('In-memory trade window initialized');
 

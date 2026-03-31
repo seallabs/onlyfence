@@ -1,8 +1,8 @@
 import { Box, Text, useInput } from 'ink';
 import { useState, useCallback, useMemo } from 'react';
 import type { ReactElement } from 'react';
-import { buildKeyDeriverRegistry } from '../../cli/bootstrap.js';
-import type { KeyDeriver } from '../../wallet/key-deriver.js';
+import { applyChainConfigDefaults } from '../../config/apply-chain-defaults.js';
+import { buildChainModuleRegistry, buildKeyDeriverRegistry } from '../../cli/bootstrap.js';
 import {
   ensureSetupEnvironment,
   generateSetupWallet,
@@ -41,11 +41,19 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const keyDeriver: KeyDeriver = useMemo(() => {
-    const registry = buildKeyDeriverRegistry();
-    const chains = registry.list();
-    if (chains.length === 0) throw new Error('No key derivers registered');
-    return registry.get(chains[0] ?? 'sui');
+  const { keyDeriver, defaultChainConfig } = useMemo(() => {
+    const keyDeriverRegistry = buildKeyDeriverRegistry();
+    const chains = keyDeriverRegistry.list();
+    if (chains.length === 0 || chains[0] === undefined)
+      throw new Error('No key derivers registered');
+    const deriver = keyDeriverRegistry.get(chains[0]);
+
+    const moduleRegistry = buildChainModuleRegistry();
+    const chainConfig = moduleRegistry.has(deriver.chain)
+      ? moduleRegistry.getInfo(deriver.chain).defaultChainConfig
+      : undefined;
+
+    return { keyDeriver: deriver, defaultChainConfig: chainConfig };
   }, []);
 
   const doGenerate = useCallback(() => {
@@ -136,6 +144,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps): ReactElement {
       }
       updateConfigFile((raw) => {
         raw[key] = value;
+        if (defaultChainConfig !== undefined) {
+          applyChainConfigDefaults(raw, keyDeriver.chain, defaultChainConfig);
+        }
       });
       setStep(nextStep);
     } catch (err: unknown) {

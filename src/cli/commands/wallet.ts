@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { Command } from 'commander';
+import type { AppConfig } from '../../types/config.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { listWallets } from '../../wallet/manager.js';
 import type { AppComponents } from '../bootstrap.js';
@@ -22,12 +23,13 @@ export function registerWalletCommand(program: Command, getComponents: () => App
   const walletCmd = program.command('wallet').description('Manage wallets');
 
   const getDb = (): Database.Database => getComponents().db;
+  const getConfig = (): AppConfig => getComponents().config;
 
   // Register subcommands with lazy DB accessor
-  registerWalletWatchCommand(walletCmd, getDb);
+  registerWalletWatchCommand(walletCmd, getDb, getConfig);
   registerWalletSwitchCommand(walletCmd, getDb);
   registerWalletRenameCommand(walletCmd, getDb);
-  registerWalletImportKeyCommand(walletCmd, getDb);
+  registerWalletImportKeyCommand(walletCmd, getDb, getConfig);
 
   // fence wallet list
   walletCmd
