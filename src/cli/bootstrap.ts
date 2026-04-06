@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import type { ChainRegistrationContext } from '../chain/chain-module.js';
 import { ChainAdapterFactory } from '../chain/factory.js';
 import { ChainModuleRegistry } from '../chain/module-registry.js';
+import { SolanaChainModule } from '../chain/solana/module.js';
 import { SuiChainModule } from '../chain/sui/module.js';
 import { CONFIG_PATH, loadConfig } from '../config/loader.js';
 import { ActionBuilderRegistry } from '../core/action-builder.js';
@@ -210,6 +211,7 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
 export function buildChainModuleRegistry(): ChainModuleRegistry {
   const registry = new ChainModuleRegistry();
   registry.register(new SuiChainModule());
+  registry.register(new SolanaChainModule());
   return registry;
 }
 
