@@ -24,13 +24,13 @@ export type ActivityAction =
 
 /** Category prefix extracted from ActivityAction */
 export type ActivityCategory = ActivityAction extends `${infer C}:${string}` ? C : never;
-export type Chain = 'sui' | 'solana';
+export type Chain = 'sui' | 'solana' | 'ethereum';
 /** CAIP-2 chain identifier. Adapters own their own chainId (e.g., "sui:mainnet", "eip155:1"). */
 export type ChainId = string;
-export type LendingProtocol = 'alphalend' | 'suilend' | 'navi' | 'jupiter_lend';
+export type LendingProtocol = 'alphalend' | 'suilend' | 'navi' | 'jupiter_lend' | 'aave_v3';
 export type DexProtocol = 'cetus_clmm' | 'bluefin_clmm';
-export type AggregatorProtocol = '7k_meta_ag' | 'jupiter_swap';
-export type PerpProtocol = 'bluefin_pro' | 'jupiter_perps';
+export type AggregatorProtocol = '7k_meta_ag' | 'jupiter_swap' | 'paraswap';
+export type PerpProtocol = 'bluefin_pro' | 'jupiter_perps' | 'hyperliquid';
 export type DefiProtocol = LendingProtocol | DexProtocol | AggregatorProtocol | PerpProtocol;
 
 /** Base intent -- all actions share these fields */

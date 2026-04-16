@@ -10,6 +10,7 @@ export function finishJupiterLendActivity(
   activityLog: ActivityLog,
   context: FinishContext,
   action: ActivityAction,
+  txDigestOverride?: string,
 ): void {
   const intent = context.intent as TokenLendingIntent;
   activityLog.logActivity({
@@ -20,7 +21,7 @@ export function finishJupiterLendActivity(
     token_a_type: intent.params.coinType,
     token_a_amount: intent.params.amount,
     value_usd: intent.valueUsd ?? undefined,
-    tx_digest: context.txDigest ?? undefined,
+    tx_digest: txDigestOverride ?? context.txDigest ?? undefined,
     gas_cost: context.gasUsed ?? undefined,
     policy_decision: context.status,
     rejection_reason: context.rejection?.reason ?? undefined,

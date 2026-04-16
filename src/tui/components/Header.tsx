@@ -34,11 +34,17 @@ export function Header({ activeTab }: HeaderProps): ReactElement {
           </Text>
           <Text color={theme.muted}>{' Quit'}</Text>
         </Box>
-        <Box>
+        <Box marginRight={1}>
           <Text color={theme.highlight} bold>
             {'<r>'}
           </Text>
           <Text color={theme.muted}>{' Refresh'}</Text>
+        </Box>
+        <Box>
+          <Text color={theme.highlight} bold>
+            {'<c>'}
+          </Text>
+          <Text color={theme.muted}>{' Chain'}</Text>
         </Box>
       </Box>
 

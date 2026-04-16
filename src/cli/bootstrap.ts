@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import type { ChainRegistrationContext } from '../chain/chain-module.js';
 import { ChainAdapterFactory } from '../chain/factory.js';
 import { ChainModuleRegistry } from '../chain/module-registry.js';
+import { EvmChainModule } from '../chain/evm/module.js';
 import { SolanaChainModule } from '../chain/solana/module.js';
 import { SuiChainModule } from '../chain/sui/module.js';
 import { CONFIG_PATH, loadConfig } from '../config/loader.js';
@@ -115,11 +116,12 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
   const chainModules = buildChainModuleRegistry();
 
   // Mutable during registration, frozen before return
+  const marketResolvers = new Map<string, MarketResolverFn>();
   const resolverServicesMutable: {
-    marketResolver: MarketResolverFn | undefined;
+    marketResolvers: Map<string, MarketResolverFn>;
     perpProviders: PerpProviderRegistry;
   } = {
-    marketResolver: undefined,
+    marketResolvers,
     perpProviders,
   };
 
@@ -147,8 +149,8 @@ export function bootstrap(options?: { dbPath?: string; configPath?: string }): A
       mevProtectors,
       perpProviders,
       policyRegistry,
-      setMarketResolver(resolver: MarketResolverFn): void {
-        resolverServicesMutable.marketResolver = resolver;
+      setMarketResolver(chain: string, resolver: MarketResolverFn): void {
+        resolverServicesMutable.marketResolvers.set(chain, resolver);
       },
     };
 
@@ -212,6 +214,7 @@ export function buildChainModuleRegistry(): ChainModuleRegistry {
   const registry = new ChainModuleRegistry();
   registry.register(new SuiChainModule());
   registry.register(new SolanaChainModule());
+  registry.register(new EvmChainModule());
   return registry;
 }
 

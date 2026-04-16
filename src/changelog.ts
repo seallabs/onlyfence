@@ -9,6 +9,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: 'v0.5.0',
+    date: '2026-04-09',
+    changes:
+      'Ethereum mainnet support via Paraswap swaps, Aave V3 lending, and Hyperliquid perpetuals — the second chain to ship on the multi-chain architecture.',
+  },
+  {
     version: 'v0.4.0',
     date: '2026-03-26',
     changes:

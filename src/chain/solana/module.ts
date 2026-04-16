@@ -47,6 +47,12 @@ export class SolanaChainModule implements ChainModule {
     defaultChainConfig: DEFAULT_SOLANA_CHAIN_CONFIG,
   };
 
+  /** Solana RPC connection — available after register(). */
+  connection: Connection | undefined;
+
+  /** Jupiter HTTP client — available after register(). */
+  jupiterClient: JupiterClient | undefined;
+
   private cachedKeypair: Keypair | undefined;
 
   createKeyDeriver(): SolanaKeyDeriver {
@@ -66,6 +72,9 @@ export class SolanaChainModule implements ChainModule {
 
     const connection = new Connection(rpc, 'confirmed');
     const jupiterClient = new JupiterClient(jupiterApiKey);
+
+    this.connection = connection;
+    this.jupiterClient = jupiterClient;
 
     // Lazy keypair loader (same pattern as Sui's BluefinClient)
     const getKeypair = (): Keypair => {
@@ -114,7 +123,7 @@ export class SolanaChainModule implements ChainModule {
       'solana',
       'lending:borrow',
       'jupiter_lend',
-      (_intent) => new SolanaLendBorrowBuilder(connection, ctx.activityLog),
+      (_intent) => new SolanaLendBorrowBuilder(connection, getKeypair, ctx.activityLog),
     );
     ctx.actionBuilderRegistry.registerFactory(
       'solana',
@@ -155,16 +164,23 @@ export class SolanaChainModule implements ChainModule {
     ctx.mevProtectors.set('solana', new NoOpMevProtector());
 
     // Policy check: Solana-specific token address resolution
-    ctx.policyRegistry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
+    ctx.policyRegistry.register(
+      new TokenAllowlistCheck(tryResolveTokenAddress, {
+        name: 'token_allowlist_solana',
+        chain: 'solana',
+      }),
+    );
 
     // Market resolver for lending intent resolution
-    ctx.setMarketResolver((coinType: string, explicitMarketId?: string) =>
+    ctx.setMarketResolver('solana', (coinType: string, explicitMarketId?: string) =>
       resolveJupiterLendMarketId(coinType, explicitMarketId),
     );
   }
 
   dispose(): Promise<void> {
     this.cachedKeypair = undefined;
+    this.connection = undefined;
+    this.jupiterClient = undefined;
     return Promise.resolve();
   }
 }

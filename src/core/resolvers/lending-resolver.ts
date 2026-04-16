@@ -10,7 +10,7 @@
  * Supports: lending:supply, lending:borrow, lending:withdraw, lending:repay.
  */
 
-import { resolveTokenInput } from '../../cli/resolve.js';
+import { resolveTokenInput, resolveTokenOnly } from '../../cli/resolve.js';
 import type {
   ActionIntent,
   ActivityAction,
@@ -36,18 +36,20 @@ export class LendingIntentResolver implements IntentResolver {
     const { chainAdapter, dataProvider, walletAddress, services } = deps;
     const rawParams = intent.params;
 
-    const resolveMarket = services.marketResolver;
+    const chain = rawIntent.chainId.split(':')[0] ?? rawIntent.chainId;
+    const resolveMarket = services.marketResolvers.get(chain);
     if (resolveMarket === undefined) {
-      throw new Error('LendingIntentResolver: marketResolver not available in services');
+      throw new Error(`LendingIntentResolver: no marketResolver registered for chain "${chain}"`);
     }
 
-    // Resolve token: symbol → coin type, human amount → scaled
-    const resolved = await resolveTokenInput(
-      rawParams.coinType,
-      rawParams.amount,
-      chainAdapter,
-      dataProvider,
-    );
+    // When withdrawAll is set the builder uses MAX_WITHDRAW and ignores the amount,
+    // so skip amount scaling to avoid a false "must be a positive number" error.
+    const withdrawAll =
+      rawIntent.action === 'lending:withdraw' &&
+      (rawParams as WithdrawIntent['params']).withdrawAll === true;
+    const resolved = withdrawAll
+      ? await resolveTokenOnly(rawParams.coinType, chainAdapter, dataProvider)
+      : await resolveTokenInput(rawParams.coinType, rawParams.amount, chainAdapter, dataProvider);
 
     // Resolve market ID and price in parallel (independent operations)
     const [marketId, tradeValueUsd] = await Promise.all([

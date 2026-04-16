@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
 import { formatAmountWithDecimals } from '../../utils/token.js';
+import type { Chain } from '../../core/action-types.js';
 import type { ActivityRow } from '../../db/activity-log.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
 import { Panel } from '../components/Panel.js';
@@ -11,8 +12,15 @@ import { useAsyncAutoRefresh } from '../hooks/useAsyncAutoRefresh.js';
 import { useAutoRefresh } from '../hooks/useAutoRefresh.js';
 import { theme } from '../theme.js';
 
+interface ChainWallet {
+  readonly chain: Chain;
+  readonly address: string | null;
+  readonly isActive: boolean;
+}
+
 interface DashboardData {
   readonly walletAddress: string | null;
+  readonly wallets: readonly ChainWallet[];
   readonly volume24h: number;
   readonly activities: readonly ActivityRow[];
 }
@@ -68,12 +76,24 @@ export function Dashboard(): ReactElement {
 
   const chainConfig = config.chain[activeChain] ?? { rpc: '' };
 
+  const configuredChains = Object.keys(config.chain) as Chain[];
+
   const { data } = useAutoRefresh<DashboardData>(() => {
     const wallet = getPrimaryWallet(db, activeChainId);
+    const wallets: ChainWallet[] = configuredChains.map((chain) => {
+      const chainId = chainAdapterFactory.get(chain).chainId;
+      const w = getPrimaryWallet(db, chainId);
+      return {
+        chain,
+        address: w?.address ?? null,
+        isActive: chain === activeChain,
+      };
+    });
     const volume = activityLog.getRolling24hVolume(activeChainId);
     const activities = activityLog.getRecentActivities(activeChainId, 5);
     return {
       walletAddress: wallet?.address ?? null,
+      wallets,
       volume24h: volume,
       activities,
     };
@@ -122,14 +142,17 @@ export function Dashboard(): ReactElement {
 
       {/* Row 1: Wallet + Policy side by side */}
       <Box>
-        <Panel title="Wallet" width="50%">
-          <Text color={theme.eyes}>{`Chain:   ${activeChain}`}</Text>
-          <Text color={theme.eyes}>
-            {`Address: ${data.walletAddress ?? 'No wallet configured'}`}
-          </Text>
-          <Text
-            color={theme.eyes}
-          >{`Status:  ${data.walletAddress !== null ? 'Primary' : '-'}`}</Text>
+        <Panel title="Wallets" width="50%">
+          {data.wallets.map((w) => (
+            <Box key={w.chain}>
+              <Text color={w.isActive ? theme.highlight : theme.muted} bold={w.isActive}>
+                {`${w.isActive ? '▸' : ' '} ${w.chain.padEnd(10)}`}
+              </Text>
+              <Text color={w.address !== null ? theme.eyes : theme.muted}>
+                {w.address ?? 'No wallet'}
+              </Text>
+            </Box>
+          ))}
         </Panel>
 
         <Panel title="Policy Status" width="50%">
@@ -151,7 +174,9 @@ export function Dashboard(): ReactElement {
             {'Loading balances...'}
           </Text>
         ) : balanceError !== null ? (
-          <Text color={theme.error}>{`Error: ${balanceError}`}</Text>
+          <Text
+            color={theme.error}
+          >{`RPC error: ${balanceError} — check your RPC endpoint in config`}</Text>
         ) : balances.length === 0 ? (
           <Text color={theme.muted} italic>
             {'No token balances'}

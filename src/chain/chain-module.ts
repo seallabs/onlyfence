@@ -94,10 +94,10 @@ export interface ChainRegistrationContext {
   readonly policyRegistry: PolicyCheckRegistry;
 
   /**
-   * Register a market resolver for lending protocols.
-   * Each chain can provide its own resolver (e.g., AlphaLend on Sui).
+   * Register a market resolver for lending protocols on a specific chain.
+   * Each chain provides its own resolver (e.g., AlphaLend on Sui, Jupiter Lend on Solana).
    */
-  setMarketResolver(resolver: MarketResolverFn): void;
+  setMarketResolver(chain: string, resolver: MarketResolverFn): void;
 }
 
 /**

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-09
+
+Ethereum mainnet support via Paraswap swaps, Aave V3 lending, and Hyperliquid perpetuals — the second chain to ship on the multi-chain architecture.
+
+### Added
+
+- **EVM chain module** — `EvmAdapter`, `EvmChainModule`, `EvmKeyDeriver` (BIP-44 path `m/44'/60'/0'/0/0`), `EvmDataProvider` (DeFi Llama free price API), viem-based balance queries, and token registry for ETH / WETH / USDC / USDT / DAI / WBTC
+- **Paraswap Classic swap builder** — quote + build-tx flow with automatic ERC-20 approval to the Paraswap `TokenTransferProxy`, executed through a viem `WalletClient`
+- **Aave V3 lend builders** — supply, withdraw, borrow (variable rate), and repay via `@aave/contract-helpers`; transactions submitted through an ethers v5 signer because the Aave SDK targets ethers v5
+- **Hyperliquid perpetuals** — place-order and cancel-order builders plus a `HyperliquidPerpProvider`, all signing with the same EVM private key used for Ethereum mainnet transactions
+- **Scoped token allowlist checks** — `TokenAllowlistCheck` now accepts an optional `{ name, chain }` options bag so each chain can register its own independent allowlist check without name collisions, enabling multi-chain deployments
+
+### Changed
+
+- **Chain type union** — `Chain` now includes `'ethereum'` alongside `'sui'` and `'solana'`; `LendingProtocol`, `AggregatorProtocol`, and `PerpProtocol` gain `'aave_v3'`, `'paraswap'`, and `'hyperliquid'` respectively
+- **Sui and Solana modules** — their `TokenAllowlistCheck` registrations now use unique scoped names (`token_allowlist_sui`, `token_allowlist_solana`) and a chain filter so all three chains can be configured simultaneously
+
 ## [0.4.0] - 2026-03-26
 
 Config tamper protection and restart command to prevent prompt-injected agents from silently changing guardrails.

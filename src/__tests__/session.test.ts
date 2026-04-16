@@ -15,7 +15,8 @@ vi.mock('../wallet/keystore.js', () => ({
   loadKeystore: vi.fn(),
 }));
 
-const SESSION_PATH = join(TEST_DIR, 'session');
+const LEGACY_SESSION_PATH = join(TEST_DIR, 'session');
+const SUI_SESSION_PATH = join(TEST_DIR, 'session.sui-mainnet');
 
 // We need to track fs calls
 const mockWriteFileSync = vi.fn();
@@ -23,6 +24,7 @@ const mockReadFileSync = vi.fn();
 const mockUnlinkSync = vi.fn();
 const mockStatSync = vi.fn();
 const mockMkdirSync = vi.fn();
+const mockReaddirSync = vi.fn();
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
@@ -33,12 +35,15 @@ vi.mock('node:fs', async (importOriginal) => {
     unlinkSync: (...args: unknown[]) => mockUnlinkSync(...args),
     statSync: (...args: unknown[]) => mockStatSync(...args),
     mkdirSync: (...args: unknown[]) => mockMkdirSync(...args),
+    readdirSync: (...args: unknown[]) => mockReaddirSync(...args),
   };
 });
 
 describe('session', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: empty directory (no per-chain session files)
+    mockReaddirSync.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -46,7 +51,7 @@ describe('session', () => {
   });
 
   describe('createSession', () => {
-    it('creates a session file with valid structure', async () => {
+    it('creates a per-chain session file with valid structure', async () => {
       const { loadKeystore } = await import('../wallet/keystore.js');
       const keyHex = 'ab'.repeat(32);
       vi.mocked(loadKeystore).mockReturnValue({
@@ -64,7 +69,7 @@ describe('session', () => {
         string,
         { encoding: string; mode: number },
       ];
-      expect(path).toBe(SESSION_PATH);
+      expect(path).toBe(SUI_SESSION_PATH);
       expect(options.mode).toBe(0o600);
 
       const sessionData = JSON.parse(content) as SessionData;
@@ -156,7 +161,8 @@ describe('session', () => {
       return JSON.stringify(session);
     }
 
-    it('returns correct key bytes from a valid session', async () => {
+    it('returns correct key bytes from a valid per-chain session', async () => {
+      // First call (per-chain path) succeeds
       mockReadFileSync.mockReturnValue(makeSessionFile());
 
       const { loadSessionKeyBytes } = await import('../wallet/session.js');
@@ -166,7 +172,23 @@ describe('session', () => {
       expect(Buffer.from(bytes).toString('hex')).toBe('ab'.repeat(32));
     });
 
-    it('throws when session file does not exist', async () => {
+    it('falls back to legacy session path when per-chain path not found', async () => {
+      const enoent = new Error('ENOENT') as NodeJS.ErrnoException;
+      enoent.code = 'ENOENT';
+      // Per-chain path not found; legacy path returns valid session
+      mockReadFileSync
+        .mockImplementationOnce(() => {
+          throw enoent;
+        })
+        .mockReturnValueOnce(makeSessionFile());
+
+      const { loadSessionKeyBytes } = await import('../wallet/session.js');
+      const bytes = loadSessionKeyBytes('sui:mainnet');
+
+      expect(Buffer.from(bytes).toString('hex')).toBe('ab'.repeat(32));
+    });
+
+    it('throws when neither session file exists', async () => {
       const err = new Error('ENOENT') as NodeJS.ErrnoException;
       err.code = 'ENOENT';
       mockReadFileSync.mockImplementation(() => {
@@ -219,20 +241,36 @@ describe('session', () => {
   });
 
   describe('destroySession', () => {
-    it('overwrites and deletes the session file', async () => {
+    it('overwrites and deletes per-chain session files', async () => {
+      mockReaddirSync.mockReturnValue([
+        'session.sui-mainnet',
+        'session.solana-mainnet',
+        'config.toml',
+      ]);
       mockStatSync.mockReturnValue({ size: 256 });
 
       const { destroySession } = await import('../wallet/session.js');
       destroySession();
 
-      // Verify overwrite with zeros
-      expect(mockWriteFileSync).toHaveBeenCalledWith(SESSION_PATH, expect.any(Buffer));
-      const writtenBuffer = mockWriteFileSync.mock.calls[0]![1] as Buffer;
-      expect(writtenBuffer).toHaveLength(256);
-      expect(writtenBuffer.every((b: number) => b === 0)).toBe(true);
+      // All matching session files should be zeroed and deleted
+      const deletedPaths = mockUnlinkSync.mock.calls.map((c) => c[0] as string);
+      expect(deletedPaths).toContain(join(TEST_DIR, 'session.sui-mainnet'));
+      expect(deletedPaths).toContain(join(TEST_DIR, 'session.solana-mainnet'));
+      // non-session file should not be touched
+      expect(deletedPaths).not.toContain(join(TEST_DIR, 'config.toml'));
+    });
 
-      // Verify deletion
-      expect(mockUnlinkSync).toHaveBeenCalledWith(SESSION_PATH);
+    it('also clears the legacy session file if it exists', async () => {
+      mockReaddirSync.mockReturnValue([]);
+      mockStatSync
+        .mockImplementationOnce(() => ({ size: 128 })) // legacy session exists
+        .mockReturnValue({ size: 0 });
+
+      const { destroySession } = await import('../wallet/session.js');
+      destroySession();
+
+      const deletedPaths = mockUnlinkSync.mock.calls.map((c) => c[0] as string);
+      expect(deletedPaths).toContain(LEGACY_SESSION_PATH);
     });
 
     it('is idempotent when no session exists', async () => {
@@ -241,6 +279,7 @@ describe('session', () => {
       mockStatSync.mockImplementation(() => {
         throw err;
       });
+      mockReaddirSync.mockReturnValue([]);
 
       const { destroySession } = await import('../wallet/session.js');
 
@@ -250,11 +289,22 @@ describe('session', () => {
   });
 
   describe('hasActiveSession', () => {
-    it('returns true when valid session exists', async () => {
-      const session = {
-        expires_at: new Date(Date.now() + 14400 * 1000).toISOString(),
-      };
-      mockReadFileSync.mockReturnValue(JSON.stringify(session));
+    it('returns true when a per-chain session exists and is valid', async () => {
+      mockReaddirSync.mockReturnValue(['session.sui-mainnet']);
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({ expires_at: new Date(Date.now() + 14400 * 1000).toISOString() }),
+      );
+
+      const { hasActiveSession } = await import('../wallet/session.js');
+      expect(hasActiveSession()).toBe(true);
+    });
+
+    it('returns true when the legacy session exists and is valid', async () => {
+      mockReaddirSync.mockReturnValue([]);
+      // First read is for legacy path
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({ expires_at: new Date(Date.now() + 14400 * 1000).toISOString() }),
+      );
 
       const { hasActiveSession } = await import('../wallet/session.js');
       expect(hasActiveSession()).toBe(true);
@@ -263,6 +313,7 @@ describe('session', () => {
     it('returns false when no session file exists', async () => {
       const err = new Error('ENOENT') as NodeJS.ErrnoException;
       err.code = 'ENOENT';
+      mockReaddirSync.mockReturnValue([]);
       mockReadFileSync.mockImplementation(() => {
         throw err;
       });
@@ -271,18 +322,18 @@ describe('session', () => {
       expect(hasActiveSession()).toBe(false);
     });
 
-    it('returns false when session is expired', async () => {
-      const session = {
-        expires_at: new Date(Date.now() - 1000).toISOString(),
-      };
-      mockReadFileSync.mockReturnValue(JSON.stringify(session));
+    it('returns false when all sessions are expired', async () => {
+      mockReaddirSync.mockReturnValue(['session.sui-mainnet']);
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({ expires_at: new Date(Date.now() - 1000).toISOString() }),
+      );
 
       const { hasActiveSession } = await import('../wallet/session.js');
       expect(hasActiveSession()).toBe(false);
     });
 
     it('never throws', async () => {
-      mockReadFileSync.mockImplementation(() => {
+      mockReaddirSync.mockImplementation(() => {
         throw new Error('unexpected error');
       });
 

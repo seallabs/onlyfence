@@ -167,10 +167,15 @@ export class SuiChainModule implements ChainModule {
     ctx.mevProtectors.set('sui', new NoOpMevProtector());
 
     // Policy check: Sui-specific token address resolution
-    ctx.policyRegistry.register(new TokenAllowlistCheck(tryResolveTokenAddress));
+    ctx.policyRegistry.register(
+      new TokenAllowlistCheck(tryResolveTokenAddress, {
+        name: 'token_allowlist_sui',
+        chain: 'sui',
+      }),
+    );
 
     // Market resolver for lending intent resolution
-    ctx.setMarketResolver((coinType: string, explicitMarketId?: string) =>
+    ctx.setMarketResolver('sui', (coinType: string, explicitMarketId?: string) =>
       resolveMarketId(alphalendClient, coinType, explicitMarketId),
     );
   }

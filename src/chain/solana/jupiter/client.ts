@@ -26,7 +26,7 @@ export interface SwapOrderResponse {
   readonly transaction: string; // base64 encoded
   readonly requestId: string;
   readonly outAmount: string;
-  readonly priceImpactPct: string;
+  readonly priceImpactPct?: string;
 }
 
 export interface SwapExecuteParams {
@@ -38,15 +38,17 @@ export interface SwapExecuteResponse {
   readonly signature: string;
 }
 
-export interface JupiterPriceResponse {
-  readonly data: Record<
-    string,
-    {
-      readonly id: string;
-      readonly price: string;
-    }
-  >;
-}
+export type JupiterPriceResponse = Record<
+  string,
+  {
+    readonly usdPrice: number;
+    readonly decimals: number;
+    readonly blockId: number;
+    readonly createdAt: string;
+    readonly priceChange24h: number;
+    readonly liquidity: number;
+  }
+>;
 
 export class JupiterClient {
   private readonly headers: HeadersInit;
@@ -100,20 +102,21 @@ export class JupiterClient {
     return res.json() as Promise<T>;
   }
 
-  // ── Swap V2 ──────────────────────────────────────────────────────────
+  // ── Ultra Swap V1 ────────────────────────────────────────────────────
 
   async swapOrder(params: SwapOrderParams): Promise<SwapOrderResponse> {
-    return this.post<SwapOrderResponse>('/swap/v2/order', {
+    const qs = new URLSearchParams({
       inputMint: params.inputMint,
       outputMint: params.outputMint,
       amount: params.amount,
       taker: params.taker,
-      ...(params.slippageBps !== undefined ? { slippageBps: params.slippageBps } : {}),
+      ...(params.slippageBps !== undefined ? { slippageBps: String(params.slippageBps) } : {}),
     });
+    return this.get<SwapOrderResponse>(`/ultra/v1/order?${qs.toString()}`);
   }
 
   async swapExecute(params: SwapExecuteParams): Promise<SwapExecuteResponse> {
-    return this.post<SwapExecuteResponse>('/swap/v2/execute', {
+    return this.post<SwapExecuteResponse>('/ultra/v1/execute', {
       signedTransaction: params.signedTransaction,
       requestId: params.requestId,
     });
@@ -125,13 +128,12 @@ export class JupiterClient {
     if (mints.length === 0) return {};
 
     const ids = mints.join(',');
-    const data = await this.get<JupiterPriceResponse>(`/price/v2?ids=${ids}`);
+    const data = await this.get<JupiterPriceResponse>(`/price/v3?ids=${ids}`);
 
     const result: Record<string, number> = {};
-    for (const [id, entry] of Object.entries(data.data)) {
-      const price = parseFloat(entry.price);
-      if (Number.isFinite(price)) {
-        result[id] = price;
+    for (const [id, entry] of Object.entries(data)) {
+      if (Number.isFinite(entry.usdPrice)) {
+        result[id] = entry.usdPrice;
       }
     }
     return result;

@@ -10,12 +10,12 @@ import type { ActivityLog } from '../../../db/activity-log.js';
 import type { JupiterClient } from './client.js';
 
 /**
- * Jupiter Swap V2 builder for Solana.
+ * Jupiter Ultra V1 swap builder for Solana.
  *
  * Uses the off-chain-signed execution strategy:
- * 1. POST /swap/v2/order -> get pre-built transaction
+ * 1. GET /ultra/v1/order -> get pre-built transaction
  * 2. Sign the transaction
- * 3. POST /swap/v2/execute -> submit signed transaction
+ * 3. POST /ultra/v1/execute -> submit signed transaction
  *
  * The pipeline's on-chain flow (build -> simulate -> signAndSubmit) is bypassed;
  * everything happens in execute().

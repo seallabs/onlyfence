@@ -24,7 +24,8 @@ export type MarketResolverFn = (coinType: string, explicitMarketId?: string) => 
  * This keeps the services bag type-safe without string-key lookups.
  */
 export interface ResolverServices {
-  readonly marketResolver?: MarketResolverFn | undefined;
+  /** Per-chain market resolvers keyed by chain name (e.g., "sui", "solana", "ethereum"). */
+  readonly marketResolvers: ReadonlyMap<string, MarketResolverFn>;
   readonly perpProviders?: PerpProviderRegistry | undefined;
 }
 
