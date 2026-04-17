@@ -1,7 +1,7 @@
 import type { AllowlistConfig, ChainConfig, LimitsConfig, PerpConfig } from '../../types/config.js';
 
 /** Default Ethereum mainnet public RPC. */
-export const EVM_MAINNET_RPC = 'https://eth.llamarpc.com';
+export const EVM_MAINNET_RPC = 'https://eth.api.onfinality.io/public';
 
 /** EIP-155 chain id for Ethereum mainnet. */
 export const ETHEREUM_CHAIN_ID = 1;

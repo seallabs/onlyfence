@@ -24,6 +24,7 @@ import { createActionExecutor, type ExecutionResult } from '../../core/action-ex
 import { captureException } from '../../telemetry/index.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
+import type { EvmChainModule } from '../../chain/evm/module.js';
 import type { SuiChainModule } from '../../chain/sui/module.js';
 import type { SolanaChainModule } from '../../chain/solana/module.js';
 import { fetchPortfolio as fetchSolanaPortfolio } from '../../chain/solana/jupiter/lend-portfolio.js';
@@ -300,6 +301,14 @@ function registerMarketsQuery(parent: Command, getComponents: () => AppComponent
             throw new Error('Solana chain not initialized. Ensure Solana chain is configured.');
           }
           markets = await fetchAllEarnMarkets(solanaModule.connection);
+        } else if (chainId.startsWith('ethereum')) {
+          const evmModule = chainModules.get('ethereum') as EvmChainModule;
+          if (evmModule.aaveDataProvider === undefined) {
+            throw new Error(
+              'Aave V3 data provider not initialized. Ensure Ethereum chain is configured.',
+            );
+          }
+          markets = await evmModule.aaveDataProvider.fetchAllMarkets();
         } else {
           const suiModule = chainModules.get('sui') as SuiChainModule;
           if (suiModule.alphalendClient === undefined) {
@@ -345,6 +354,14 @@ function registerMarketDetailQuery(parent: Command, getComponents: () => AppComp
             throw new Error('Solana chain not initialized. Ensure Solana chain is configured.');
           }
           detail = await fetchEarnMarketDetail(solanaModule.connection, coinType);
+        } else if (chainId.startsWith('ethereum')) {
+          const evmModule = chainModules.get('ethereum') as EvmChainModule;
+          if (evmModule.aaveDataProvider === undefined) {
+            throw new Error(
+              'Aave V3 data provider not initialized. Ensure Ethereum chain is configured.',
+            );
+          }
+          detail = await evmModule.aaveDataProvider.fetchMarketDetail(coinType);
         } else {
           const suiModule = chainModules.get('sui') as SuiChainModule;
           if (suiModule.alphalendClient === undefined) {
@@ -398,6 +415,14 @@ function registerPortfolioQuery(parent: Command, getComponents: () => AppCompone
             solanaModule.connection,
             solanaModule.jupiterClient,
           );
+        } else if (chainId.startsWith('ethereum')) {
+          const evmModule = chainModules.get('ethereum') as EvmChainModule;
+          if (evmModule.aaveDataProvider === undefined) {
+            throw new Error(
+              'Aave V3 data provider not initialized. Ensure Ethereum chain is configured.',
+            );
+          }
+          portfolio = await evmModule.aaveDataProvider.fetchPortfolio(wallet.address);
         } else {
           const suiModule = chainModules.get('sui') as SuiChainModule;
           if (suiModule.alphalendClient === undefined) {

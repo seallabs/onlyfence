@@ -21,6 +21,7 @@ import { HyperliquidClient } from './hyperliquid/client.js';
 import { HyperliquidPlaceOrderBuilder } from './hyperliquid/perp-place-order.js';
 import { HyperliquidPerpProvider } from './hyperliquid/perp-provider.js';
 import { EvmKeyDeriver } from './key-deriver.js';
+import { AaveV3DataProvider } from './aave/markets.js';
 import { ParaswapClient } from './paraswap/client.js';
 import { ParaswapSwapBuilder } from './paraswap/swap.js';
 import { buildEvmSigner } from './signer.js';
@@ -49,6 +50,7 @@ export class EvmChainModule implements ChainModule {
   private readonly keyDeriver = new EvmKeyDeriver();
   private cachedWallet: EvmWalletContext | undefined;
   private cachedHyperliquidClient: HyperliquidClient | undefined;
+  aaveDataProvider: AaveV3DataProvider | undefined;
 
   createKeyDeriver(): EvmKeyDeriver {
     return this.keyDeriver;
@@ -103,6 +105,8 @@ export class EvmChainModule implements ChainModule {
       this.cachedHyperliquidClient = new HyperliquidClient(keyBytes);
       return this.cachedHyperliquidClient;
     };
+
+    this.aaveDataProvider = new AaveV3DataProvider(getEthersProvider());
 
     ctx.chainAdapterFactory.register(new EvmAdapter(publicClient));
 

@@ -119,6 +119,26 @@ export class ParaswapSwapBuilder implements ActionBuilder<SwapIntent> {
     if (!isEvmAddress(toAddress)) {
       throw new Error(`Paraswap returned non-address "to" field: ${toAddress}`);
     }
+
+    // Pre-flight: ensure the wallet has enough ETH to cover value + gas cost.
+    // Paraswap typically provides a gas estimate so eth_estimateGas is skipped
+    // by viem — without this check, underfunded txs are silently dropped by
+    // the mempool and waitForTransactionReceipt times out with no clear error.
+    const txValue = BigInt(txParams.value);
+    const gasLimit = txParams.gas !== undefined ? BigInt(txParams.gas) : 300_000n;
+    const [ethBalance, gasPrice] = await Promise.all([
+      wallet.publicClient.getBalance({ address: userAddress }),
+      wallet.publicClient.getGasPrice(),
+    ]);
+    const gasCost = gasPrice * gasLimit;
+    const totalRequired = txValue + gasCost;
+    if (ethBalance < totalRequired) {
+      const fmt = (n: bigint): string => `${(Number(n) / 1e18).toFixed(8)} ETH`;
+      throw new Error(
+        `Insufficient ETH: need ${fmt(totalRequired)} (${fmt(txValue)} value + ${fmt(gasCost)} gas), have ${fmt(ethBalance)}`,
+      );
+    }
+
     const txHash = await wallet.walletClient.sendTransaction({
       account: wallet.account,
       chain: wallet.walletClient.chain ?? null,

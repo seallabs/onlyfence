@@ -170,6 +170,7 @@ function validateChainConfig(raw: unknown, path: string, ceilings: LimitCeilings
   if (typeof raw['rpc'] !== 'string' || raw['rpc'].length === 0) {
     throw new ConfigValidationError('Missing or empty "rpc" field', `${path}.rpc`);
   }
+  const rpcValue = raw['rpc'];
 
   const network = raw['network'];
   if (network !== undefined && (typeof network !== 'string' || network.length === 0)) {
@@ -198,7 +199,7 @@ function validateChainConfig(raw: unknown, path: string, ceilings: LimitCeilings
   }
 
   return {
-    rpc: raw['rpc'],
+    rpc: rpcValue,
     ...(network !== undefined ? { network } : {}),
     ...(credentials !== undefined ? { credentials: credentials as Record<string, string> } : {}),
     ...(raw['allowlist'] !== undefined

@@ -52,22 +52,34 @@ export async function submitAaveTransactions(
     throw new Error('Aave SDK returned no transactions to submit');
   }
 
-  const populatedTxs = await Promise.all(txs.map((entry) => entry.tx()));
-
   const approvalTxHashes: string[] = [];
   let mainTxHash = '';
-  const lastIndex = populatedTxs.length - 1;
+  const lastIndex = txs.length - 1;
 
-  for (const [index, populatedTx] of populatedTxs.entries()) {
+  for (const [index, tx] of txs.entries()) {
+    // Populate each transaction just before submission so that estimateGas
+    // runs against the correct on-chain state. Pre-populating all txs in
+    // parallel would cause the supply tx's estimateGas to run before the
+    // approval is mined, failing with "ERC20: transfer amount exceeds allowance".
+    const populatedTx = await tx.tx();
+
     // Ethers requires the signer to populate `from` implicitly;
     // passing it explicitly breaks estimateGas on some node versions.
     delete populatedTx.from;
     const submitted = await signer.sendTransaction(populatedTx);
     const receipt = await submitted.wait();
+
+    if (receipt.status === 0) {
+      throw new Error(`Transaction reverted: ${receipt.transactionHash}`);
+    }
+
     if (index === lastIndex) {
       mainTxHash = receipt.transactionHash;
     } else {
       approvalTxHashes.push(receipt.transactionHash);
+      // Wait for the approval block to propagate across load-balanced nodes
+      // before populating and submitting the next transaction.
+      await new Promise<void>((resolve) => signer.provider.once('block', resolve));
     }
   }
 
