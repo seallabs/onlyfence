@@ -1,8 +1,6 @@
 import type Database from 'better-sqlite3';
 import { generateMnemonic, validateMnemonic, mnemonicToSeedSync } from 'bip39';
-import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
-import { deriveSuiKeypair, keypairFromRawKey, SUI_DERIVATION_PATH } from './derivation.js';
-import { SUI_CHAIN_ID } from '../chain/sui/adapter.js';
+import type { KeyDeriver } from './key-deriver.js';
 import type { WalletInfo, WalletRow } from './types.js';
 
 /**
@@ -83,29 +81,33 @@ function generateAlias(db: Database.Database, chain: string, isWatchOnly: boolea
  * @returns The mnemonic and derived wallet information
  * @throws Error if mnemonic generation or key derivation fails
  */
-export function generateWallet(db: Database.Database, alias?: string): GenerateWalletResult {
+export function generateWallet(
+  db: Database.Database,
+  keyDeriver: KeyDeriver,
+  alias?: string,
+): GenerateWalletResult {
   const mnemonic = generateMnemonic(256);
   const seed = mnemonicToSeedSync(mnemonic);
 
-  const resolvedAlias = alias ?? generateAlias(db, 'sui', false);
+  const resolvedAlias = alias ?? generateAlias(db, keyDeriver.chain, false);
 
-  const suiKeypair = deriveSuiKeypair(Buffer.from(seed));
-  const suiWallet: WalletInfo = {
-    chainId: SUI_CHAIN_ID,
-    address: suiKeypair.address,
-    derivationPath: SUI_DERIVATION_PATH,
+  const derived = keyDeriver.deriveFromSeed(Buffer.from(seed));
+  const wallet: WalletInfo = {
+    chainId: keyDeriver.chainId,
+    address: derived.address,
+    derivationPath: derived.derivationPath,
     isPrimary: true,
     isWatchOnly: false,
     alias: resolvedAlias,
   };
 
-  insertWallet(db, suiWallet);
+  insertWallet(db, wallet);
 
-  const privateKeyHex = Buffer.from(suiKeypair.secretKey).toString('hex');
+  const privateKeyHex = Buffer.from(derived.secretKey).toString('hex');
 
   return {
     mnemonic,
-    wallets: [suiWallet],
+    wallets: [wallet],
     privateKeyHex,
   };
 }
@@ -124,6 +126,7 @@ export function generateWallet(db: Database.Database, alias?: string): GenerateW
 export function importFromMnemonic(
   db: Database.Database,
   mnemonic: string,
+  keyDeriver: KeyDeriver,
   alias?: string,
 ): ImportWalletResult {
   if (!validateMnemonic(mnemonic)) {
@@ -131,14 +134,14 @@ export function importFromMnemonic(
   }
 
   const seed = mnemonicToSeedSync(mnemonic);
-  const suiKeypair = deriveSuiKeypair(Buffer.from(seed));
+  const derived = keyDeriver.deriveFromSeed(Buffer.from(seed));
 
-  const resolvedAlias = alias ?? generateAlias(db, 'sui', false);
+  const resolvedAlias = alias ?? generateAlias(db, keyDeriver.chain, false);
 
   const wallet: WalletInfo = {
-    chainId: SUI_CHAIN_ID,
-    address: suiKeypair.address,
-    derivationPath: SUI_DERIVATION_PATH,
+    chainId: keyDeriver.chainId,
+    address: derived.address,
+    derivationPath: derived.derivationPath,
     isPrimary: true,
     isWatchOnly: false,
     alias: resolvedAlias,
@@ -146,7 +149,7 @@ export function importFromMnemonic(
 
   insertWallet(db, wallet);
 
-  const privateKeyHex = Buffer.from(suiKeypair.secretKey).toString('hex');
+  const privateKeyHex = Buffer.from(derived.secretKey).toString('hex');
 
   return { wallet, privateKeyHex };
 }
@@ -289,47 +292,14 @@ export function renameAlias(db: Database.Database, oldAlias: string, newAlias: s
 }
 
 /**
- * Parse a private key string into a 32-byte ed25519 seed.
+ * Import a wallet from a raw private key in chain-specific format.
  *
- * Accepts either:
- * - `suiprivkey1…` bech32-encoded key (decoded via @mysten/sui)
- * - 64-character hex string (32 bytes)
- *
- * @param input - Private key in hex or bech32 format
- * @returns 32-byte Uint8Array seed
- * @throws Error if the input format is invalid
- */
-function parsePrivateKeyInput(input: string): Uint8Array {
-  const trimmed = input.trim();
-
-  if (trimmed.startsWith('suiprivkey')) {
-    const decoded = decodeSuiPrivateKey(trimmed);
-    if (decoded.scheme !== 'ED25519') {
-      throw new Error(
-        `Unsupported key scheme "${decoded.scheme}". Only ED25519 keys are supported.`,
-      );
-    }
-    return decoded.secretKey;
-  }
-
-  // Hex format: must be exactly 64 hex chars (32 bytes)
-  if (!/^[0-9a-fA-F]{64}$/.test(trimmed)) {
-    throw new Error(
-      'Invalid private key format. Expected 64-character hex string or suiprivkey1… bech32 key.',
-    );
-  }
-
-  return new Uint8Array(Buffer.from(trimmed, 'hex'));
-}
-
-/**
- * Import a wallet from a raw private key (hex or suiprivkey bech32).
- *
- * Derives the ed25519 public key and Sui address, then stores the wallet
- * in the database. No mnemonic or derivation path is associated.
+ * The key format varies by chain (e.g., Sui uses suiprivkey bech32 or hex,
+ * Solana uses base58). The KeyDeriver handles parsing and address derivation.
  *
  * @param db - SQLite database connection
- * @param privateKeyInput - Private key in hex or suiprivkey bech32 format
+ * @param privateKeyInput - Private key string in chain-specific format
+ * @param keyDeriver - Chain-specific key deriver for parsing and derivation
  * @param alias - Optional custom alias for the wallet
  * @returns The imported wallet information and hex-encoded private key seed
  * @throws Error if the key format is invalid or the wallet already exists
@@ -337,19 +307,20 @@ function parsePrivateKeyInput(input: string): Uint8Array {
 export function importFromPrivateKey(
   db: Database.Database,
   privateKeyInput: string,
+  keyDeriver: KeyDeriver,
   alias?: string,
 ): ImportFromKeyResult {
-  const seed = parsePrivateKeyInput(privateKeyInput);
-  const keypair = keypairFromRawKey(seed);
+  const seed = keyDeriver.parsePrivateKeyInput(privateKeyInput);
+  const derived = keyDeriver.deriveFromRawKey(seed);
 
-  const resolvedAlias = alias ?? generateAlias(db, 'sui', false);
+  const resolvedAlias = alias ?? generateAlias(db, keyDeriver.chain, false);
 
   // Set as primary if no other wallet exists for this chain
-  const isPrimary = getPrimaryWallet(db, SUI_CHAIN_ID) === null;
+  const isPrimary = getPrimaryWallet(db, keyDeriver.chainId) === null;
 
   const wallet: WalletInfo = {
-    chainId: SUI_CHAIN_ID,
-    address: keypair.address,
+    chainId: keyDeriver.chainId,
+    address: derived.address,
     derivationPath: null,
     isPrimary,
     isWatchOnly: false,

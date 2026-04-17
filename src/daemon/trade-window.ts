@@ -31,7 +31,7 @@ export class InMemoryTradeWindow implements ActivityLogReader {
   preload(source: ActivityLogReader, chainIds: string[]): void {
     for (const chainId of chainIds) {
       // Swap volume
-      const swapVolume = source.getRolling24hVolume(chainId as ChainId);
+      const swapVolume = source.getRolling24hVolume(chainId);
       if (swapVolume > 0) {
         this.entries.push({
           chainId,
@@ -41,7 +41,7 @@ export class InMemoryTradeWindow implements ActivityLogReader {
       }
 
       // Perp volume
-      const perpVolume = source.getRolling24hPerpVolume(chainId as ChainId);
+      const perpVolume = source.getRolling24hPerpVolume(chainId);
       if (perpVolume > 0) {
         this.entries.push({
           chainId,
@@ -52,7 +52,7 @@ export class InMemoryTradeWindow implements ActivityLogReader {
       }
 
       // Perp withdrawals
-      const perpWithdraw = source.getRolling24hPerpWithdrawals(chainId as ChainId);
+      const perpWithdraw = source.getRolling24hPerpWithdrawals(chainId);
       if (perpWithdraw > 0) {
         this.entries.push({
           chainId,

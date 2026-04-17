@@ -1,8 +1,10 @@
 import type { Command } from 'commander';
-import { SUI_CHAIN_ID } from '../../chain/sui/adapter.js';
+import { loadConfig } from '../../config/loader.js';
 import { createSession, hasActiveSession } from '../../wallet/session.js';
 import { toErrorMessage } from '../../utils/index.js';
+import { resolveDefaultChain, resolveChainId } from '../resolve-chain.js';
 import { promptSecret } from '../prompt.js';
+import type { AppComponents } from '../bootstrap.js';
 
 /** Allowed TTL values and their seconds equivalent. */
 const TTL_MAP: Record<string, number> = {
@@ -17,10 +19,11 @@ const TTL_MAP: Record<string, number> = {
 /**
  * Register the `fence unlock` command.
  *
- * Creates a time-limited session so subsequent commands (e.g., `fence swap`)
- * can sign transactions without re-entering the password.
+ * Creates time-limited sessions for ALL configured chains so subsequent
+ * commands (e.g., `fence swap --chain solana`) can sign transactions without
+ * re-entering the password.
  */
-export function registerUnlockCommand(program: Command): void {
+export function registerUnlockCommand(program: Command, getComponents: () => AppComponents): void {
   program
     .command('unlock')
     .description('Unlock your wallet for a session (default: 4h)')
@@ -42,7 +45,7 @@ export function registerUnlockCommand(program: Command): void {
         }
 
         if (hasActiveSession()) {
-          process.stderr.write('Warning: An active session already exists. It will be replaced.\n');
+          process.stderr.write('Warning: Active sessions exist. They will be replaced.\n');
         }
 
         const password = await promptSecret('Enter password: ');
@@ -50,11 +53,38 @@ export function registerUnlockCommand(program: Command): void {
           throw new Error('Password cannot be empty.');
         }
 
-        // Default to Sui — the only supported chain in standalone mode
-        const chain = SUI_CHAIN_ID;
-        createSession(chain, password, ttlSeconds);
+        // Resolve all configured chain IDs
+        const config = loadConfig();
+        void resolveDefaultChain(config); // validate at least one chain is configured
 
-        process.stderr.write(`\u2713 Session active (expires in ${options.ttl})\n`);
+        const { chainAdapterFactory } = getComponents();
+        const chains = Object.keys(config.chain);
+
+        const unlocked: string[] = [];
+        const failed: { chain: string; error: string }[] = [];
+
+        for (const chain of chains) {
+          try {
+            const chainId = resolveChainId(chain, chainAdapterFactory);
+            createSession(chainId, password, ttlSeconds);
+            unlocked.push(chainId);
+          } catch (err: unknown) {
+            failed.push({ chain, error: toErrorMessage(err) });
+          }
+        }
+
+        if (unlocked.length > 0) {
+          process.stderr.write(
+            `\u2713 Session active for ${unlocked.join(', ')} (expires in ${options.ttl})\n`,
+          );
+        }
+        for (const { chain, error } of failed) {
+          process.stderr.write(`\u26a0 Failed to unlock ${chain}: ${error}\n`);
+        }
+
+        if (unlocked.length === 0) {
+          throw new Error('No chains could be unlocked.');
+        }
       } catch (err: unknown) {
         process.stderr.write(`Error: ${toErrorMessage(err)}\n`);
         process.exitCode = 1;

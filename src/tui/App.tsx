@@ -41,7 +41,25 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
 
   const { db, dataProviders, activityLog, policyRegistry, chainAdapterFactory } = components;
 
-  const activeChain: Chain = Object.keys(config.chain)[0] as Chain;
+  const configuredChains = useMemo(() => Object.keys(config.chain) as Chain[], [config.chain]);
+  const [activeChainIndex, setActiveChainIndex] = useState(0);
+
+  // No chains configured — show a prompt to run setup
+  if (configuredChains.length === 0) {
+    return (
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
+        <Text color={theme.warning} bold>
+          {'No chains configured'}
+        </Text>
+        <Text color={theme.body}>
+          {'Run "fence setup" to configure a chain and create a wallet.'}
+        </Text>
+      </Box>
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- checked configuredChains.length > 0 above
+  const activeChain: Chain = configuredChains[activeChainIndex % configuredChains.length]!;
   const activeChainId = chainAdapterFactory.get(activeChain).chainId;
 
   const updateStatus = useUpdateCheck(updateChecker, CURRENT_VERSION);
@@ -80,6 +98,11 @@ export function App({ components, updateChecker }: AppProps): ReactElement {
           break;
         case 'r':
           reloadConfig();
+          break;
+        case 'c':
+          if (configuredChains.length > 1) {
+            setActiveChainIndex((i) => (i + 1) % configuredChains.length);
+          }
           break;
       }
     },

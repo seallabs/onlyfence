@@ -3,6 +3,7 @@
 // Chain adapter
 export {
   ChainAdapterFactory,
+  ChainModuleRegistry,
   coinTypeToSymbol,
   isKnownToken,
   resolveTokenAddress,
@@ -10,9 +11,14 @@ export {
   SUI_TOKEN_MAP,
   SuiAdapter,
 } from './chain/index.js';
-export type { ChainAdapter } from './chain/index.js';
+export type {
+  ChainAdapter,
+  ChainModule,
+  ChainModuleInfo,
+  CredentialRequirement,
+} from './chain/index.js';
 export { SuiDataProvider } from './chain/sui/data-provider.js';
-export { bootstrap, buildChainAdapterFactory, buildPolicyRegistry } from './cli/bootstrap.js';
+export { bootstrap, buildChainModuleRegistry } from './cli/bootstrap.js';
 export type { AppComponents } from './cli/bootstrap.js';
 // CLI
 export { createProgram } from './cli/index.js';

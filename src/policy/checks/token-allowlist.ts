@@ -10,6 +10,27 @@ import type { PolicyContext } from '../context.js';
 type AddressResolver = (symbolOrAddress: string) => string | undefined;
 
 /**
+ * Optional constructor options for scoping a TokenAllowlistCheck
+ * to a specific chain so multiple chains can register their own
+ * independent instances without name collisions or cross-chain
+ * token-resolution errors.
+ */
+export interface TokenAllowlistCheckOptions {
+  /**
+   * Unique name for the registered check.
+   * Default: `'token_allowlist'` for backwards compatibility.
+   */
+  readonly name?: string;
+  /**
+   * Chain name prefix (e.g., `'ethereum'`). When set, the check only
+   * evaluates intents whose chainId begins with `${chain}:`; intents
+   * from other chains pass through unchecked. Leave undefined for the
+   * legacy chain-agnostic behavior.
+   */
+  readonly chain?: string;
+}
+
+/**
  * Policy check that verifies both the source and destination tokens
  * are present in the chain's configured allowlist.
  *
@@ -21,12 +42,15 @@ type AddressResolver = (symbolOrAddress: string) => string | undefined;
  * (config-driven loading per spec section 2.3).
  */
 export class TokenAllowlistCheck implements PolicyCheck {
-  readonly name = 'token_allowlist';
+  readonly name: string;
   readonly description = 'Verifies that both trade tokens are in the chain allowlist';
   private readonly addressResolver: AddressResolver;
+  private readonly chainScope: string | undefined;
 
-  constructor(addressResolver: AddressResolver) {
+  constructor(addressResolver: AddressResolver, options?: TokenAllowlistCheckOptions) {
     this.addressResolver = addressResolver;
+    this.name = options?.name ?? 'token_allowlist';
+    this.chainScope = options?.chain;
   }
 
   private cache: { ref: readonly string[]; set: Set<string> } | null = null;
@@ -51,6 +75,13 @@ export class TokenAllowlistCheck implements PolicyCheck {
   }
 
   evaluate(intent: ActionIntent, ctx: PolicyContext): Promise<CheckResult> {
+    // When the check is scoped to a specific chain, pass-through intents
+    // for any other chain so multi-chain deployments can register one
+    // independent check per chain.
+    if (this.chainScope !== undefined && !intent.chainId.startsWith(`${this.chainScope}:`)) {
+      return Promise.resolve(POLICY_PASS);
+    }
+
     if (intent.action === 'lending:claim_rewards') {
       return Promise.resolve(POLICY_PASS);
     }

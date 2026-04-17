@@ -57,3 +57,19 @@ export async function resolveTokenInput(
 
   return { coinType, symbol, decimals: meta.decimals, scaledAmount };
 }
+
+/**
+ * Resolve token type and metadata without scaling an amount.
+ *
+ * Used when the action makes amount irrelevant (e.g., withdraw --all),
+ * so amount validation is not run.
+ */
+export async function resolveTokenOnly(
+  rawToken: string,
+  chainAdapter: ChainAdapter,
+  dataProvider: DataProvider,
+): Promise<ResolvedTokenInput> {
+  const coinType = chainAdapter.resolveTokenAddress(rawToken);
+  const meta = await dataProvider.getMetadata(coinType);
+  return { coinType, symbol: meta.symbol, decimals: meta.decimals, scaledAmount: '0' };
+}

@@ -41,7 +41,7 @@ function PolicyHeader({
 export function PolicyConfig(): ReactElement {
   const { config, activeChain, reloadConfig, mode, setMode, dataProvider } = useTui();
 
-  const chainConfig = config.chain[activeChain];
+  const chainConfig = config.chain[activeChain] ?? { rpc: '' };
 
   // Editable field values
   const [rpc, setRpc] = useState(chainConfig.rpc);
@@ -68,7 +68,7 @@ export function PolicyConfig(): ReactElement {
 
   // Sync local state when config changes externally
   useEffect(() => {
-    const cc = config.chain[activeChain];
+    const cc = config.chain[activeChain] ?? { rpc: '' };
     setRpc(cc.rpc);
     setMaxSingleTrade(String(cc.limits?.max_single_trade ?? 200));
     setMax24hVolume(String(cc.limits?.max_24h_volume ?? 500));

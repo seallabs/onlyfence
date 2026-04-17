@@ -1,4 +1,3 @@
-import type { Chain } from '../core/action-types.js';
 import type { ChainAdapter } from './adapter.js';
 
 /**
@@ -26,9 +25,10 @@ export class ChainAdapterFactory {
 
   /**
    * Retrieve an adapter by chain identifier.
+   * Accepts any string to support dynamic chain resolution from CLI options.
    * @throws if no adapter is registered for the given chain.
    */
-  get(chain: Chain): ChainAdapter {
+  get(chain: string): ChainAdapter {
     const adapter = this.adapters.get(chain);
     if (adapter === undefined) {
       throw new Error(`ChainAdapterFactory: no adapter registered for chain "${chain}"`);

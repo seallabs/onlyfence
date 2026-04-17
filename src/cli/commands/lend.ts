@@ -4,13 +4,17 @@ import {
   fetchMarketDetail,
   fetchPortfolio,
 } from '../../chain/sui/alphalend/markets.js';
+import {
+  fetchAllEarnMarkets,
+  fetchEarnMarketDetail,
+} from '../../chain/solana/jupiter/lend-markets.js';
 import type {
   ActionIntent,
   BorrowIntent,
-  Chain,
   ChainId,
   ClaimRewardsIntent,
   LendingAction,
+  LendingProtocol,
   RepayIntent,
   SupplyIntent,
   TokenLendingIntent,
@@ -20,10 +24,23 @@ import { createActionExecutor, type ExecutionResult } from '../../core/action-ex
 import { captureException } from '../../telemetry/index.js';
 import { toErrorMessage } from '../../utils/index.js';
 import { getPrimaryWallet } from '../../wallet/manager.js';
+import type { EvmChainModule } from '../../chain/evm/module.js';
+import type { SuiChainModule } from '../../chain/sui/module.js';
+import type { SolanaChainModule } from '../../chain/solana/module.js';
+import { fetchPortfolio as fetchSolanaPortfolio } from '../../chain/solana/jupiter/lend-portfolio.js';
 import type { AppComponents } from '../bootstrap.js';
 import type { CliOutput, LendingOutput, LendingRewardsOutput, MappedOutput } from '../output.js';
 import { EXIT_CODES, handleCommandError, printJsonOutput } from '../output.js';
+import { resolveChainId, resolveDefaultChain } from '../resolve-chain.js';
 import { withComponents } from '../with-components.js';
+
+/**
+ * Resolve the lending protocol for a given chain.
+ * Sui uses AlphaLend; Solana uses Jupiter Lend.
+ */
+function resolveProtocol(chainId: ChainId): LendingProtocol {
+  return chainId.startsWith('solana') ? 'jupiter_lend' : 'alphalend';
+}
 
 /**
  * Register the `fence lend` command group on the given program.
@@ -35,7 +52,9 @@ import { withComponents } from '../with-components.js';
  * by the executor — commands have zero awareness of it.
  */
 export function registerLendCommand(program: Command, getComponents: () => AppComponents): void {
-  const lend = program.command('lend').description('AlphaLend lending operations');
+  const lend = program
+    .command('lend')
+    .description('Lending operations (AlphaLend on Sui, Jupiter Lend on Solana)');
 
   // --- Transactional subcommands ---
   registerTokenAction(
@@ -77,13 +96,13 @@ function registerTokenAction(
     .command(`${commandName} <token> <amount>`)
     .description(description)
     .option('-m, --market <marketId>', 'Explicit market ID (auto-resolved if omitted)')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('-o, --output <format>', 'Output format (json)', 'json')
     .action(
       async (
         token: string,
         amountStr: string,
-        options: { market?: string; chain: Chain; output: string },
+        options: { market?: string; chain?: string; output: string },
       ) => {
         await executeTokenLendingAction(action, token, amountStr, options, getComponents);
       },
@@ -95,22 +114,33 @@ function registerTokenAction(
  */
 function registerWithdrawAction(parent: Command, getComponents: () => AppComponents): void {
   parent
-    .command('withdraw <token> <amount>')
+    .command('withdraw <token> [amount]')
     .description('Withdraw supplied tokens')
     .option('-m, --market <marketId>', 'Explicit market ID (auto-resolved if omitted)')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('-o, --output <format>', 'Output format (json)', 'json')
     .option('-a, --all', 'Withdraw entire position')
     .action(
       async (
         token: string,
-        amountStr: string,
-        options: { market?: string; chain: Chain; output: string; all?: boolean },
+        amountStr: string | undefined,
+        options: { market?: string; chain?: string; output: string; all?: boolean },
       ) => {
+        if (options.all !== true && (amountStr === undefined || amountStr === '')) {
+          console.log(
+            JSON.stringify(
+              { status: 'error', error: 'Amount is required unless --all is specified' },
+              null,
+              2,
+            ),
+          );
+          process.exitCode = 1;
+          return;
+        }
         await executeTokenLendingAction(
           'lending:withdraw',
           token,
-          amountStr,
+          amountStr ?? '0',
           options,
           getComponents,
         );
@@ -129,11 +159,12 @@ async function executeTokenLendingAction(
   action: LendingAction,
   token: string,
   amountStr: string,
-  options: { market?: string; chain: Chain; all?: boolean },
+  options: { market?: string; chain?: string; all?: boolean },
   getComponents: () => AppComponents,
 ): Promise<void> {
-  const chain = options.chain;
-  const chainId: ChainId = `${chain}:mainnet`;
+  const components = getComponents();
+  const chain = options.chain ?? resolveDefaultChain(components.config);
+  const chainId = resolveChainId(chain, components.chainAdapterFactory);
 
   try {
     const executor = createActionExecutor(getComponents);
@@ -165,12 +196,14 @@ function buildRawTokenIntent(
 ): ActionIntent {
   const base = { chainId, walletAddress: '' } as const;
 
+  const protocol = resolveProtocol(chainId);
+
   switch (action) {
     case 'lending:supply': {
       const intent: SupplyIntent = {
         ...base,
         action: 'lending:supply',
-        params: { coinType: token, amount, protocol: 'alphalend', marketId: options.market ?? '' },
+        params: { coinType: token, amount, protocol, marketId: options.market ?? '' },
       };
       return intent;
     }
@@ -178,7 +211,7 @@ function buildRawTokenIntent(
       const intent: BorrowIntent = {
         ...base,
         action: 'lending:borrow',
-        params: { coinType: token, amount, protocol: 'alphalend', marketId: options.market ?? '' },
+        params: { coinType: token, amount, protocol, marketId: options.market ?? '' },
       };
       return intent;
     }
@@ -189,7 +222,7 @@ function buildRawTokenIntent(
         params: {
           coinType: token,
           amount,
-          protocol: 'alphalend',
+          protocol,
           marketId: options.market ?? '',
           ...(options.all === true ? { withdrawAll: true } : {}),
         },
@@ -200,7 +233,7 @@ function buildRawTokenIntent(
       const intent: RepayIntent = {
         ...base,
         action: 'lending:repay',
-        params: { coinType: token, amount, protocol: 'alphalend', marketId: options.market ?? '' },
+        params: { coinType: token, amount, protocol, marketId: options.market ?? '' },
       };
       return intent;
     }
@@ -214,11 +247,12 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
   parent
     .command('claim')
     .description('Claim accumulated lending rewards')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('-o, --output <format>', 'Output format (json)', 'json')
-    .action(async (options: { chain: Chain; output: string }) => {
-      const chain = options.chain;
-      const chainId: ChainId = `${chain}:mainnet`;
+    .action(async (options: { chain?: string; output: string }) => {
+      const components = getComponents();
+      const chain = options.chain ?? resolveDefaultChain(components.config);
+      const chainId = resolveChainId(chain, components.chainAdapterFactory);
 
       try {
         const executor = createActionExecutor(getComponents);
@@ -227,7 +261,7 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
           chainId,
           action: 'lending:claim_rewards',
           walletAddress: '',
-          params: { protocol: 'alphalend' },
+          params: { protocol: resolveProtocol(chainId) },
         };
 
         const result = await executor.execute(rawIntent);
@@ -248,16 +282,40 @@ function registerClaimAction(parent: Command, getComponents: () => AppComponents
 function registerMarketsQuery(parent: Command, getComponents: () => AppComponents): void {
   parent
     .command('markets')
-    .description('List all AlphaLend markets')
-    .action(async () => {
+    .description('List all lending markets')
+    .option('-c, --chain <chain>', 'Target chain')
+    .action(async (options: { chain?: string }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { alphalendClient, logger } = components;
+      const { chainModules, chainAdapterFactory, logger, config } = components;
+      const chain = options.chain ?? resolveDefaultChain(config);
+      const chainId = resolveChainId(chain, chainAdapterFactory);
       const log = logger.child({ command: 'lend-markets' });
 
       try {
-        const markets = await fetchAllMarkets(alphalendClient);
+        let markets: unknown;
+        if (chainId.startsWith('solana')) {
+          const solanaModule = chainModules.get('solana') as SolanaChainModule;
+          if (solanaModule.connection === undefined || solanaModule.jupiterClient === undefined) {
+            throw new Error('Solana chain not initialized. Ensure Solana chain is configured.');
+          }
+          markets = await fetchAllEarnMarkets(solanaModule.connection);
+        } else if (chainId.startsWith('ethereum')) {
+          const evmModule = chainModules.get('ethereum') as EvmChainModule;
+          if (evmModule.aaveDataProvider === undefined) {
+            throw new Error(
+              'Aave V3 data provider not initialized. Ensure Ethereum chain is configured.',
+            );
+          }
+          markets = await evmModule.aaveDataProvider.fetchAllMarkets();
+        } else {
+          const suiModule = chainModules.get('sui') as SuiChainModule;
+          if (suiModule.alphalendClient === undefined) {
+            throw new Error('AlphaLend client not initialized. Ensure Sui chain is configured.');
+          }
+          markets = await fetchAllMarkets(suiModule.alphalendClient);
+        }
         console.log(
           JSON.stringify({ status: 'success', action: 'markets', data: markets }, null, 2),
         );
@@ -276,17 +334,41 @@ function registerMarketDetailQuery(parent: Command, getComponents: () => AppComp
   parent
     .command('market <token>')
     .description('Show detailed info for a single market')
-    .action(async (token: string) => {
+    .option('-c, --chain <chain>', 'Target chain')
+    .action(async (token: string, options: { chain?: string }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { alphalendClient, chainAdapterFactory, logger } = components;
+      const { chainModules, chainAdapterFactory, logger, config } = components;
+      const chain = options.chain ?? resolveDefaultChain(config);
+      const chainId = resolveChainId(chain, chainAdapterFactory);
       const log = logger.child({ command: 'lend-market' });
 
       try {
-        const chainAdapter = chainAdapterFactory.get('sui');
+        const chainAdapter = chainAdapterFactory.get(chain);
         const coinType = chainAdapter.resolveTokenAddress(token);
-        const detail = await fetchMarketDetail(alphalendClient, coinType);
+        let detail: unknown;
+        if (chainId.startsWith('solana')) {
+          const solanaModule = chainModules.get('solana') as SolanaChainModule;
+          if (solanaModule.connection === undefined || solanaModule.jupiterClient === undefined) {
+            throw new Error('Solana chain not initialized. Ensure Solana chain is configured.');
+          }
+          detail = await fetchEarnMarketDetail(solanaModule.connection, coinType);
+        } else if (chainId.startsWith('ethereum')) {
+          const evmModule = chainModules.get('ethereum') as EvmChainModule;
+          if (evmModule.aaveDataProvider === undefined) {
+            throw new Error(
+              'Aave V3 data provider not initialized. Ensure Ethereum chain is configured.',
+            );
+          }
+          detail = await evmModule.aaveDataProvider.fetchMarketDetail(coinType);
+        } else {
+          const suiModule = chainModules.get('sui') as SuiChainModule;
+          if (suiModule.alphalendClient === undefined) {
+            throw new Error('AlphaLend client not initialized. Ensure Sui chain is configured.');
+          }
+          detail = await fetchMarketDetail(suiModule.alphalendClient, coinType);
+        }
         console.log(JSON.stringify({ status: 'success', action: 'market', data: detail }, null, 2));
       } catch (err: unknown) {
         log.error({ err: toErrorMessage(err) }, 'Failed to fetch market detail');
@@ -303,14 +385,14 @@ function registerPortfolioQuery(parent: Command, getComponents: () => AppCompone
   parent
     .command('portfolio')
     .description('Show user lending portfolio')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
-    .action(async (options: { chain: Chain }) => {
+    .option('-c, --chain <chain>', 'Target chain')
+    .action(async (options: { chain?: string }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
-      const { db, alphalendClient, logger } = components;
-      const chain = options.chain;
-      const chainId: ChainId = `${chain}:mainnet`;
+      const { db, chainModules, chainAdapterFactory, logger, config } = components;
+      const chain = options.chain ?? resolveDefaultChain(config);
+      const chainId = resolveChainId(chain, chainAdapterFactory);
       const log = logger.child({ command: 'lend-portfolio' });
 
       try {
@@ -321,7 +403,34 @@ function registerPortfolioQuery(parent: Command, getComponents: () => AppCompone
           );
         }
 
-        const portfolio = await fetchPortfolio(alphalendClient, wallet.address);
+        let portfolio: unknown;
+
+        if (chainId.startsWith('solana')) {
+          const solanaModule = chainModules.get('solana') as SolanaChainModule;
+          if (solanaModule.connection === undefined || solanaModule.jupiterClient === undefined) {
+            throw new Error('Solana chain not initialized. Ensure Solana chain is configured.');
+          }
+          portfolio = await fetchSolanaPortfolio(
+            wallet.address,
+            solanaModule.connection,
+            solanaModule.jupiterClient,
+          );
+        } else if (chainId.startsWith('ethereum')) {
+          const evmModule = chainModules.get('ethereum') as EvmChainModule;
+          if (evmModule.aaveDataProvider === undefined) {
+            throw new Error(
+              'Aave V3 data provider not initialized. Ensure Ethereum chain is configured.',
+            );
+          }
+          portfolio = await evmModule.aaveDataProvider.fetchPortfolio(wallet.address);
+        } else {
+          const suiModule = chainModules.get('sui') as SuiChainModule;
+          if (suiModule.alphalendClient === undefined) {
+            throw new Error('AlphaLend client not initialized. Ensure Sui chain is configured.');
+          }
+          portfolio = await fetchPortfolio(suiModule.alphalendClient, wallet.address);
+        }
+
         console.log(
           JSON.stringify({ status: 'success', action: 'portfolio', data: portfolio }, null, 2),
         );
@@ -359,7 +468,7 @@ function mapLendingResultToOutput(
     address: walletAddress,
     gasUsed: result.gasUsed,
     txDigest: result.txDigest,
-    protocol: 'alphalend',
+    protocol: resolveProtocol(intent.chainId),
     error: result.error,
     rejectionCheck: result.rejectionCheck,
     rejectionReason: result.rejectionReason,

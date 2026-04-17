@@ -2,9 +2,12 @@ import type { Command } from 'commander';
 import { readFileSync, existsSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
+import { applyChainConfigDefaults } from '../../config/apply-chain-defaults.js';
 import { openDatabase, DB_PATH } from '../../db/connection.js';
 import { initConfig, updateConfigFile, loadConfig, CONFIG_PATH } from '../../config/loader.js';
 import { ConfigAlreadyExistsError } from '../../config/schema.js';
+import type { KeyDeriver } from '../../wallet/key-deriver.js';
+import { buildChainModuleRegistry, buildKeyDeriverRegistry } from '../bootstrap.js';
 import {
   ensureSetupEnvironment,
   generateSetupWallet,
@@ -37,6 +40,7 @@ interface SetupOptions {
   readonly mnemonicFile?: string;
   readonly passwordFile?: string;
   readonly generate?: boolean;
+  readonly chain?: string;
 }
 
 /**
@@ -65,6 +69,7 @@ export function registerSetupCommand(program: Command): void {
     .option('--mnemonic-file <path>', 'Import mnemonic from file (non-interactive)')
     .option('--password-file <path>', 'Read password from file (enables non-interactive mode)')
     .option('--generate', 'Generate a new wallet (non-interactive, outputs mnemonic in JSON)')
+    .option('--chain <chain>', 'Target chain (required for non-interactive mode)')
     .action(async (options: SetupOptions) => {
       const { passwordFile } = options;
 
@@ -151,12 +156,44 @@ async function runNonInteractiveSetup(
     );
   }
 
+  const keyDeriverRegistry = buildKeyDeriverRegistry();
+  const chainName = options.chain;
+  if (chainName === undefined) {
+    throw new Error('--chain is required in non-interactive mode.');
+  }
+  const keyDeriver = keyDeriverRegistry.get(chainName);
+
+  // Resolve credentials from env vars for the selected chain
+  const chainModuleRegistry = buildChainModuleRegistry();
+  const credentials: Record<string, string> = {};
+  if (chainModuleRegistry.has(chainName)) {
+    const moduleInfo = chainModuleRegistry.getInfo(chainName);
+    for (const cred of moduleInfo.credentialRequirements) {
+      const envValue = process.env[cred.envVar];
+      if (envValue !== undefined && envValue.length > 0) {
+        credentials[cred.name] = envValue;
+      } else if (cred.required) {
+        throw new Error(
+          `Required credential "${cred.name}" not found. Set the ${cred.envVar} environment variable.`,
+        );
+      }
+    }
+  }
+
   const db = ensureSetupEnvironment();
   try {
-    // Disable telemetry by default in non-interactive mode
+    // Write chain config and disable telemetry in one pass
     updateConfigFile((raw) => {
       if (raw['telemetry'] === undefined) {
         raw['telemetry'] = { enabled: false };
+      }
+      if (chainModuleRegistry.has(chainName)) {
+        applyChainConfigDefaults(
+          raw,
+          chainName,
+          chainModuleRegistry.getInfo(chainName).defaultChainConfig,
+          Object.keys(credentials).length > 0 ? credentials : undefined,
+        );
       }
     });
 
@@ -166,10 +203,10 @@ async function runNonInteractiveSetup(
       if (options.mnemonicFile !== undefined) {
         throw new Error('Cannot use both --generate and --mnemonic-file.');
       }
-      result = generateSetupWallet(db, options.alias);
+      result = generateSetupWallet(db, keyDeriver, options.alias);
     } else {
       const mnemonic = await resolveMnemonic(options.mnemonicFile);
-      result = importSetupWallet(db, mnemonic, options.alias);
+      result = importSetupWallet(db, mnemonic, keyDeriver, options.alias);
     }
 
     saveSetupKeystore(result, password);
@@ -210,7 +247,7 @@ async function resolveMnemonic(mnemonicFile: string | undefined): Promise<string
 
 // ── Interactive setup ────────────────────────────────────────────────────────
 
-const INTERACTIVE_STEPS = 6;
+const INTERACTIVE_STEPS = 7;
 
 /** Interactive setup wizard with TTY prompts. */
 async function runInteractiveSetup(alias?: string): Promise<void> {
@@ -238,8 +275,78 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
       }
     }
 
-    // Step 3: Wallet setup
-    step(3, INTERACTIVE_STEPS, 'Wallet Setup');
+    // Step 3: Select Chain
+    step(3, INTERACTIVE_STEPS, 'Select Chain');
+    const chainModuleRegistry = buildChainModuleRegistry();
+    const keyDeriverRegistry = buildKeyDeriverRegistry();
+    const availableChains = chainModuleRegistry.list();
+    const chainInfos = chainModuleRegistry.listInfo();
+
+    if (availableChains.length === 0) {
+      throw new Error('No chain modules registered');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- length > 0 checked above
+    const firstChain = availableChains[0]!;
+
+    let selectedChain: string;
+    if (availableChains.length === 1) {
+      selectedChain = firstChain;
+      const chainInfo = chainModuleRegistry.getInfo(selectedChain);
+      info(`Using chain: ${bold(chainInfo.displayName)}`);
+    } else {
+      console.log(`  Available chains: ${chainInfos.map((c) => bold(c.displayName)).join(', ')}`);
+      const chainChoice = await rl.question(
+        `  ${cyan('?')} Select chain ${dim(`[${availableChains.join('/')}]`)}: `,
+      );
+      const trimmedChoice = chainChoice.trim().toLowerCase();
+      selectedChain = trimmedChoice.length > 0 ? trimmedChoice : firstChain;
+      if (!chainModuleRegistry.has(selectedChain)) {
+        throw new Error(
+          `Unknown chain "${selectedChain}". Available: ${availableChains.join(', ')}`,
+        );
+      }
+      success(`Selected chain: ${chainModuleRegistry.getInfo(selectedChain).displayName}`);
+    }
+
+    const moduleInfo = chainModuleRegistry.getInfo(selectedChain);
+    const keyDeriver: KeyDeriver = keyDeriverRegistry.get(selectedChain);
+
+    // Collect credentials if needed
+    const collectedCredentials: Record<string, string> = {};
+    if (moduleInfo.credentialRequirements.length > 0) {
+      console.log('');
+      info('This chain requires the following credentials:');
+      for (const cred of moduleInfo.credentialRequirements) {
+        const envValue = process.env[cred.envVar];
+        if (envValue !== undefined && envValue.length > 0) {
+          collectedCredentials[cred.name] = envValue;
+          info(`  ${cred.name}: ${dim(`(from ${cred.envVar})`)}`);
+        } else if (cred.required) {
+          const value = await rl.question(
+            `  ${cyan('?')} ${cred.description} ${dim(`(or set ${cred.envVar})`)}: `,
+          );
+          if (value.trim().length === 0) {
+            throw new Error(`Required credential "${cred.name}" was not provided.`);
+          }
+          collectedCredentials[cred.name] = value.trim();
+        }
+      }
+    }
+
+    // Write chain config to config.toml with module defaults
+    updateConfigFile((raw) => {
+      applyChainConfigDefaults(
+        raw,
+        selectedChain,
+        moduleInfo.defaultChainConfig,
+        Object.keys(collectedCredentials).length > 0 ? collectedCredentials : undefined,
+      );
+    });
+    success(`Chain "${selectedChain}" configured.`);
+
+    // Step 4: Wallet setup
+    step(4, INTERACTIVE_STEPS, 'Wallet Setup');
 
     const choice = await rl.question(
       `  ${cyan('?')} Would you like to ${bold('(g)enerate')} a new wallet, ${bold('(i)mport')} by mnemonic, or import by private ${bold('(k)ey')}? ${dim('[g/i/k]')}: `,
@@ -261,7 +368,7 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
       const privateKey = await promptSecret(
         `  ${cyan('?')} Enter your private key (hex or suiprivkey1…): `,
       );
-      result = importSetupWalletFromKey(db, privateKey, alias);
+      result = importSetupWalletFromKey(db, privateKey, keyDeriver, alias);
 
       success('Wallet imported from private key!');
       console.log('');
@@ -270,13 +377,13 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
       const mnemonic = looksLikeMnemonic
         ? trimmed
         : await rl.question(`  ${cyan('?')} Enter your BIP-39 mnemonic phrase: `);
-      result = importSetupWallet(db, mnemonic, alias);
+      result = importSetupWallet(db, mnemonic, keyDeriver, alias);
 
       success('Wallet imported successfully!');
       console.log('');
       box([`${bold('Chain')}    ${result.chainId}`, `${bold('Address')}  ${result.address}`]);
     } else {
-      result = generateSetupWallet(db, alias);
+      result = generateSetupWallet(db, keyDeriver, alias);
 
       success('New wallet generated!');
       console.log('');
@@ -309,8 +416,8 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
     stdin.removeAllListeners('keypress');
     stdin.resume();
 
-    // Step 4: Encrypt and save keystore
-    step(4, INTERACTIVE_STEPS, 'Encrypt Keystore');
+    // Step 5: Encrypt and save keystore
+    step(5, INTERACTIVE_STEPS, 'Encrypt Keystore');
 
     const keystoreExists = existsSync(DEFAULT_KEYSTORE_PATH);
 
@@ -336,7 +443,7 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
     // Step 5: Automatic updates (only if not already configured)
     const config = loadConfig(CONFIG_PATH);
     if (config.update === undefined) {
-      step(5, INTERACTIVE_STEPS, 'Enable Automatic Updates');
+      step(6, INTERACTIVE_STEPS, 'Enable Automatic Updates');
       console.log('');
       console.log(`  OnlyFence can automatically install new versions when available.`);
       console.log(
@@ -363,7 +470,7 @@ async function runInteractiveSetup(alias?: string): Promise<void> {
 
     // Step 6: Telemetry opt-in (only if not already configured)
     if (config.telemetry === undefined) {
-      step(6, INTERACTIVE_STEPS, 'Anonymous Error Reporting');
+      step(7, INTERACTIVE_STEPS, 'Anonymous Error Reporting');
       console.log('');
       console.log(`  OnlyFence can report anonymous crash data to help improve the tool.`);
       console.log(`  ${dim('No wallet addresses, keys, balances, or trade data will be sent.')}`);

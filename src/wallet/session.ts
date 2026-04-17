@@ -1,5 +1,5 @@
 import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
-import { readFileSync, writeFileSync, unlinkSync, statSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, statSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ONLYFENCE_DIR } from '../config/loader.js';
 import { SECURE_DIR_MODE } from '../security/file-permissions.js';
@@ -19,17 +19,22 @@ const IV_LENGTH = 12;
 /** Default session TTL: 4 hours in seconds. */
 const DEFAULT_TTL_SECONDS = 14400;
 
-/** Session file path. */
-const SESSION_PATH = join(ONLYFENCE_DIR, 'session');
+/** Legacy single-chain session file path (kept for backward-compatible reads). */
+const LEGACY_SESSION_PATH = join(ONLYFENCE_DIR, 'session');
+
+/** Per-chain session file path. e.g. "session.sui-mainnet", "session.solana-mainnet" */
+function sessionPath(chain: string): string {
+  return join(ONLYFENCE_DIR, `session.${chain.replace(':', '-')}`);
+}
 
 /**
- * Create a new session by decrypting the keystore and re-encrypting
- * the private key with a random session key.
+ * Create a new session for the given chain by decrypting the keystore and
+ * re-encrypting the private key with a random session key.
  *
  * The master password is only used to decrypt the keystore — it is never
  * written to the session file. The session key is a random value.
  *
- * @param chain - Chain identifier (e.g., 'sui:mainnet')
+ * @param chain - Chain identifier (e.g., 'sui:mainnet', 'solana:mainnet')
  * @param password - Keystore password (used once, then discarded)
  * @param ttlSeconds - Session TTL in seconds (default: 14400 = 4h)
  * @throws Error if keystore decryption fails or chain key is missing
@@ -66,9 +71,11 @@ export function createSession(
       expires_at: expiresAt,
     };
 
+    const path = sessionPath(chain);
+
     // Write session file with restricted permissions (owner read/write only)
-    mkdirSync(dirname(SESSION_PATH), { recursive: true, mode: SECURE_DIR_MODE });
-    writeFileSync(SESSION_PATH, JSON.stringify(sessionData, null, 2), {
+    mkdirSync(dirname(path), { recursive: true, mode: SECURE_DIR_MODE });
+    writeFileSync(path, JSON.stringify(sessionData, null, 2), {
       encoding: 'utf-8',
       mode: 0o600,
     });
@@ -79,98 +86,148 @@ export function createSession(
 }
 
 /**
- * Load the raw private key bytes from an active session.
+ * Load the raw private key bytes from an active session for the given chain.
+ *
+ * Tries the per-chain session file first, then falls back to the legacy
+ * single-session file for users who haven't re-unlocked since the upgrade.
  *
  * @param chain - Chain identifier (must match the session's chain)
  * @returns Raw private key bytes (Uint8Array)
  * @throws Error if session is missing, expired, chain-mismatched, or corrupted
  */
 export function loadSessionKeyBytes(chain: string): Uint8Array {
-  // Read session file
-  let content: string;
-  try {
-    content = readFileSync(SESSION_PATH, 'utf-8');
-  } catch (err: unknown) {
-    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
-      throw new Error('No active session. Unlock your wallet first: fence unlock');
+  // Try per-chain path first, then legacy path (backward compat)
+  const pathsToTry = [sessionPath(chain), LEGACY_SESSION_PATH];
+
+  for (const path of pathsToTry) {
+    let content: string;
+    try {
+      content = readFileSync(path, 'utf-8');
+    } catch (err: unknown) {
+      if (
+        err instanceof Error &&
+        'code' in err &&
+        (err as NodeJS.ErrnoException).code === 'ENOENT'
+      ) {
+        continue; // Try next path
+      }
+      throw new Error(`Failed to read session file: ${toErrorMessage(err)}`);
     }
-    throw new Error(`Failed to read session file: ${toErrorMessage(err)}`);
+
+    // Parse and validate
+    let data: unknown;
+    try {
+      data = JSON.parse(content);
+    } catch {
+      throw new Error('Session file is corrupted: invalid JSON.');
+    }
+
+    validateSessionData(data);
+
+    // Check chain match
+    if (data.chain !== chain) {
+      throw new Error(
+        `Session was created for chain "${data.chain}", but "${chain}" was requested. Run: fence unlock`,
+      );
+    }
+
+    // Check expiry
+    const expiresAt = new Date(data.expires_at).getTime();
+    if (Number.isNaN(expiresAt) || expiresAt <= Date.now()) {
+      throw new Error('Session expired. Unlock again: fence unlock');
+    }
+
+    // Decrypt the blob
+    const sessionKey = Buffer.from(data.session_key, 'hex');
+    const iv = Buffer.from(data.iv, 'hex');
+    const ciphertext = Buffer.from(data.encrypted_blob, 'hex');
+    const tag = Buffer.from(data.tag, 'hex');
+
+    const decipher = createDecipheriv('aes-256-gcm', sessionKey, iv);
+    decipher.setAuthTag(tag);
+
+    try {
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    } catch {
+      throw new Error('Session file is corrupted or tampered with.');
+    }
   }
 
-  // Parse and validate
-  let data: unknown;
-  try {
-    data = JSON.parse(content);
-  } catch {
-    throw new Error('Session file is corrupted: invalid JSON.');
-  }
-
-  validateSessionData(data);
-
-  // Check chain match
-  if (data.chain !== chain) {
-    throw new Error(
-      `Session was created for chain "${data.chain}", but "${chain}" was requested. Run: fence unlock`,
-    );
-  }
-
-  // Check expiry
-  const expiresAt = new Date(data.expires_at).getTime();
-  if (Number.isNaN(expiresAt) || expiresAt <= Date.now()) {
-    throw new Error('Session expired. Unlock again: fence unlock');
-  }
-
-  // Decrypt the blob
-  const sessionKey = Buffer.from(data.session_key, 'hex');
-  const iv = Buffer.from(data.iv, 'hex');
-  const ciphertext = Buffer.from(data.encrypted_blob, 'hex');
-  const tag = Buffer.from(data.tag, 'hex');
-
-  const decipher = createDecipheriv('aes-256-gcm', sessionKey, iv);
-  decipher.setAuthTag(tag);
-
-  try {
-    return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  } catch {
-    throw new Error('Session file is corrupted or tampered with.');
-  }
+  // Neither per-chain nor legacy session found
+  throw new Error('No active session. Unlock your wallet first: fence unlock');
 }
 
 /**
- * Destroy the active session. Overwrites the session file with zeros
- * before deleting it for secure cleanup.
+ * Destroy all active sessions (per-chain and legacy).
  *
- * Idempotent: does not throw if no session exists.
+ * Overwrites each session file with zeros before deleting it for secure cleanup.
+ * Idempotent: does not throw if no sessions exist.
  */
 export function destroySession(): void {
+  const paths: string[] = [LEGACY_SESSION_PATH];
+
+  // Collect per-chain session files
   try {
-    const stat = statSync(SESSION_PATH);
-    // Overwrite with zeros before deleting (secure delete)
-    writeFileSync(SESSION_PATH, Buffer.alloc(stat.size, 0));
-    unlinkSync(SESSION_PATH);
-  } catch (err: unknown) {
-    // File already gone — that's fine (idempotent)
-    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
-      return;
+    const files = readdirSync(ONLYFENCE_DIR);
+    for (const file of files) {
+      if (file.startsWith('session.')) {
+        paths.push(join(ONLYFENCE_DIR, file));
+      }
     }
-    throw new Error(`Failed to destroy session: ${toErrorMessage(err)}`);
+  } catch {
+    // ONLYFENCE_DIR doesn't exist — nothing to destroy
+  }
+
+  for (const path of paths) {
+    try {
+      const stat = statSync(path);
+      // Overwrite with zeros before deleting (secure delete)
+      writeFileSync(path, Buffer.alloc(stat.size, 0));
+      unlinkSync(path);
+    } catch (err: unknown) {
+      if (
+        err instanceof Error &&
+        'code' in err &&
+        (err as NodeJS.ErrnoException).code === 'ENOENT'
+      ) {
+        continue; // Already gone — that's fine
+      }
+      throw new Error(`Failed to destroy session: ${toErrorMessage(err)}`);
+    }
   }
 }
 
 /**
- * Check if a valid (non-expired) session exists.
+ * Check if any valid (non-expired) session exists across all chains.
  *
  * This function never throws. Returns false on any error.
  */
 export function hasActiveSession(): boolean {
+  const paths: string[] = [LEGACY_SESSION_PATH];
+
   try {
-    const content = readFileSync(SESSION_PATH, 'utf-8');
-    const data = JSON.parse(content) as Record<string, unknown>;
-    if (typeof data['expires_at'] !== 'string') return false;
-    return new Date(data['expires_at']).getTime() > Date.now();
+    const files = readdirSync(ONLYFENCE_DIR);
+    for (const file of files) {
+      if (file.startsWith('session.')) {
+        paths.push(join(ONLYFENCE_DIR, file));
+      }
+    }
   } catch {
-    return false;
+    // ONLYFENCE_DIR doesn't exist
   }
+
+  for (const path of paths) {
+    try {
+      const content = readFileSync(path, 'utf-8');
+      const data = JSON.parse(content) as Record<string, unknown>;
+      if (typeof data['expires_at'] !== 'string') continue;
+      if (new Date(data['expires_at']).getTime() > Date.now()) return true;
+    } catch {
+      // File not found or invalid — skip
+    }
+  }
+
+  return false;
 }
 
 /**

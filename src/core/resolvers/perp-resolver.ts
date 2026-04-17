@@ -8,7 +8,6 @@
  * PerpProvider dependency. Each resolver class is intentionally small.
  */
 
-import { tryResolveTokenAddress } from '../../chain/sui/tokens.js';
 import type {
   ActivityAction,
   PerpCancelOrderIntent,
@@ -34,12 +33,8 @@ function getProvider(deps: ResolverDeps, protocol: PerpProtocol): PerpProvider {
   return registry.get(protocol);
 }
 
-function resolveUsdcCoinType(): string {
-  const coinType = tryResolveTokenAddress('USDC');
-  if (coinType === undefined) {
-    throw new Error('Cannot resolve USDC coin type from token registry');
-  }
-  return coinType;
+function resolveUsdcCoinType(deps: ResolverDeps): string {
+  return deps.chainAdapter.resolveTokenAddress('USDC');
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +150,7 @@ export class PerpPlaceOrderResolver implements IntentResolver {
     ]);
 
     // Resolve coin types
-    const collateralCoinType = resolveUsdcCoinType();
+    const collateralCoinType = resolveUsdcCoinType(deps);
     const marketCoinType = provider.toMarketCoinType(marketSymbol.split('-')[0] ?? marketSymbol);
 
     // Compute trade value USD from ticker or limit price

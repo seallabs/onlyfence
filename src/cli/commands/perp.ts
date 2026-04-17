@@ -1,8 +1,6 @@
 import type { Command } from 'commander';
 import type {
   ActivityAction,
-  Chain,
-  ChainId,
   PerpCancelOrderIntent,
   PerpDepositIntent,
   PerpPlaceOrderIntent,
@@ -26,6 +24,7 @@ import type {
   PerpWithdrawOutput,
 } from '../output.js';
 import { EXIT_CODES, handleCommandError, printJsonOutput } from '../output.js';
+import { resolveChainId, resolveDefaultChain } from '../resolve-chain.js';
 import { withComponents } from '../with-components.js';
 
 /** Default perp protocol when --protocol is not specified. */
@@ -157,11 +156,12 @@ function registerDepositAction(parent: Command, getComponents: () => AppComponen
   parent
     .command('deposit <amount>')
     .description('Deposit USDC to perp margin bank')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
-    .action(async (amountStr: string, options: { chain: Chain; protocol: PerpProtocol }) => {
-      const chain = options.chain;
-      const chainId: ChainId = `${chain}:mainnet`;
+    .action(async (amountStr: string, options: { chain?: string; protocol: PerpProtocol }) => {
+      const components = getComponents();
+      const chain = options.chain ?? resolveDefaultChain(components.config);
+      const chainId = resolveChainId(chain, components.chainAdapterFactory);
       const protocol = options.protocol;
 
       try {
@@ -194,11 +194,12 @@ function registerWithdrawAction(parent: Command, getComponents: () => AppCompone
   parent
     .command('withdraw <amount>')
     .description('Withdraw USDC from perp margin bank')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
-    .action(async (amountStr: string, options: { chain: Chain; protocol: PerpProtocol }) => {
-      const chain = options.chain;
-      const chainId: ChainId = `${chain}:mainnet`;
+    .action(async (amountStr: string, options: { chain?: string; protocol: PerpProtocol }) => {
+      const components = getComponents();
+      const chain = options.chain ?? resolveDefaultChain(components.config);
+      const chainId = resolveChainId(chain, components.chainAdapterFactory);
       const protocol = options.protocol;
 
       try {
@@ -234,7 +235,7 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
     .option('-l, --leverage <leverage>', 'Leverage multiplier')
     .option('-r, --reduce-only', 'Reduce-only flag')
     .option('--tif <tif>', 'Time in force (GTT, IOC, FOK)', 'GTT')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
     .action(
       async (
@@ -247,12 +248,13 @@ function registerOrderAction(parent: Command, getComponents: () => AppComponents
           leverage?: string;
           reduceOnly?: boolean;
           tif: string;
-          chain: Chain;
+          chain?: string;
           protocol: PerpProtocol;
         },
       ) => {
-        const chain = options.chain;
-        const chainId: ChainId = `${chain}:mainnet`;
+        const cmps = getComponents();
+        const chain = options.chain ?? resolveDefaultChain(cmps.config);
+        const chainId = resolveChainId(chain, cmps.chainAdapterFactory);
         const protocol = options.protocol;
 
         try {
@@ -314,15 +316,16 @@ function registerCancelAction(parent: Command, getComponents: () => AppComponent
     .command('cancel <market>')
     .description('Cancel orders for a market')
     .option('-o, --order <hash>', 'Specific order hash (repeatable)', collectValues, [])
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
     .action(
       async (
         market: string,
-        options: { order: string[]; chain: Chain; protocol: PerpProtocol },
+        options: { order: string[]; chain?: string; protocol: PerpProtocol },
       ) => {
-        const chain = options.chain;
-        const chainId: ChainId = `${chain}:mainnet`;
+        const cmps = getComponents();
+        const chain = options.chain ?? resolveDefaultChain(cmps.config);
+        const chainId = resolveChainId(chain, cmps.chainAdapterFactory);
         const protocol = options.protocol;
 
         try {
@@ -356,22 +359,22 @@ function registerCloseAction(parent: Command, getComponents: () => AppComponents
     .command('close <market>')
     .description('Close an open position (fully or partially)')
     .option('-s, --size <qty>', 'Quantity to close (default: full position)')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
     .action(
       async (
         market: string,
         options: {
           size?: string;
-          chain: Chain;
+          chain?: string;
           protocol: PerpProtocol;
         },
       ) => {
         const components = withComponents(getComponents);
         if (components === undefined) return;
 
-        const chain = options.chain;
-        const chainId: ChainId = `${chain}:mainnet`;
+        const chain = options.chain ?? resolveDefaultChain(components.config);
+        const chainId = resolveChainId(chain, components.chainAdapterFactory);
         const protocol = options.protocol;
 
         try {
@@ -653,15 +656,15 @@ function registerSyncCommand(parent: Command, getComponents: () => AppComponents
   parent
     .command('sync')
     .description('Sync filled trades from perp API to local DB')
-    .option('-c, --chain <chain>', 'Target chain', 'sui')
+    .option('-c, --chain <chain>', 'Target chain')
     .option('--protocol <protocol>', 'Perp protocol', DEFAULT_PROTOCOL)
-    .action(async (options: { chain: Chain; protocol: PerpProtocol }) => {
+    .action(async (options: { chain?: string; protocol: PerpProtocol }) => {
       const components = withComponents(getComponents);
       if (components === undefined) return;
 
       const { db, activityLog, coinMetadataRepo, logger } = components;
-      const chain = options.chain;
-      const chainId: ChainId = `${chain}:mainnet`;
+      const chain = options.chain ?? resolveDefaultChain(components.config);
+      const chainId = resolveChainId(chain, components.chainAdapterFactory);
       const protocol = options.protocol;
       const log = logger.child({ command: 'perp-sync' });
 

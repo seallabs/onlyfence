@@ -12,8 +12,8 @@
 <p align="center">
   <a href="#install"><img src="https://img.shields.io/badge/install-one%20command-brightgreen?style=for-the-badge" alt="One command install" /></a>
   <a href="#deploy-with-docker--kubernetes"><img src="https://img.shields.io/badge/deploy-docker%20%7C%20k8s-2496ED?style=for-the-badge" alt="Docker and Kubernetes" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge" alt="v0.1.0" /></a>
-  <a href="#supported-chains"><img src="https://img.shields.io/badge/chain-Sui-4da2ff?style=for-the-badge" alt="Sui blockchain" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-0.5.0-blue?style=for-the-badge" alt="v0.5.0" /></a>
+  <a href="#supported-chains"><img src="https://img.shields.io/badge/chains-Sui%20%7C%20Solana%20%7C%20Ethereum-4da2ff?style=for-the-badge" alt="Sui, Solana, and Ethereum" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GNU%20GPLv3-22c55e?style=for-the-badge" alt="GNU GPLv3" /></a>
 </p>
 
@@ -70,12 +70,11 @@ Your AI Agent → OnlyFence → Blockchain
 
 | Action | Status | Description |
 |--------|--------|-------------|
-| **Swap** | Live | Trade tokens across multiple DEXes with best-price routing |
-| **Check balance** | Live | Query wallet balances and token prices |
-| **Lend** | Coming soon | Supply assets to lending protocols to earn yield |
-| **Borrow** | Coming soon | Borrow against collateral for leveraged strategies |
-| **Open position** | Coming soon | Enter leveraged long/short positions |
-| **Close position** | Coming soon | Exit positions and take profit or cut losses |
+| **Swap** | Live | Trade tokens with best-price routing — 7K on Sui, Jupiter on Solana, Paraswap on Ethereum |
+| **Check balance** | Live | Query wallet balances and token prices across every configured chain |
+| **Lend** | Live | Supply assets to earn yield — AlphaLend (Sui), Jupiter Lend (Solana), Aave V3 (Ethereum) |
+| **Borrow** | Live | Borrow against collateral for leveraged strategies |
+| **Open / close position** | Live | Enter and exit leveraged long/short perps — Bluefin Pro (Sui), Jupiter Perps (Solana), Hyperliquid (Ethereum) |
 | **LP (Liquidity)** | Coming soon | Deposit, withdraw, compound, and rebalance LP positions |
 | **Stake** | Coming soon | Stake tokens for protocol rewards |
 
@@ -175,7 +174,9 @@ On first run the entrypoint automatically imports the wallet from the mnemonic a
 Your agent connects to `127.0.0.1:19876`:
 
 ```sh
-fence swap SUI USDC 100 --addr 127.0.0.1:19876 --output json
+fence swap SUI USDC 100 --addr 127.0.0.1:19876 --output json          # on Sui
+fence swap SOL USDC 1 -c solana --addr 127.0.0.1:19876 --output json  # on Solana
+fence swap ETH USDC 0.1 -c ethereum --addr 127.0.0.1:19876 --output json  # on Ethereum
 ```
 
 See [`docker-compose.yml`](docker-compose.yml) for the full reference configuration, including read-only filesystem, dropped capabilities, and no-new-privileges.
@@ -183,18 +184,25 @@ See [`docker-compose.yml`](docker-compose.yml) for the full reference configurat
 <details>
 <summary><strong>Non-interactive setup (CI / scripts)</strong></summary>
 
-`fence setup` supports fully non-interactive mode for scripted environments:
+`fence setup` supports fully non-interactive mode for scripted environments. `--chain` is required; chains with API-key credentials (e.g., Solana's Jupiter) read them from environment variables:
 
 ```sh
-# Import from file
-fence setup --mnemonic-file /run/secrets/mnemonic --password-file /run/secrets/password
+# Import from file onto Sui
+fence setup --chain sui --mnemonic-file /run/secrets/mnemonic --password-file /run/secrets/password
 
-# Import from stdin
-echo "word1 word2 ..." | fence setup --password-file /run/secrets/password
+# Solana requires JUPITER_API_KEY
+JUPITER_API_KEY=... fence setup --chain solana \
+  --mnemonic-file /run/secrets/mnemonic \
+  --password-file /run/secrets/password
+
+# Import from stdin onto Ethereum
+echo "word1 word2 ..." | fence setup --chain ethereum --password-file /run/secrets/password
 
 # Generate new wallet (outputs JSON with mnemonic to stdout)
-fence setup --generate --password-file /run/secrets/password
+fence setup --chain sui --generate --password-file /run/secrets/password
 ```
+
+To add another chain later, re-run `fence setup` with a different `--chain` — the new key is merged into the existing keystore.
 
 </details>
 
@@ -280,51 +288,76 @@ The Docker image and reference Compose file include production hardening out of 
 
 ## Getting Started
 
-The installer runs `fence setup` automatically, so your wallet is ready to go after install.
+The installer runs `fence setup` automatically. The wizard asks which chain you want to start with (**Sui**, **Solana**, or **Ethereum**) and collects any required credentials (for example, Solana needs a free [Jupiter API key](https://portal.jup.ag/)). You can re-run `fence setup` later to add more chains to the same keystore.
 
 > **Important:** Write down the mnemonic phrase shown during install and keep it somewhere safe. This is the only way to recover your wallet. OnlyFence will never show it again.
 
 ### Step 1: Set Your Rules
 
-Your safety rules are in a simple config file. The defaults are sensible, but you can change them anytime:
+Your safety rules are in a simple config file. **Each chain has its own allowlist and spending limits** — what's allowed on Sui doesn't leak over to Solana or Ethereum. The defaults are sensible, but you can change them anytime:
 
 ```sh
 fence config show
 ```
 
 ```toml
+default_chain = "sui"   # Chain used when --chain is omitted
+
 [chain.sui.allowlist]
-tokens = ["SUI", "USDC", "USDT", "DEEP", "BLUE", "WAL"]   # Only these tokens can be traded
+tokens = ["SUI", "USDC", "USDT", "DEEP", "BLUE", "WAL"]
 
 [chain.sui.limits]
 max_single_trade = 200.0     # No single trade above $200
-max_24h_volume   = 500.0     # No more than $500 per day total
+max_24h_volume   = 500.0     # No more than $500 per day
+
+[chain.solana.allowlist]
+tokens = ["SOL", "USDC", "USDT", "JitoSOL", "JupSOL"]
+
+[chain.solana.limits]
+max_single_trade = 200.0
+max_24h_volume   = 500.0
+
+[chain.ethereum.allowlist]
+tokens = ["ETH", "WETH", "USDC", "USDT", "DAI", "WBTC"]
+
+[chain.ethereum.limits]
+max_single_trade = 500.0
+max_24h_volume   = 2000.0
 ```
 
 **Change a rule:**
 ```sh
-# Allow up to $1000 per day
+# Allow up to $1000 per day on Sui
 fence config set chain.sui.limits.max_24h_volume 1000
 
-# Add a new token to the approved list
-fence config set chain.sui.allowlist.tokens '["SUI", "USDC", "USDT", "DEEP", "BLUE", "WAL", "CETUS"]'
+# Add a new token to Solana's allowlist
+fence config set chain.solana.allowlist.tokens '["SOL", "USDC", "USDT", "JitoSOL", "JupSOL", "BONK"]'
+
+# Change the default chain
+fence config set default_chain ethereum
 ```
 
 ### Step 2: Let Your Agent Work
 
 ```sh
 # Swap tokens — guardrails check every trade automatically
-fence swap SUI USDC 10
+fence swap SUI USDC 10                          # default chain (Sui)
+fence swap SOL USDC 1 -c solana                 # on Solana
+fence swap ETH USDC 0.1 -c ethereum             # on Ethereum
 
-# Check wallet balance
-fence query balance
+# Check wallet balance (per chain)
+fence query balance -c sui
+fence query balance -c ethereum
 
 # Get token prices
-fence query price SUI,USDC
+fence query price SUI USDC
 
-# Coming soon: lend, borrow, open positions, and more
-# fence lend SUI 100 --protocol navi
-# fence borrow USDC 50 --collateral SUI
+# Lend, borrow, and manage positions
+fence lend supply USDC 100 -c ethereum          # Aave V3
+fence lend borrow DAI 50 -c ethereum
+fence perp order SUI-PERP long 1 --type market  # Bluefin Pro (Sui)
+fence perp order ETH-USD long 0.1 --type limit --price 3400 \
+  -c ethereum --protocol hyperliquid            # Hyperliquid
 ```
 
 Your agent calls these commands and gets structured JSON responses. Every action is checked against your rules before it touches the chain.
@@ -383,14 +416,18 @@ fence swap SUI USDC 100 --output json
 ```json
 {
   "status": "success",
-  "chain": "sui",
+  "action": "trade:swap",
+  "chainId": "sui:mainnet",
+  "address": "0x7a3f...e821",
   "txDigest": "8Hk4...mW2p",
-  "fromToken": "SUI",
-  "toToken": "USDC",
-  "amountIn": "100",
-  "amountOut": "98.12",
-  "valueUsd": 98.0,
-  "route": "SUI → USDC via Cetus"
+  "gasUsed": 2100,
+  "payload": {
+    "fromToken": "0x2::sui::SUI",
+    "toToken": "0xdba3...::usdc::USDC",
+    "amountIn": 100,
+    "amountOut": 98.12,
+    "valueUsd": 98.0
+  }
 }
 ```
 
@@ -398,9 +435,10 @@ fence swap SUI USDC 100 --output json
 ```json
 {
   "status": "rejected",
-  "check": "spending_limit",
-  "reason": "exceeds_24h_volume",
-  "detail": "24h $480 + $98 = $578 exceeds $500 limit"
+  "action": "trade:swap",
+  "chainId": "sui:mainnet",
+  "rejectionCheck": "spending_limit",
+  "rejectionReason": "exceeds_24h_volume"
 }
 ```
 
@@ -435,24 +473,31 @@ Your AI agent calls `fence` commands with `--output json` to get structured resp
 | Command | What it does |
 |---------|-------------|
 | `fence` | Open the interactive dashboard |
-| `fence swap SUI USDC 10` | Swap tokens (with safety checks) |
-| `fence query balance` | See your wallet balance |
-| `fence query price SUI,USDC` | Check token prices in USD |
-| `fence wallet list` | See all your wallets |
+| `fence setup` | Add a chain (Sui / Solana / Ethereum) and a wallet for it |
+| `fence swap <from> <to> <amount> [-c <chain>]` | Swap tokens (with safety checks) |
+| `fence lend supply\|borrow\|withdraw\|repay [-c <chain>]` | Lending on AlphaLend / Jupiter Lend / Aave V3 |
+| `fence perp order\|cancel\|close [--protocol <p>]` | Perps on Bluefin Pro / Jupiter Perps / Hyperliquid |
+| `fence query balance [-c <chain>]` | See your wallet balance |
+| `fence query price SUI USDC` | Check token prices in USD |
+| `fence query activities` | Cross-chain activity history with filtering |
+| `fence wallet list` | See all your wallets across every chain |
 | `fence config show` | View your current rules |
-| `fence config set <key> <value>` | Change a rule |
-| `fence unlock` | Unlock your wallet for the session |
-| `fence lock` | Lock your wallet |
+| `fence config set <key> <value>` | Change a rule (per-chain keys like `chain.solana.limits.max_24h_volume`) |
+| `fence unlock` | Unlock all wallets for the session |
+| `fence lock` | Lock your wallets |
 
 ---
 
 ## Supported Chains
 
-| Chain | Status | Exchanges |
-|-------|--------|-----------|
-| **Sui** | Live | Cetus, DeepBook, Bluefin, FlowX, Turbos (via 7K Aggregator) |
-| **EVM** (Ethereum, Base, etc.) | Coming soon | |
-| **Solana** | Coming soon | |
+| Chain | Status | Swap | Lending | Perps |
+|-------|--------|------|---------|-------|
+| **Sui** | Live | 7K Aggregator (Cetus, DeepBook, Bluefin, FlowX, Turbos) | AlphaLend | Bluefin Pro |
+| **Solana** | Live | Jupiter | Jupiter Lend | Jupiter Perps |
+| **Ethereum** | Live | Paraswap | Aave V3 | Hyperliquid |
+| **More EVM L2s** (Base, Arbitrum, …) | Coming soon | | | |
+
+Every chain uses the same CLI and the same guardrail model. Switch chains with `-c <chain>` on any command, or set a default with `fence config set default_chain <chain>`.
 
 ---
 
@@ -482,7 +527,14 @@ If you lose your mnemonic, you lose access to your wallet. OnlyFence cannot reco
 <details>
 <summary><strong>Can I use my existing wallet?</strong></summary>
 
-Yes. During `fence setup`, choose "Import existing private key or mnemonic" to use a wallet you already have.
+Yes. During `fence setup`, choose "Import by mnemonic" or "Import by private key" to use a wallet you already have. Chains with the same BIP-39 derivation (Ethereum, and any EVM L2 added later) will produce the same address; Sui and Solana each derive their own address from the same mnemonic.
+
+</details>
+
+<details>
+<summary><strong>Do I need an API key for anything?</strong></summary>
+
+Yes for Solana — Jupiter requires a free API key (get one at [portal.jup.ag](https://portal.jup.ag/)). The setup wizard prompts for it and stores it in your config. Sui and Ethereum don't require any external credentials out of the box, though you can optionally supply your own RPC endpoint.
 
 </details>
 
@@ -514,8 +566,6 @@ Yes. OnlyFence runs standalone on any machine, or as a Docker container on Docke
 What's coming next:
 
 **More DeFi actions:**
-- **Lending & borrowing** — supply assets to earn yield, borrow against collateral
-- **Position management** — open/close leveraged long/short positions
 - **LP operations** — deposit, withdraw, compound, and rebalance liquidity
 - **Staking** — stake tokens for protocol rewards
 
@@ -525,13 +575,17 @@ What's coming next:
 - **P&L-based circuit breaker** — auto-stop the agent when losses hit a threshold
 
 **More chains:**
-- **EVM** (Ethereum, Base, Arbitrum, etc.)
-- **Solana**
+- **Additional EVM L2s** (Base, Arbitrum, Optimism) on top of the existing Ethereum mainnet support
 
 **More control:**
 - **Telegram alerts** — get notified when actions happen or get blocked
 - **Telegram approval gate** — manually approve actions from your phone
 - **P&L tracking** — see your profit/loss in real time
+
+**Already shipped:**
+- Swaps, lending, and perps across Sui, Solana, and Ethereum
+- Daemon mode with config tamper protection
+- Interactive TUI and cross-chain activity query engine
 
 ---
 

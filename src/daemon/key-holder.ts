@@ -5,17 +5,19 @@
  * it fills the buffer with zeros to minimize the window for memory reads.
  */
 
-import { buildSuiSigner } from '../chain/sui/signer.js';
 import { loadKeystore } from '../wallet/keystore.js';
 import type { Signer } from '../types/result.js';
 import type { ChainId } from '../core/action-types.js';
+import type { SignerRegistry } from '../wallet/signer-registry.js';
 
 export class KeyHolder {
   private readonly keyBytes: Map<string, Buffer>;
+  private readonly signerRegistry: SignerRegistry;
   private destroyed = false;
 
-  private constructor(keyBytes: Map<string, Buffer>) {
+  private constructor(keyBytes: Map<string, Buffer>, signerRegistry: SignerRegistry) {
     this.keyBytes = keyBytes;
+    this.signerRegistry = signerRegistry;
   }
 
   /**
@@ -25,7 +27,11 @@ export class KeyHolder {
    * @param keystorePath - Optional custom keystore path
    * @returns A KeyHolder holding decrypted key material
    */
-  static fromPassword(password: string, keystorePath?: string): KeyHolder {
+  static fromPassword(
+    password: string,
+    signerRegistry: SignerRegistry,
+    keystorePath?: string,
+  ): KeyHolder {
     const data = loadKeystore(password, keystorePath);
     const keyBytes = new Map<string, Buffer>();
 
@@ -37,7 +43,7 @@ export class KeyHolder {
       data.keys[chainId] = '0'.repeat(hexKey.length);
     }
 
-    return new KeyHolder(keyBytes);
+    return new KeyHolder(keyBytes, signerRegistry);
   }
 
   /**
@@ -57,8 +63,7 @@ export class KeyHolder {
       );
     }
 
-    // buildSuiSigner expects raw key bytes
-    return buildSuiSigner(keyBuf);
+    return this.signerRegistry.build(chainId, keyBuf);
   }
 
   /**
